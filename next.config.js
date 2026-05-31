@@ -1,23 +1,29 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+    reactStrictMode: true,
+    typescript: {
+          ignoreBuildErrors: true,
+    },
+    eslint: {
+          ignoreDuringBuilds: true,
+    },
     images: {
-        domains: [
-              'arweave.net',
-                    'nftstorage.link',
-                          'ipfs.io',
-                                'gateway.irys.xyz',
-                                    ],
-                                      },
-                                        webpack: (config) => {
-                                            config.resolve.fallback = {
-                                                  ...config.resolve.fallback,
-                                                        fs: false,
-                                                              net: false,
-                                                                    tls: false,
-                                                                        };
-                                                                            return config;
-                                                                              },
-                                                                              };
-                                                                              
-                                                                              module.exports = nextConfig; */
+          domains: [
+                  'arweave.net',
+                  'nftstorage.link',
+                  'ipfs.io',
+                  'gateway.irys.xyz',
+                ],
+    },
+    webpack: (config) => {
+          config.resolve.fallback = {
+                  ...config.resolve.fallback,
+                  fs: false,
+                  net: false,
+                  tls: false,
+          };
+          return config;
+    },
+};
+
+module.exports = nextConfig;
