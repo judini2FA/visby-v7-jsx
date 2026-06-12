@@ -43,6 +43,53 @@ export const followsRouter = createTRPCRouter({
       return { following: !!data };
     }),
 
+  // Sellers worth following — distinct owners of listed items, ranked by active listings,
+  // excluding the viewer and anyone they already follow.
+  getSuggested: publicProcedure
+    .input(z.object({ wallet: z.string().optional() }))
+    .query(async ({ input }) => {
+      const supabase = createServiceClient();
+
+      const { data: items } = await supabase
+        .from('items')
+        .select('current_owner_wallet')
+        .eq('is_listed', true);
+      if (!items?.length) return [];
+
+      const counts: Record<string, number> = {};
+      for (const it of items) {
+        const w = it.current_owner_wallet;
+        if (w) counts[w] = (counts[w] ?? 0) + 1;
+      }
+
+      if (input.wallet) {
+        delete counts[input.wallet];
+        const { data: following } = await supabase
+          .from('follows')
+          .select('following_wallet')
+          .eq('follower_wallet', input.wallet);
+        for (const f of following ?? []) delete counts[f.following_wallet];
+      }
+
+      const wallets = Object.keys(counts);
+      if (!wallets.length) return [];
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('wallet, display_name, bio')
+        .in('wallet', wallets);
+      const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.wallet, p]));
+
+      return wallets
+        .map(w => ({
+          wallet: w,
+          display_name: (profileMap[w]?.display_name as string | null) ?? null,
+          bio: (profileMap[w]?.bio as string | null) ?? null,
+          listing_count: counts[w],
+        }))
+        .sort((a, b) => b.listing_count - a.listing_count);
+    }),
+
   getFollowing: publicProcedure
     .input(z.object({ wallet: z.string() }))
     .query(async ({ input }) => {

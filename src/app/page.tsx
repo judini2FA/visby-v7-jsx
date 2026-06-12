@@ -185,17 +185,19 @@ export default function HomePage() {
       <div className="visby-page">
 
         {/* ── Stories ──────────────────────────────────── */}
-        <div style={{ ...surface({ radius: 'var(--r-lg)', pad: '8px 12px' }), marginBottom: S[6] }}>
+        <div style={{ ...surface({ radius: 'var(--r-lg)', pad: '8px 12px' }), marginTop: S[4], marginBottom: S[6] }}>
           <div style={{ display: 'flex', gap: S[3], overflowX: 'auto', paddingTop: S[1], paddingBottom: S[1], scrollbarWidth: 'none' }}>
-            {/* Sell/Mint button — always first */}
-            <Link href="/mint" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, textDecoration: 'none' }}>
-              <div style={{ padding: 0, background: 'transparent', borderRadius: '50%', border: `2px dashed var(--glass-border)` }}>
-                <div style={{ padding: 0, background: 'var(--bg-0)', borderRadius: '50%' }}>
-                  <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--glass-bg-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>+</div>
+            {/* Empty state: a single + that leads to sellers to follow. Disappears once following anyone. */}
+            {following.length === 0 && (
+              <Link href="/discover" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, textDecoration: 'none' }}>
+                <div style={{ borderRadius: '50%', border: `2px dashed var(--glass-border)` }}>
+                  <div style={{ background: 'var(--bg-0)', borderRadius: '50%' }}>
+                    <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--glass-bg-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>+</div>
+                  </div>
                 </div>
-              </div>
-              <span style={{ ...t('meta'), color: 'var(--text-muted)', maxWidth: 56, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sell</span>
-            </Link>
+                <span style={{ ...t('meta'), color: 'var(--text-muted)', maxWidth: 72, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Find sellers</span>
+              </Link>
+            )}
 
             {following.map((f, i) => {
               const initials = f.display_name
@@ -225,11 +227,6 @@ export default function HomePage() {
               );
             })}
 
-            {following.length === 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: 60, opacity: 0.5 }}>
-                <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>Follow sellers to see them here</div>
-              </div>
-            )}
           </div>
         </div>
 
