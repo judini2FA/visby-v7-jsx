@@ -30,7 +30,7 @@ function shortAddr(a: string) {
 // Brand mark — intentionally unchanged. Keeps its original Quicksand wordmark + colors.
 function VisbyLogo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.28))' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, filter: 'drop-shadow(0 4px 4px rgba(0,0,0,.45))' }}>
       <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto' }} />
       <svg width="90" height="28" viewBox="0 0 115 32">
         <defs>
