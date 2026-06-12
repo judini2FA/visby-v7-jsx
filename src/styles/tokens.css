@@ -28,14 +28,35 @@
   --grad-brand-h: linear-gradient(90deg, #6DE4D5 0%, #59B4F5 50%, #D54AF2 100%);
   --grad-glow: linear-gradient(135deg, #5ED9D1 0%, #8EDFF7 50%, #E9B4F7 100%);
 
-  /* radii + motion */
-  --r-sm: 16px;
-  --r: 22px;
-  --r-lg: 30px;
-  --r-xl: 36px;
+  /* radii + motion — tightened for an editorial feel (was 16/22/30/36) */
+  --r-sm: 12px;
+  --r: 16px;
+  --r-lg: 20px;
+  --r-xl: 28px;
   --pill: 999px;
   --ease: cubic-bezier(.22, .61, .36, 1);
   --dur: .5s;
+
+  /* type scale — sizes only; weight/family/line-height applied by `t()` in src/lib/ui.ts */
+  --fs-display: 30px;
+  --fs-title: 22px;
+  --fs-heading: 16px;
+  --fs-body: 14px;
+  --fs-meta: 12px;
+  --fs-micro: 11px;
+
+  /* spacing — strict 4/8 grid; JS mirror is `S` in src/lib/ui.ts (identical numbers) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+
+  /* dark scrim for badges/labels sitting on top of photos (same in both themes) */
+  --img-scrim: rgba(0, 0, 0, .55);
 
   /* cursor/tilt parallax origin (updated by BackgroundField in dark mode) */
   --glow-x: 50%;
@@ -70,6 +91,9 @@
   --glass-shadow: 0 12px 40px rgba(30, 30, 34, .12), 0 2px 8px rgba(30, 30, 34, .05);
   --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .70);
   --scrim: rgba(255, 255, 255, .0);
+
+  /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
+  --surface-bg: rgba(255, 255, 255, .45);
 
   --field-input-bg: rgba(255, 255, 255, .35);
   --divider: rgba(40, 40, 44, .12);
@@ -108,6 +132,9 @@
   --glass-shadow: 0 18px 50px rgba(0, 0, 0, .50), 0 2px 10px rgba(0, 0, 0, .30);
   --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .10);
   --scrim: rgba(10, 10, 12, .30);
+
+  /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
+  --surface-bg: rgba(255, 255, 255, .05);
 
   --field-input-bg: rgba(255, 255, 255, .06);
   --divider: rgba(255, 255, 255, .10);

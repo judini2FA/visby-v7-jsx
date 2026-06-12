@@ -40,23 +40,23 @@ textarea::placeholder { color: var(--text-muted); opacity: .8; }
 
 select option { background: var(--glass-bg-strong); color: var(--text); }
 
-/* ── Responsive grid — fluid, fills any screen width ─ */
+/* ── Responsive grid — fluid, fills any screen width; gaps on the 4/8 grid ─ */
 .visby-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
+  gap: var(--s-4);
 }
 @media (min-width: 640px) {
-  .visby-grid { grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .visby-grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media (min-width: 1024px) {
-  .visby-grid { grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .visby-grid { grid-template-columns: repeat(4, 1fr); }
 }
 @media (min-width: 1440px) {
-  .visby-grid { grid-template-columns: repeat(5, 1fr); gap: 22px; }
+  .visby-grid { grid-template-columns: repeat(5, 1fr); gap: var(--s-5); }
 }
 @media (min-width: 1920px) {
-  .visby-grid { grid-template-columns: repeat(6, 1fr); gap: 24px; }
+  .visby-grid { grid-template-columns: repeat(6, 1fr); }
 }
 @media (max-width: 359px) {
   .visby-grid { grid-template-columns: 1fr; }
