@@ -45,11 +45,9 @@ export function BottomNav() {
     <nav className="bottom-nav-wrap" style={{
       position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
       width: '100%', maxWidth: 600,
-      background: 'var(--glass-bg-strong)',
-      backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
-      WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
-      borderTop: '1px solid var(--glass-border)',
-      boxShadow: '0 -8px 30px rgba(0,0,0,.18)',
+      background: 'var(--chrome-bg)',
+      borderTop: '1px solid var(--chrome-border)',
+      boxShadow: '0 -8px 30px rgba(0,0,0,.10)',
       display: 'flex', justifyContent: 'space-around',
       padding: '12px 0 16px', zIndex: 100,
     }}>
