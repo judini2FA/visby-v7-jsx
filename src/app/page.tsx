@@ -30,7 +30,7 @@ function shortAddr(a: string) {
 // Brand mark — intentionally unchanged. Keeps its original Quicksand wordmark + colors.
 function VisbyLogo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, filter: 'drop-shadow(0 4px 4px rgba(0,0,0,.45))' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto' }} />
       <svg width="90" height="28" viewBox="0 0 115 32">
         <defs>
@@ -81,10 +81,13 @@ export default function HomePage() {
       {/* ── Top nav ──────────────────────────────────────── */}
       <nav style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: 'var(--glass-bg-strong)',
+        // Darkened so all three wordmark gradient hues clear WCAG 3:1 against the header
+        // (bright teal needs a dark bg; dark purple needs it darker still — near-black is the
+        // only background that satisfies all three at once).
+        background: 'rgba(24,24,27,.90)',
         backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
-        borderBottom: '1px solid var(--divider)',
-        boxShadow: '0 2px 16px rgba(0,0,0,.06)',
+        borderBottom: '1px solid rgba(255,255,255,.08)',
+        boxShadow: '0 2px 16px rgba(0,0,0,.18)',
       }}>
         <div className="visby-page" style={{ paddingTop: 10, paddingBottom: 0 }}>
           {/* Row 1: spacer | logo centered | hamburger right */}
@@ -95,15 +98,15 @@ export default function HomePage() {
               <button
                 onClick={() => setMenuOpen(true)}
                 style={{
-                  background: 'var(--glass-bg)',
+                  background: 'rgba(255,255,255,.08)',
                   backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255,255,255,.18)',
                   borderRadius: 14, padding: '9px 11px',
                   cursor: 'pointer', flexShrink: 0,
                   display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                {[0,1,2].map(i => <div key={i} style={{ width: 18, height: 1.5, background: 'var(--text)', borderRadius: 1 }} />)}
+                {[0,1,2].map(i => <div key={i} style={{ width: 18, height: 1.5, background: 'rgba(255,255,255,.92)', borderRadius: 1 }} />)}
               </button>
             </div>
           </div>
@@ -113,10 +116,11 @@ export default function HomePage() {
             <div style={{ position: 'relative' }}>
               <svg style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
                 width="15" height="15" viewBox="0 0 24 24" fill="none"
-                stroke={sf ? 'var(--text)' : 'var(--text-muted)'} strokeWidth="1.8">
+                stroke={sf ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.55)'} strokeWidth="1.8">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input
+                className="home-search"
                 value={q}
                 onChange={e => setQ(e.target.value)}
                 onFocus={() => setSf(true)}
@@ -124,13 +128,15 @@ export default function HomePage() {
                 placeholder="Search items, brands, serials…"
                 style={{
                   ...input(),
+                  background: 'rgba(255,255,255,.08)',
+                  color: 'rgba(255,255,255,.95)',
                   paddingLeft: 40,
-                  borderColor: sf ? 'var(--text-muted)' : 'var(--glass-border)',
+                  border: `1px solid ${sf ? 'rgba(255,255,255,.4)' : 'rgba(255,255,255,.16)'}`,
                   transition: 'border-color .2s',
                 }}
               />
               {q && (
-                <button onClick={() => setQ('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+                <button onClick={() => setQ('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
               )}
             </div>
           </div>
@@ -306,6 +312,7 @@ export default function HomePage() {
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
         @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .home-search::placeholder { color: rgba(255,255,255,.5); opacity: 1; }
       `}</style>
     </div>
   );
