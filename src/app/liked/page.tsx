@@ -4,9 +4,19 @@ import { useSolanaWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
+import { t, S, price, card, btn, badge, avatar } from '@/lib/ui';
 
-const C = { teal: '#5ED9D1', cyan: '#6DE4D5', blue: '#59B4F5', mag: '#D54AF2', muted: 'var(--text-muted)' };
-const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
+const AVATAR_GRADIENTS = [
+  'linear-gradient(135deg,#6DE4D5,#59B4F5)',
+  'linear-gradient(135deg,#59B4F5,#D54AF2)',
+  'linear-gradient(135deg,#D54AF2,#FFC6A3)',
+  'linear-gradient(135deg,#5ED9D1,#9BE15D)',
+];
+
+function shortAddr(addr?: string) {
+  if (!addr) return '';
+  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+}
 
 export default function LikedPage() {
   const { wallets } = useSolanaWallets();
@@ -19,47 +29,50 @@ export default function LikedPage() {
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button onClick={() => router.back()} style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)', padding: `${S[3]}px ${S[4]}px`, display: 'flex', alignItems: 'center', gap: S[3] }}>
+        <button onClick={() => router.back()} style={{ ...btn('secondary', { pill: false }), padding: `${S[2]}px ${S[2]}px`, display: 'flex', alignItems: 'center' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-strong)' }}>Liked Items</div>
+        <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Liked Items</div>
       </div>
 
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: '16px 16px 100px' }}>
+      <div className="visby-inner" style={{ maxWidth: 600, margin: '0 auto', padding: `${S[4]}px ${S[4]}px 100px` }}>
         {isLoading && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            {[1,2,3,4].map(i => <div key={i} style={{ height: 200, background: 'var(--glass-bg)', borderRadius: 20, animation: 'pulse 2s infinite' }} />)}
+          <div className="visby-grid">
+            {[1,2,3,4].map(i => <div key={i} style={{ ...card({ radius: 'var(--r-lg)' }), height: 200, animation: 'pulse 2s infinite' }} />)}
           </div>
         )}
         {!isLoading && items.length === 0 && !wallet && (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Sign in to see liked items</div>
-            <Link href="/login" style={{ display: 'inline-block', background: GH, borderRadius: 20, padding: '12px 24px', color: '#fff', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
+          <div style={{ textAlign: 'center', padding: `${S[8]}px ${S[5]}px` }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[4] }}>Sign in to see liked items</div>
+            <Link href="/login" style={{ ...btn('primary'), textDecoration: 'none' }}>Sign In</Link>
           </div>
         )}
         {!isLoading && items.length === 0 && !!wallet && (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>No liked items yet</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tap the heart on any listing</div>
+          <div style={{ textAlign: 'center', padding: `${S[8]}px ${S[5]}px` }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[2] }}>No liked items yet</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5] }}>Tap the heart on any listing to save it here</div>
+            <Link href="/marketplace" style={{ ...btn('primary'), textDecoration: 'none' }}>Browse listings</Link>
           </div>
         )}
         {items.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            {items.map((item: any) => (
-              <Link key={item.id} href={`/item/${item.id}`} style={{ textDecoration: 'none', background: 'var(--glass-bg)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderRadius: 20, overflow: 'hidden', border: '1px solid var(--glass-border)', boxShadow: 'var(--glass-shadow), var(--glass-inner)' }}>
-                <div style={{ height: 140, background: 'var(--glass-bg-strong)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="visby-grid">
+            {items.map((item: any, i: number) => (
+              <Link key={item.id} href={`/item/${item.id}`} style={{ ...card({ radius: 'var(--r-lg)' }), display: 'flex', flexDirection: 'column', overflow: 'hidden', textDecoration: 'none' }}>
+                <div style={{ position: 'relative', aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {item.image_url
                     ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{item.category}</span>
+                    : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
                   }
-                  <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,59,92,.8)', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="#fff" stroke="#fff" strokeWidth="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                  </div>
+                  {item.condition && <span style={{ ...badge('onImage'), position: 'absolute', top: S[3], left: S[3] }}>{item.condition}</span>}
                 </div>
-                <div style={{ padding: '10px 12px 12px' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>${(item.price_usdc ?? 0).toLocaleString()}</div>
+                <div style={{ padding: S[4], display: 'flex', flexDirection: 'column', gap: S[2], flex: 1 }}>
+                  <div style={{ ...t('heading'), color: 'var(--text-strong)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+                    <div style={{ ...avatar('sm'), width: 22, height: 22, fontSize: 10, background: AVATAR_GRADIENTS[i % AVATAR_GRADIENTS.length] }}>{(item.name ?? '?').slice(0, 1).toUpperCase()}</div>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{shortAddr(item.current_owner_wallet)}</span>
+                  </div>
+                  <div style={{ ...price('md'), marginTop: S[1] }}>${(item.price_usdc ?? 0).toLocaleString()}</div>
                 </div>
               </Link>
             ))}

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
 import { ThemeToggle, useTheme } from '@/lib/theme';
+import { S, t, price, card, sheet, surface, btn, badge, sectionLabel, avatar, input } from '@/lib/ui';
 
 const C = {
   navy: 'transparent',
@@ -13,7 +14,6 @@ const C = {
   muted: 'var(--text-muted)',
   border: 'var(--glass-border)',
 };
-const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
 const GD = `linear-gradient(135deg,${C.cyan},${C.blue} 50%,${C.mag})`;
 
 const AVATAR_GRADS = [
@@ -123,12 +123,10 @@ export default function HomePage() {
                 onBlur={() => setSf(false)}
                 placeholder="Search items, brands, serials…"
                 style={{
-                  width: '100%',
-                  background: 'var(--field-input-bg)',
-                  border: `1px solid ${sf ? 'var(--text-muted)' : 'var(--glass-border)'}`,
-                  borderRadius: 14, padding: '9px 12px 9px 36px',
-                  color: 'var(--text)', fontSize: 14, outline: 'none',
-                  fontFamily: "'Manrope',sans-serif", transition: 'border-color .2s',
+                  ...input(),
+                  paddingLeft: 40,
+                  borderColor: sf ? 'var(--text-muted)' : 'var(--glass-border)',
+                  transition: 'border-color .2s',
                 }}
               />
               {q && (
@@ -143,17 +141,17 @@ export default function HomePage() {
       {menuOpen && (
         <>
           <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(28px) saturate(1.4)', WebkitBackdropFilter: 'blur(28px) saturate(1.4)', borderRadius: '30px 30px 0 0', border: '1px solid var(--glass-border)', borderBottom: 'none', boxShadow: 'var(--glass-shadow)', padding: '0 20px 48px' }}>
-            <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: '16px auto 24px' }} />
+          <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, borderBottom: 'none', padding: `0 ${S[5]}px ${S[7]}px` }}>
+            <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `${S[4]}px auto ${S[5]}px` }} />
 
             {/* Appearance / theme toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 4px 18px', borderBottom: '1px solid var(--divider)', marginBottom: 6 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 14, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3], marginBottom: S[2] }}>
+              <div style={{ ...surface({ radius: 'var(--r-sm)' }), width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Quicksand',sans-serif" }}>Appearance</span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{mode === 'dark' ? 'Night' : 'Day'} mode</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+                <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>Appearance</span>
+                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{mode === 'dark' ? 'Night' : 'Day'} mode</span>
               </div>
               <div style={{ marginLeft: 'auto' }}><ThemeToggle /></div>
             </div>
@@ -166,18 +164,18 @@ export default function HomePage() {
               { label: 'Settings',      href: '/settings',          icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
             ] as const).map(item => (
               <Link key={item.label} href={item.href} onClick={() => setMenuOpen(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 4px', borderBottom: '1px solid var(--divider)', textDecoration: 'none' }}>
-                <div style={{ width: 42, height: 42, borderRadius: 14, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3], marginTop: S[2], textDecoration: 'none' }}>
+                <div style={{ ...surface({ radius: 'var(--r-sm)' }), width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {item.icon}
                 </div>
-                <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Quicksand',sans-serif" }}>{item.label}</span>
+                <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>{item.label}</span>
                 <svg style={{ marginLeft: 'auto' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
               </Link>
             ))}
-            <div style={{ marginTop: 20 }}>
+            <div style={{ marginTop: S[5] }}>
               {ready && (authenticated
-                ? <button onClick={() => { logout(); setMenuOpen(false); }} style={{ width: '100%', background: 'rgba(255,59,92,.10)', border: '1px solid rgba(255,59,92,.28)', borderRadius: 16, padding: '14px', color: '#FF3B5C', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'Quicksand',sans-serif" }}>Sign Out</button>
-                : <button onClick={() => { login(); setMenuOpen(false); }} style={{ width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '14px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: "'Quicksand',sans-serif" }}>Sign In</button>
+                ? <button onClick={() => { logout(); setMenuOpen(false); }} style={btn('danger', { full: true, pill: false })}>Sign Out</button>
+                : <button onClick={() => { login(); setMenuOpen(false); }} style={btn('primary', { full: true, pill: false })}>Sign In</button>
               )}
             </div>
           </div>
@@ -187,17 +185,8 @@ export default function HomePage() {
       <div className="visby-page">
 
         {/* ── Stories ──────────────────────────────────── */}
-        <div style={{
-          background: 'var(--glass-bg)',
-          backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
-          WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
-          border: '1px solid var(--glass-border)',
-          borderRadius: 'var(--r-lg)',
-          boxShadow: 'var(--glass-shadow), var(--glass-inner)',
-          padding: '8px 12px',
-          marginBottom: 20,
-        }}>
-          <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingTop: 4, paddingBottom: 4, scrollbarWidth: 'none' }}>
+        <div style={{ ...surface({ radius: 'var(--r-lg)', pad: '8px 12px' }), marginBottom: S[6] }}>
+          <div style={{ display: 'flex', gap: S[3], overflowX: 'auto', paddingTop: S[1], paddingBottom: S[1], scrollbarWidth: 'none' }}>
             {/* Sell/Mint button — always first */}
             <Link href="/mint" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, textDecoration: 'none' }}>
               <div style={{ padding: 0, background: 'transparent', borderRadius: '50%', border: `2px dashed var(--glass-border)` }}>
@@ -205,7 +194,7 @@ export default function HomePage() {
                   <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--glass-bg-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>+</div>
                 </div>
               </div>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', maxWidth: 56, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sell</span>
+              <span style={{ ...t('meta'), color: 'var(--text-muted)', maxWidth: 56, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sell</span>
             </Link>
 
             {following.map((f, i) => {
@@ -229,7 +218,7 @@ export default function HomePage() {
                       </div>
                     </div>
                   </div>
-                  <span style={{ fontSize: 10, color: 'var(--text-muted)', maxWidth: 56, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ ...t('meta'), color: 'var(--text-muted)', maxWidth: 56, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {f.display_name ?? shortAddr(f.wallet)}
                   </span>
                 </Link>
@@ -238,16 +227,16 @@ export default function HomePage() {
 
             {following.length === 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: 60, opacity: 0.5 }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.4 }}>Follow sellers to see them here</div>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>Follow sellers to see them here</div>
               </div>
             )}
           </div>
         </div>
 
         {/* ── Grid ──────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Recommended</span>
-          <Link href="/marketplace" style={{ fontSize: 11, color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: S[3] }}>
+          <span style={sectionLabel()}>Recommended</span>
+          <Link href="/marketplace" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: S[1] }}>
             See all
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </Link>
@@ -258,18 +247,18 @@ export default function HomePage() {
           {isLoading && (
             <div className="visby-grid">
               {[1,2,3,4].map(i => (
-                <div key={i} style={{ background: 'var(--glass-bg)', borderRadius: 'var(--r-lg)', height: 240, border: '1px solid var(--glass-border)', animation: 'pulse 2s infinite' }} />
+                <div key={i} style={{ ...card({ radius: 'var(--r-lg)' }), height: 240, animation: 'pulse 2s infinite' }} />
               ))}
             </div>
           )}
 
           {/* Empty */}
           {!isLoading && items.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-              <div style={{ fontSize: 15, color: 'var(--text)', marginBottom: 6, fontWeight: 600 }}>No listings yet</div>
-              <div style={{ fontSize: 12, color: C.muted, marginBottom: 24 }}>Be the first to mint an item on Visby</div>
-              <Link href="/mint" style={{ display: 'inline-block', background: GH, borderRadius: 'var(--pill)', padding: '13px 28px', color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>
-                + Mint First Item
+            <div style={{ textAlign: 'center', padding: `${S[7]}px ${S[5]}px` }}>
+              <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[2] }}>No listings yet</div>
+              <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5] }}>Be the first to mint an item on Visby</div>
+              <Link href="/mint" style={btn('primary')}>
+                Mint First Item
               </Link>
             </div>
           )}
@@ -281,34 +270,32 @@ export default function HomePage() {
                 const sellerInit = (item.current_owner_wallet[0] ?? '?').toUpperCase();
                 return (
                   <Link key={item.id} href={`/item/${item.id}`}
-                    style={{ textDecoration: 'none', background: 'var(--glass-bg)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderRadius: 'var(--r-lg)', overflow: 'hidden', border: '1px solid var(--glass-border)', boxShadow: 'var(--glass-shadow), var(--glass-inner)', display: 'flex', flexDirection: 'column' }}>
+                    style={{ ...card({ radius: 'var(--r-lg)' }), display: 'flex', flexDirection: 'column', overflow: 'hidden', textDecoration: 'none' }}>
 
                     {/* Image */}
-                    <div style={{ background: 'var(--glass-hairline)', height: 150, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ position: 'relative', aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {(item as any).image_url
                         ? <img src={(item as any).image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{item.category}</span>
+                        : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
                       }
-                      <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,.55)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '2px 7px', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,.92)', border: '1px solid rgba(255,255,255,.18)' }}>
-                        {item.condition}
-                      </div>
+                      <span style={{ ...badge('onImage'), position: 'absolute', top: S[3], left: S[3] }}>{item.condition}</span>
                     </div>
 
                     {/* Info */}
-                    <div style={{ padding: '11px 12px 13px', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-strong)', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    <div style={{ padding: S[4], display: 'flex', flexDirection: 'column', gap: S[2], flex: 1 }}>
+                      <div style={{ ...t('heading'), color: 'var(--text-strong)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {item.name}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', background: AVATAR_GRADS[i % AVATAR_GRADS.length], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+                        <div style={{ ...avatar('sm'), width: 22, height: 22, fontSize: 10, background: AVATAR_GRADS[i % AVATAR_GRADS.length] }}>
                           {sellerInit}
                         </div>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {shortAddr(item.current_owner_wallet)}
                         </span>
                       </div>
-                      <div style={{ marginTop: 'auto', paddingTop: 6, fontSize: 16, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                        ${(item.price_usdc ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <div style={{ ...price('md'), marginTop: S[1] }}>
+                        ${(item.price_usdc ?? 0).toLocaleString()}
                       </div>
                     </div>
                   </Link>

@@ -21,7 +21,10 @@ Visby is a mobile-first Next.js marketplace for buying/selling physical luxury g
 ### Always use design tokens — never hardcode theme colors
 All colors/surfaces come from CSS variables in `src/styles/tokens.css`. Inline styles reference them, e.g. `color: 'var(--text)'`, `background: 'var(--glass-bg)'`. Do **not** hardcode `#0d0d0d`/`#fff`/`rgba(255,255,255,.x)` for theme colors — they won't flip with light/dark. Brand accent hexes (`#6DE4D5 #59B4F5 #D54AF2`, etc.) and functional colors (green `#00C48C`, red `#FF3B5C`) are mode-independent and may stay literal.
 
-Key tokens: `--bg-0`, `--bg-field`, `--field-glow`, `--text` / `--text-strong` / `--text-muted`, `--glass-bg` / `--glass-bg-strong` / `--glass-border` / `--glass-shadow` / `--glass-inner`, `--divider`, `--field-input-bg`, `--grad-brand` / `--grad-brand-h` / `--grad-glow`, radii `--r-sm/--r/--r-lg/--r-xl/--pill`. Helpers in `src/lib/ui.ts`: `glass()`, `card()`, `cta()`, `input()`, token map `T`.
+Key tokens: `--bg-0`, `--bg-field`, `--field-glow`, `--text` / `--text-strong` / `--text-muted`, `--glass-bg` / `--glass-bg-strong` / `--glass-border` / `--glass-shadow` / `--glass-inner`, `--surface-bg`, `--img-scrim`, `--divider`, `--field-input-bg`, `--grad-brand` / `--grad-brand-h` / `--grad-glow`, type sizes `--fs-*`, spacing `--s-1…--s-8`, radii `--r-sm/--r/--r-lg/--r-xl/--pill`. Helpers in `src/lib/ui.ts`: `t()` (type scale), `S` (spacing grid), `price()`, `card()`, `sheet()`, `surface()`, `glass()`, `btn()`, `badge()`, `avatar()`, `tabSlider()`, `sectionLabel()`, `input()`, `cta()`, token map `T`.
+
+### Follow the design system — see `design.md`
+**`design.md` (repo root) is the canonical visual spec.** Read it before styling. The rules it enforces, in short: one **type scale** (`t('display'|'title'|'heading'|'body'|'meta'|'micro')`) — never a raw `fontSize` off-scale (only `price()`); one **spacing grid** `S = {1:4…8:64}` — every padding/margin/gap from it; one each of **button** (`btn`, 4 variants), **card**, **input**, **badge**, **tab** (`tabSlider`), **avatar**; **no glass inside glass** — nested panels use `surface()` (near-solid, no blur); gradient only on CTA / `price()` / active tab / avatars / story rings; whitespace over borders; one focal point per surface.
 
 ### Background & glow (strict)
 - The background is global (`<BackgroundField/>`), not per-page. Page roots are `transparent` so it shows through.
@@ -35,7 +38,7 @@ background: 'var(--glass-bg)',            // text-heavy → var(--glass-bg-stron
 backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
 WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
 border: '1px solid var(--glass-border)',
-borderRadius: 20–36,                      // var(--r) / var(--r-lg)
+borderRadius: 16–28,                      // var(--r) / var(--r-lg) / var(--r-xl)
 boxShadow: 'var(--glass-shadow), var(--glass-inner)',
 ```
 Still no directional light/dark borders or skeuomorphic multi-shadows — keep shadows diffuse/ambient.

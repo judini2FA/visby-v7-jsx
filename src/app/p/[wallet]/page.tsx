@@ -6,14 +6,9 @@ import { useEffect, useState } from 'react';
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
+import { t, S, price, card, surface, btn, badge, sectionLabel, avatar, T } from '@/lib/ui';
 
-const C = {
-  navy: 'transparent', teal: '#5ED9D1', cyan: '#6DE4D5',
-  blue: '#59B4F5', mag: '#D54AF2', muted: 'var(--text-muted)',
-  green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
-};
-const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
-const GD = `linear-gradient(135deg,${C.cyan},${C.blue} 50%,${C.mag})`;
+const GD = T.gradBrand;
 
 function shortAddr(a: string) {
   if (!a || a.length < 12) return a;
@@ -28,38 +23,25 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const CAT_ACCENT: Record<string, string> = {
-  Sneakers: 'var(--text-muted)', Watches: 'var(--text-muted)', Bags: 'var(--text-muted)',
-  Memorabilia: 'var(--text-muted)', Vintage: 'var(--text-muted)', Electronics: 'var(--text-muted)', Other: 'var(--text-muted)',
-};
-
 function ItemCard({ item, index }: { item: any; index: number }) {
   return (
-    <Link href={`/item/${item.id}`} style={{ textDecoration: 'none', animation: `fadeUp .35s ease both`, animationDelay: `${index * 60}ms` }}>
-      <div style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 20, overflow: 'hidden', transition: 'border-color .2s' }}>
-        {/* Image */}
-        <div style={{ height: 130, background: item.image_url ? 'transparent' : 'var(--glass-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-          {item.image_url
-            ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-          }
-          {item.is_listed && (
-            <div style={{ position: 'absolute', top: 8, right: 8, background: GD, borderRadius: 8, padding: '3px 8px', fontSize: 9, fontWeight: 700, color: '#fff', fontFamily: "'Quicksand',sans-serif" }}>
-              LISTED
-            </div>
-          )}
-        </div>
-        {/* Info */}
-        <div style={{ padding: '10px 12px 12px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-            <span style={{ fontSize: 9, color: CAT_ACCENT[item.category] ?? C.muted, fontFamily: "'Quicksand',sans-serif", textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.condition}</span>
-            {item.is_listed && item.price_usdc
-              ? <span style={{ fontSize: 12, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>${item.price_usdc}</span>
-              : <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'Quicksand',sans-serif" }}>not listed</span>
-            }
-          </div>
-        </div>
+    <Link
+      href={`/item/${item.id}`}
+      style={{ ...card({ radius: 'var(--r-lg)' }), display: 'flex', flexDirection: 'column', overflow: 'hidden', textDecoration: 'none', animation: `fadeUp .35s ease both`, animationDelay: `${index * 60}ms` }}
+    >
+      <div style={{ position: 'relative', aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {item.image_url
+          ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
+        }
+        <span style={{ ...badge('onImage'), position: 'absolute', top: S[3], left: S[3] }}>{item.condition}</span>
+      </div>
+      <div style={{ padding: S[4], display: 'flex', flexDirection: 'column', gap: S[2], flex: 1 }}>
+        <div style={{ ...t('heading'), color: 'var(--text-strong)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</div>
+        {item.is_listed && item.price_usdc
+          ? <div style={{ ...price('md'), marginTop: S[1] }}>${(item.price_usdc ?? 0).toLocaleString()}</div>
+          : <span style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>Not listed</span>
+        }
       </div>
     </Link>
   );
@@ -70,22 +52,22 @@ function SoldRow({ sale, index }: { sale: any; index: number }) {
   if (!item) return null;
   return (
     <Link href={`/item/${item.id}`} style={{ textDecoration: 'none', animation: `fadeUp .35s ease both`, animationDelay: `${index * 50}ms` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
-        <div style={{ width: 48, height: 48, borderRadius: 14, background: item.image_url ? 'transparent' : 'var(--glass-bg)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+        <div style={{ ...surface({ radius: 14 }), width: 48, height: 48, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {item.image_url
             ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
           }
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-          <div style={{ fontSize: 10, color: C.muted, fontFamily: "'Quicksand',sans-serif", marginTop: 2 }}>
+          <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+          <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>
             {item.category} · {timeAgo(sale.created_at)}
           </div>
         </div>
         {sale.price_usdc && (
-          <div style={{ fontSize: 13, fontWeight: 800, color: C.green, fontFamily: "'Quicksand',sans-serif", flexShrink: 0 }}>
-            +${sale.price_usdc}
+          <div style={{ ...t('heading'), color: '#00C48C', flexShrink: 0 }}>
+            +${sale.price_usdc.toLocaleString()}
           </div>
         )}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round">
@@ -153,19 +135,19 @@ export default function PublicProfilePage() {
   }, []);
 
   return (
-    <div style={{ background: C.navy, minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
+    <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
 
       {/* Header */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
-        <div className="visby-inner" style={{ paddingTop: 13, paddingBottom: 13, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="visby-inner" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center', gap: S[3] }}>
           <Link href="/" style={{ display: 'flex', textDecoration: 'none' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="1.8" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
           </Link>
-          <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: 'var(--text-strong)' }}>
+          <div style={{ ...t('heading'), flex: 1, color: 'var(--text-strong)' }}>
             {isMe ? 'My Profile' : 'Seller Profile'}
           </div>
           {isMe && (
-            <Link href="/profile" style={{ fontSize: 12, color: 'var(--text-strong)', textDecoration: 'none', fontFamily: "'Quicksand',sans-serif" }}>
+            <Link href="/profile" style={{ ...btn('text') }}>
               Edit
             </Link>
           )}
@@ -175,11 +157,11 @@ export default function PublicProfilePage() {
       <div className="visby-inner" style={{ paddingBottom: 120 }}>
 
         {/* Profile hero */}
-        <div style={{ padding: '28px 0 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center' }}>
+        <div style={{ padding: '28px 0 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[4], textAlign: 'center' }}>
 
           {/* Avatar */}
           <div style={{ position: 'relative' }}>
-            <div style={{ width: 80, height: 80, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800, color: '#fff', border: '3px solid var(--glass-border)' }}>
+            <div style={{ ...avatar('lg'), width: 80, height: 80, fontSize: 28, background: avatarGrad }}>
               {initials}
             </div>
             {/* Verified badge */}
@@ -188,29 +170,21 @@ export default function PublicProfilePage() {
             </div>
           </div>
 
-          {/* Address + trust */}
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 4 }}>
+          {/* Name + bio + trust */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2] }}>
+            <div style={{ ...t('title'), color: 'var(--text-strong)' }}>
               {profile?.display_name ?? shortAddr(wallet)}
             </div>
-            {profile?.display_name && (
-              <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif", marginBottom: 2 }}>
-                {shortAddr(wallet)}
-              </div>
-            )}
-            <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif", marginBottom: trustTier ? 10 : 0 }}>
-              {isMe ? 'You · ' : ''}Verified · Solana
-            </div>
             {profile?.bio && (
-              <div style={{ fontSize: 12, color: 'var(--text)', marginTop: 6, maxWidth: 280 }}>
+              <div style={{ ...t('body'), color: 'var(--text)', maxWidth: 280 }}>
                 {profile.bio}
               </div>
             )}
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, fontFamily: "'Manrope',sans-serif", letterSpacing: '0.06em' }}>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
               {wallet.slice(0, 6)}…{wallet.slice(-6)}
             </div>
             {!isLoading && trustTier && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 20, padding: '5px 12px' }}>
+              <div style={{ ...surface({ radius: 'var(--pill)' }), display: 'inline-flex', alignItems: 'center', gap: S[1], padding: '5px 12px', marginTop: S[1] }}>
                 <span style={{ color: trustTier.color, display: 'flex', gap: 1 }}>
                   {Array.from({ length: 4 }, (_, i) => (
                     <svg key={i} width="11" height="11" viewBox="0 0 24 24" fill={i < trustTier.stars ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -218,42 +192,42 @@ export default function PublicProfilePage() {
                     </svg>
                   ))}
                 </span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: trustTier.color, fontFamily: "'Quicksand',sans-serif" }}>
+                <span style={{ ...t('micro'), color: trustTier.color }}>
                   {trustTier.label}
                 </span>
               </div>
             )}
             {!isLoading && !trustTier && salesCount === 0 && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 20, padding: '5px 12px' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'Quicksand',sans-serif" }}>New Seller</span>
+              <div style={{ ...surface({ radius: 'var(--pill)' }), display: 'inline-flex', alignItems: 'center', gap: S[1], padding: '5px 12px', marginTop: S[1] }}>
+                <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>New Seller</span>
               </div>
             )}
           </div>
 
           {/* Stats */}
-          <div style={{ display: 'flex', gap: 0, background: 'var(--glass-bg)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', boxShadow: 'var(--glass-shadow), var(--glass-inner)', borderRadius: 20, border: '1px solid var(--glass-border)', overflow: 'hidden', width: '100%', maxWidth: 340 }}>
+          <div style={{ ...card(), display: 'flex', gap: S[2], padding: S[2], width: '100%', maxWidth: 360 }}>
             {[
               { label: 'Owns', value: isLoading ? '—' : ownedItems.length },
               { label: 'Listed', value: isLoading ? '—' : listedItems.length },
               { label: 'Sold', value: isLoading ? '—' : soldItems.length },
               { label: 'Volume', value: isLoading ? '—' : `$${totalVolume.toFixed(0)}` },
-            ].map((s, i, arr) => (
-              <div key={s.label} style={{ flex: 1, padding: '14px 8px', textAlign: 'center', borderRight: i < arr.length - 1 ? '1px solid var(--divider)' : 'none' }}>
-                <div style={{ fontSize: 17, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{s.value}</div>
-                <div style={{ fontSize: 9, color: C.muted, fontFamily: "'Quicksand',sans-serif", textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 3 }}>{s.label}</div>
+            ].map((s) => (
+              <div key={s.label} style={{ ...surface({ pad: '14px 8px' }), flex: 1, textAlign: 'center' }}>
+                <div style={{ ...price('sm'), margin: '0 auto' }}>{s.value}</div>
+                <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
               </div>
             ))}
           </div>
 
           {isMe && (
-            <Link href="/dashboard/seller" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: GH, borderRadius: 12, padding: '10px 22px', fontWeight: 700, fontSize: 13, color: '#fff', textDecoration: 'none' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <Link href="/dashboard/seller" style={{ ...btn('primary') }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Sell an Item
             </Link>
           )}
 
           {!privateMode && myWallet && myWallet !== profileWallet && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <div style={{ display: 'flex', gap: S[2], marginTop: S[1] }}>
               <button
                 onClick={() => isFollowing
                   ? unfollowMut.mutate({ follower_wallet: myWallet, following_wallet: profileWallet })
@@ -261,22 +235,13 @@ export default function PublicProfilePage() {
                 }
                 disabled={followMut.isPending || unfollowMut.isPending}
                 style={{
-                  background: isFollowing ? 'var(--glass-bg)' : `linear-gradient(90deg,#6DE4D5,#59B4F5 50%,#D54AF2)`,
-                  border: isFollowing ? '1px solid var(--glass-border)' : 'none',
-                  borderRadius: 20,
-                  padding: '8px 20px',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: isFollowing ? 'var(--text-muted)' : '#fff',
-                  cursor: 'pointer',
+                  ...btn(isFollowing ? 'secondary' : 'primary'),
                   opacity: (followMut.isPending || unfollowMut.isPending) ? 0.7 : 1,
-                  transition: 'all .2s',
                 }}
               >
                 {isFollowing ? 'Following' : 'Follow'}
               </button>
-              <Link href={`/dashboard?msg=${profileWallet}`}
-                style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 20, padding: '8px 18px', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Link href={`/dashboard?msg=${profileWallet}`} style={{ ...btn('secondary') }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 Message
               </Link>
@@ -286,9 +251,9 @@ export default function PublicProfilePage() {
 
         {/* Loading skeleton */}
         {isLoading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
             {[1, 2, 3].map(i => (
-              <div key={i} style={{ height: 72, background: 'var(--glass-bg)', borderRadius: 20, border: '1px solid var(--glass-border)', animation: 'pulse 2s infinite' }} />
+              <div key={i} style={{ ...card(), height: 72, animation: 'pulse 2s infinite' }} />
             ))}
           </div>
         )}
@@ -297,8 +262,8 @@ export default function PublicProfilePage() {
           <>
             {/* Listed for sale */}
             {listedItems.length > 0 && (
-              <div style={{ marginBottom: 28 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif", letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14 }}>
+              <div style={{ marginBottom: S[6] }}>
+                <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
                   Listed for Sale · {listedItems.length}
                 </div>
                 <div className="visby-grid">
@@ -311,8 +276,8 @@ export default function PublicProfilePage() {
 
             {/* Owned items (not listed) */}
             {unlistedItems.length > 0 && (
-              <div style={{ marginBottom: 28 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif", letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14 }}>
+              <div style={{ marginBottom: S[6] }}>
+                <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
                   Collection · {unlistedItems.length}
                 </div>
                 <div className="visby-grid">
@@ -325,11 +290,11 @@ export default function PublicProfilePage() {
 
             {/* Sold items */}
             {soldItems.length > 0 && (
-              <div style={{ marginBottom: 28 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif", letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14 }}>
+              <div style={{ marginBottom: S[6] }}>
+                <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
                   Sold · {soldItems.length}
                 </div>
-                <div>
+                <div style={{ ...card(), padding: 0, overflow: 'hidden' }}>
                   {soldItems.map((sale: any, i: number) => (
                     <SoldRow key={sale.id} sale={sale} index={i} />
                   ))}
@@ -339,11 +304,11 @@ export default function PublicProfilePage() {
 
             {/* Empty state */}
             {ownedItems.length === 0 && soldItems.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)', fontSize: 14 }}>
-                No activity yet
+              <div style={{ textAlign: 'center', padding: '48px 20px' }}>
+                <div style={{ ...t('body'), color: 'var(--text-muted)' }}>No activity yet</div>
                 {isMe && (
-                  <div style={{ marginTop: 16 }}>
-                    <Link href="/mint" style={{ color: 'var(--text-strong)', textDecoration: 'none', fontSize: 13 }}>Mint your first item →</Link>
+                  <div style={{ marginTop: S[4] }}>
+                    <Link href="/mint" style={{ ...btn('primary') }}>Mint your first item</Link>
                   </div>
                 )}
               </div>

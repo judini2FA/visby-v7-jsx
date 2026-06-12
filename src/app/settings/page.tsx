@@ -5,19 +5,17 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ThemeToggle, useTheme } from '@/lib/theme';
 import { CURRENCIES, useCurrency } from '@/lib/currency';
+import { S, t, surface, btn, sectionLabel, T } from '@/lib/ui';
 
 const C = {
-  teal: '#5ED9D1', cyan: '#6DE4D5', blue: '#59B4F5', mag: '#D54AF2',
-  muted: 'var(--text-muted)', green: '#00C48C', red: '#FF3B5C',
-  border: 'var(--glass-border)',
+  red: '#FF3B5C',
 };
-const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, paddingLeft: 4 }}>{title}</div>
-      <div style={{ background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', border: '1px solid var(--glass-border)', borderRadius: 'var(--r)', boxShadow: 'var(--glass-shadow), var(--glass-inner)', overflow: 'hidden' }}>
+    <div style={{ marginBottom: S[6] }}>
+      <div style={{ ...sectionLabel(), marginBottom: S[3], paddingLeft: S[1] }}>{title}</div>
+      <div style={{ ...surface({ radius: 'var(--r)' }), overflow: 'hidden' }}>
         {children}
       </div>
     </div>
@@ -26,13 +24,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ icon, label, sublabel, right, onClick, border = true }: { icon: React.ReactNode; label: string; sublabel?: string; right?: React.ReactNode; onClick?: () => void; border?: boolean }) {
   return (
-    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderBottom: border ? '1px solid var(--divider)' : 'none', cursor: onClick ? 'pointer' : 'default' }}>
-      <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: border ? '1px solid var(--divider)' : 'none', cursor: onClick ? 'pointer' : 'default' }}>
+      <div style={{ ...surface({ radius: 'var(--r-sm)' }), width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>{label}</div>
-        {sublabel && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{sublabel}</div>}
+        <div style={{ ...t('body'), color: T.textStrong }}>{label}</div>
+        {sublabel && <div style={{ ...t('meta'), color: T.textMuted, marginTop: 1 }}>{sublabel}</div>}
       </div>
       {right}
     </div>
@@ -79,7 +77,7 @@ export default function SettingsPage() {
   );
 
   const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <button onClick={onToggle} style={{ width: 44, height: 26, borderRadius: 13, background: on ? GH : 'var(--glass-bg)', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, position: 'relative', cursor: 'pointer', transition: 'all .2s', flexShrink: 0, padding: 0 }}>
+    <button onClick={onToggle} style={{ width: 44, height: 26, borderRadius: 13, background: on ? T.gradBrand : 'var(--surface-bg)', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, position: 'relative', cursor: 'pointer', transition: 'all .2s', flexShrink: 0, padding: 0 }}>
       <div style={{ width: 20, height: 20, borderRadius: '50%', background: on ? '#fff' : 'var(--text-muted)', position: 'absolute', top: 1, left: on ? 20 : 1, transition: 'left .2s, background .2s' }} />
     </button>
   );
@@ -89,15 +87,15 @@ export default function SettingsPage() {
 
       {/* Header */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
-        <div className="visby-inner" style={{ paddingTop: 14, paddingBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => router.back()} style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="visby-inner" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center', gap: S[3] }}>
+          <button onClick={() => router.back()} style={{ ...btn('secondary', { pill: false }), padding: '6px 10px' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-strong)' }}>Settings</div>
+          <div style={{ ...t('title'), color: T.textStrong }}>Settings</div>
         </div>
       </div>
 
-      <div className="visby-inner" style={{ paddingTop: 20, paddingBottom: 100 }}>
+      <div className="visby-inner" style={{ paddingTop: S[5], paddingBottom: 100 }}>
 
         {/* Appearance */}
         <Section title="Appearance">
@@ -112,14 +110,13 @@ export default function SettingsPage() {
 
         {/* Default Currency */}
         <Section title="Default Currency">
-          <div style={{ padding: '14px 16px' }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Prices are shown in your chosen currency. Transactions always settle in USDC.</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ ...t('meta'), color: T.textMuted, marginBottom: S[3] }}>Prices are shown in your chosen currency. Transactions always settle in USDC.</div>
+            <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
               {CURRENCIES.map(c => (
-                <button key={c} onClick={() => setCurrency(c)}
-                  style={{ background: currency === c ? GH : 'var(--glass-bg)', border: `1px solid ${currency === c ? 'transparent' : 'var(--glass-border)'}`, borderRadius: 'var(--pill)', padding: '7px 14px', fontSize: 13, fontWeight: currency === c ? 700 : 500, color: currency === c ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif" }}>
-                  {c}
-                </button>
+                currency === c
+                  ? <button key={c} onClick={() => setCurrency(c)} style={{ ...btn('primary'), padding: '7px 14px' }}>{c}</button>
+                  : <button key={c} onClick={() => setCurrency(c)} style={{ ...btn('secondary'), padding: '7px 14px', color: T.textMuted }}>{c}</button>
               ))}
             </div>
           </div>
@@ -138,8 +135,7 @@ export default function SettingsPage() {
             border={false}
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
             label="Crypto (SOL, USDC)"
-            sublabel="Coming soon — Phase 3"
-            right={<span style={{ fontSize: 10, color: C.muted, background: 'var(--glass-bg)', borderRadius: 6, padding: '3px 7px' }}>SOON</span>}
+            right={<span style={{ ...t('micro'), color: T.textMuted }}>SOON</span>}
           />
         </Section>
 
@@ -153,7 +149,7 @@ export default function SettingsPage() {
               sublabel="No wallet linked yet"
               right={
                 <button onClick={async () => { setCreating(true); try { await createWallet(); } catch {} setCreating(false); }} disabled={creating}
-                  style={{ background: GH, border: 'none', borderRadius: 10, padding: '7px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', opacity: creating ? 0.7 : 1 }}>
+                  style={{ ...btn('primary', { pill: false }), padding: '7px 14px', opacity: creating ? 0.7 : 1 }}>
                   {creating ? '…' : 'Create'}
                 </button>
               }
@@ -166,7 +162,7 @@ export default function SettingsPage() {
               label={`${w.address.slice(0,6)}…${w.address.slice(-4)}`}
               sublabel="Solana wallet"
               right={
-                <button onClick={() => exportWallet()} style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 10, padding: '7px 12px', fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <button onClick={() => exportWallet()} style={{ ...btn('secondary', { pill: false }), padding: '7px 12px', color: T.textMuted }}>
                   Export
                 </button>
               }
@@ -192,16 +188,13 @@ export default function SettingsPage() {
         </Section>
 
         {/* Account */}
-        <Section title="Account">
-          <Row
-            border={false}
-            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="1.8" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
-            label="Sign Out"
-            sublabel="You'll need to sign in again"
-            onClick={logout}
-            right={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>}
-          />
-        </Section>
+        <div style={{ marginBottom: S[6] }}>
+          <div style={{ ...sectionLabel(), marginBottom: S[3], paddingLeft: S[1] }}>Account</div>
+          <button onClick={logout} style={btn('danger', { full: true })}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="1.8" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sign Out
+          </button>
+        </div>
 
       </div>
     </div>

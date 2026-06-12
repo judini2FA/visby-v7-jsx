@@ -4,13 +4,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useVisbWallet } from '@/lib/wallet';
+import { S, t, price, card, surface, btn, sectionLabel } from '@/lib/ui';
 
-const C = {
-  navy: 'transparent', teal: '#5ED9D1', cyan: '#6DE4D5',
-  blue: '#59B4F5', mag: '#D54AF2', muted: 'var(--text-muted)',
-  green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
-};
-const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
+const GREEN = '#00C48C';
 
 interface OwnershipRecord {
   id: string; owner_wallet: string; from_wallet?: string;
@@ -73,7 +69,7 @@ export default function OrderPage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100vh', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid var(--glass-border)', borderTopColor: 'var(--text-muted)', animation: 'spin .8s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -81,56 +77,49 @@ export default function OrderPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px', fontFamily: "'Manrope',sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: `${S[6]}px ${S[4]}px` }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pop { 0% { transform: scale(.7); opacity: 0; } 80% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }`}</style>
 
-      <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: S[5] }}>
 
         {/* Success header */}
-        <div style={{ background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', border: `1px solid ${C.green}33`, borderRadius: 24, boxShadow: 'var(--glass-shadow), var(--glass-inner)', padding: '32px 28px', textAlign: 'center', animation: 'pop .4s ease-out' }}>
-          {/* Checkmark circle */}
-          <div style={{ width: 72, height: 72, borderRadius: '50%', background: `${C.green}18`, border: `2px solid ${C.green}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <div style={{ ...card(), padding: S[6], textAlign: 'center', animation: 'pop .4s ease-out' }}>
+          <div style={{ ...surface({ radius: '50%' }), width: 72, height: 72, background: 'rgba(0,196,140,.12)', border: '1px solid rgba(0,196,140,.30)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: `0 auto ${S[5]}px` }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </div>
 
-          <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-strong)', marginBottom: 8, lineHeight: 1.2 }}>
+          <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[2] }}>
             Your order is on its way!
           </div>
-          <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.6 }}>
-            NFT provenance has been transferred on Solana.<br/>
+          <div style={{ ...t('body'), color: 'var(--text-muted)' }}>
             You now own the verified chain of custody for this item.
           </div>
 
           {pricePaid != null && (
-            <div style={{ marginTop: 20, display: 'inline-block', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 12, padding: '10px 20px' }}>
-              <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Manrope',sans-serif" }}>Paid </span>
-              <span style={{ fontSize: 18, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                ${pricePaid.toFixed(2)}
-              </span>
+            <div style={{ marginTop: S[5], display: 'inline-flex', alignItems: 'baseline', gap: S[2], ...surface({ pad: `${S[3]}px ${S[5]}px` }) }}>
+              <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Paid</span>
+              <span style={price('sm')}>${pricePaid.toFixed(2)}</span>
             </div>
           )}
         </div>
 
         {/* Item card */}
         {item && (
-          <div style={{ background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', border: `1px solid ${C.border}`, borderRadius: 24, boxShadow: 'var(--glass-shadow), var(--glass-inner)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 0 }}>
+          <div style={{ ...card(), overflow: 'hidden' }}>
+            <div style={{ display: 'flex' }}>
               {/* Image */}
-              <div style={{ width: 110, flexShrink: 0, background: 'var(--glass-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>
+              <div style={{ width: 110, flexShrink: 0, background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {item.image_url
                   ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : <CatIcon />}
               </div>
               {/* Info */}
-              <div style={{ flex: 1, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-strong)', lineHeight: 1.3 }}>{item.name}</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 10, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 6, padding: '2px 8px', color: C.muted, fontFamily: "'Manrope',sans-serif" }}>{item.category}</span>
-                  <span style={{ fontSize: 10, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 6, padding: '2px 8px', color: C.muted, fontFamily: "'Manrope',sans-serif" }}>{item.condition}</span>
-                </div>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Manrope',sans-serif", marginTop: 2 }}>
+              <div style={{ flex: 1, padding: S[4], display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>{item.name}</div>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{item.category} · {item.condition}</div>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
                   S/N {item.serial_number}
                 </div>
               </div>
@@ -138,39 +127,30 @@ export default function OrderPage() {
           </div>
         )}
 
-        {/* NFT Provenance block */}
-        <div style={{ background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', border: `1px solid ${C.border}`, borderRadius: 24, boxShadow: 'var(--glass-shadow), var(--glass-inner)', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-strong)' }}>NFT Provenance Transferred</div>
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>Ownership recorded on Solana blockchain</div>
-            </div>
-            <div style={{ marginLeft: 'auto', width: 10, height: 10, borderRadius: '50%', background: C.green, boxShadow: `0 0 8px ${C.green}` }} />
-          </div>
+        {/* Provenance / receipt */}
+        <div style={{ ...card(), padding: S[4], display: 'flex', flexDirection: 'column', gap: S[4] }}>
+          <div style={sectionLabel()}>Provenance</div>
 
           {txHash && (
-            <div style={{ background: 'var(--field-input-bg)', border: '1px solid var(--glass-border)', borderRadius: 12, padding: '10px 14px' }}>
-              <div style={{ fontSize: 10, color: C.muted, fontFamily: "'Manrope',sans-serif", textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+            <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }) }}>
+              <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[2] }}>
                 Transaction
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ flex: 1, fontSize: 11, color: 'var(--text)', fontFamily: "'Manrope',sans-serif", wordBreak: 'break-all' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+                <div style={{ flex: 1, ...t('meta'), color: 'var(--text)', wordBreak: 'break-all' }}>
                   {txHash}
                 </div>
                 <button onClick={copyTx}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: copied ? C.green : 'var(--text-muted)', flexShrink: 0, fontSize: 12 }}>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: S[1], color: copied ? GREEN : 'var(--text-muted)', flexShrink: 0 }}>
                   {copied
-                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   }
                 </button>
                 {solscanUrl && (
                   <a href={solscanUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', flexShrink: 0, fontSize: 11, textDecoration: 'none', fontFamily: "'Manrope',sans-serif" }}>
-                    ↗
+                    style={{ display: 'inline-flex', padding: S[1], color: 'var(--text-muted)', flexShrink: 0, textDecoration: 'none' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                   </a>
                 )}
               </div>
@@ -178,36 +158,32 @@ export default function OrderPage() {
           )}
 
           {walletAddress && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span style={{ color: C.muted, fontFamily: "'Manrope',sans-serif" }}>Owner</span>
-              <span style={{ color: 'var(--text)', fontFamily: "'Manrope',sans-serif" }}>{shortAddr(walletAddress)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Owner</span>
+              <span style={{ ...t('meta'), color: 'var(--text)' }}>{shortAddr(walletAddress)}</span>
             </div>
           )}
         </div>
 
         {/* Shipping tracking — placeholder */}
-        <div style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', border: `1px dashed ${C.border}`, borderRadius: 24, boxShadow: 'var(--glass-shadow), var(--glass-inner)', padding: '20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>Shipping Tracking</div>
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>Coming soon — track your shipment here</div>
-            </div>
+        <div style={{ ...card(), padding: S[4], display: 'flex', alignItems: 'center', gap: S[3] }}>
+          <div style={{ ...surface(), width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
           </div>
-          <div style={{ height: 1, background: 'var(--divider)' }} />
-          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-            Once the seller ships your item, tracking information will appear here so you can follow it all the way to your door.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>Shipping</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+              Tracking will appear here once the seller ships your item.
+            </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Link href="/dashboard" style={{ flex: 1, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 20, padding: '13px', fontWeight: 600, fontSize: 14, color: 'var(--text)', cursor: 'pointer', fontFamily: "'Manrope',sans-serif", textAlign: 'center', textDecoration: 'none', display: 'block' }}>
+        <div style={{ display: 'flex', gap: S[3] }}>
+          <Link href="/dashboard" style={{ ...btn('secondary', { full: true }) }}>
             My Collection
           </Link>
-          <Link href="/" style={{ flex: 1, background: GH, border: 'none', borderRadius: 20, padding: '13px', fontWeight: 800, fontSize: 14, color: '#fff', cursor: 'pointer', fontFamily: "'Manrope',sans-serif", textAlign: 'center', textDecoration: 'none', display: 'block' }}>
+          <Link href="/" style={{ ...btn('primary', { full: true }) }}>
             Keep Shopping
           </Link>
         </div>
