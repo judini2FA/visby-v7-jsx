@@ -31,7 +31,7 @@ function shortAddr(a: string) {
 function VisbyLogo() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto' }} />
+      <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto', border: '1px solid #0D0D0D', borderRadius: 6 }} />
       <svg width="90" height="28" viewBox="0 0 115 32">
         <defs>
           <linearGradient id="vlg-home" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -40,7 +40,7 @@ function VisbyLogo() {
             <stop offset="100%" stopColor="#C742FF" />
           </linearGradient>
         </defs>
-        <text x="0" y="26" fontFamily="'Quicksand',sans-serif" fontSize="30" fontWeight="400" fill="url(#vlg-home)" letterSpacing="-1">Visby</text>
+        <text x="0" y="26" fontFamily="'Quicksand',sans-serif" fontSize="30" fontWeight="400" fill="url(#vlg-home)" stroke="#0D0D0D" strokeWidth="1" paintOrder="stroke" letterSpacing="-1">Visby</text>
       </svg>
     </div>
   );
