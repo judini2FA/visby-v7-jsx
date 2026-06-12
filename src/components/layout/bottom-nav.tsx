@@ -51,7 +51,7 @@ export function BottomNav() {
       borderTop: '1px solid var(--glass-border)',
       boxShadow: '0 -8px 30px rgba(0,0,0,.18)',
       display: 'flex', justifyContent: 'space-around',
-      padding: '10px 0 14px', zIndex: 100,
+      padding: '12px 0 16px', zIndex: 100,
     }}>
       {TABS.map(t => {
         const active =
