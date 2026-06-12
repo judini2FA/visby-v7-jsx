@@ -95,12 +95,6 @@
   /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
   --surface-bg: rgba(255, 255, 255, .45);
 
-  /* stark chrome (header + footer) — flat, not glass */
-  --chrome-bg: #FFFFFF;
-  --chrome-border: rgba(0, 0, 0, .08);
-  --chrome-field-bg: #F1F1F3;
-  --chrome-field-border: rgba(0, 0, 0, .10);
-
   --field-input-bg: rgba(255, 255, 255, .35);
   --divider: rgba(40, 40, 44, .12);
 }
@@ -141,12 +135,6 @@
 
   /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
   --surface-bg: rgba(255, 255, 255, .05);
-
-  /* stark chrome (header + footer) — flat, not glass; near-black in dark mode */
-  --chrome-bg: #0A0A0B;
-  --chrome-border: rgba(255, 255, 255, .08);
-  --chrome-field-bg: rgba(255, 255, 255, .06);
-  --chrome-field-border: rgba(255, 255, 255, .16);
 
   --field-input-bg: rgba(255, 255, 255, .06);
   --divider: rgba(255, 255, 255, .10);

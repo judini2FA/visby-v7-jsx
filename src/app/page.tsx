@@ -31,13 +31,13 @@ function shortAddr(a: string) {
 function VisbyLogo() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto' }} />
+      <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto', filter: 'brightness(0.5)' }} />
       <svg width="90" height="28" viewBox="0 0 115 32">
         <defs>
           <linearGradient id="vlg-home" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"   stopColor="#3EFFD8" />
-            <stop offset="50%"  stopColor="#5B9BFF" />
-            <stop offset="100%" stopColor="#C742FF" />
+            <stop offset="0%"   stopColor="#157F6E" />
+            <stop offset="50%"  stopColor="#2B57AC" />
+            <stop offset="100%" stopColor="#8423AE" />
           </linearGradient>
         </defs>
         <text x="0" y="26" fontFamily="'Quicksand',sans-serif" fontSize="30" fontWeight="400" fill="url(#vlg-home)" letterSpacing="-1">Visby</text>
@@ -81,8 +81,9 @@ export default function HomePage() {
       {/* ── Top nav ──────────────────────────────────────── */}
       <nav style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: 'var(--chrome-bg)',
-        borderBottom: '1px solid var(--chrome-border)',
+        background: 'var(--glass-bg-strong)',
+        backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
+        borderBottom: '1px solid var(--divider)',
         boxShadow: '0 2px 16px rgba(0,0,0,.06)',
       }}>
         <div className="visby-page" style={{ paddingTop: 10, paddingBottom: 0 }}>
@@ -94,8 +95,9 @@ export default function HomePage() {
               <button
                 onClick={() => setMenuOpen(true)}
                 style={{
-                  background: 'var(--chrome-field-bg)',
-                  border: '1px solid var(--chrome-field-border)',
+                  background: 'var(--glass-bg)',
+                  backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                  border: '1px solid var(--glass-border)',
                   borderRadius: 14, padding: '9px 11px',
                   cursor: 'pointer', flexShrink: 0,
                   display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center',
@@ -122,9 +124,8 @@ export default function HomePage() {
                 placeholder="Search items, brands, serials…"
                 style={{
                   ...input(),
-                  background: 'var(--chrome-field-bg)',
                   paddingLeft: 40,
-                  border: `1px solid ${sf ? 'var(--text-muted)' : 'var(--chrome-field-border)'}`,
+                  borderColor: sf ? 'var(--text-muted)' : 'var(--glass-border)',
                   transition: 'border-color .2s',
                 }}
               />
