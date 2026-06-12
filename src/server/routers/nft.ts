@@ -80,6 +80,18 @@ export const nftRouter = createTRPCRouter({
 
               if (updateError) throw new Error(updateError.message);
 
+              // Increment transfer count
+              const { data: currentItem } = await supabase
+                .from('items')
+                .select('transfer_count')
+                .eq('id', input.item_id)
+                .single();
+
+              await supabase
+                .from('items')
+                .update({ transfer_count: (currentItem?.transfer_count ?? 0) + 1 })
+                .eq('id', input.item_id);
+
               // Record history
               await supabase.from('ownership_history').insert({
                         item_id: input.item_id,

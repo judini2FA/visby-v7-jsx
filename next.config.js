@@ -21,6 +21,8 @@ const nextConfig = {
                   fs: false,
                   net: false,
                   tls: false,
+                  'utf-8-validate': false,
+                  bufferutil: false,
           };
           return config;
     },

@@ -1,54 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&display=swap');
+@import '../styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-    :root {
-          --background: 0 0% 100%;
-          --foreground: 240 10% 3.9%;
-          --card: 0 0% 100%;
-          --card-foreground: 240 10% 3.9%;
-          --popover: 0 0% 100%;
-          --popover-foreground: 240 10% 3.9%;
-          --primary: 271 81% 40%;
-          --primary-foreground: 0 0% 98%;
-          --secondary: 240 4.8% 95.9%;
-          --secondary-foreground: 240 5.9% 10%;
-          --muted: 240 4.8% 95.9%;
-          --muted-foreground: 240 3.8% 46.1%;
-          --accent: 43 96% 56%;
-          --accent-foreground: 240 5.9% 10%;
-          --destructive: 0 84.2% 60.2%;
-          --destructive-foreground: 0 0% 98%;
-          --border: 240 5.9% 90%;
-          --input: 240 5.9% 90%;
-          --ring: 271 81% 40%;
-          --radius: 0.75rem;
-    }
-    .dark {
-          --background: 222 47% 7%;
-          --foreground: 0 0% 98%;
-          --card: 222 47% 10%;
-          --card-foreground: 0 0% 98%;
-          --popover: 222 47% 10%;
-          --popover-foreground: 0 0% 98%;
-          --primary: 271 81% 56%;
-          --primary-foreground: 0 0% 98%;
-          --secondary: 240 3.7% 15.9%;
-          --secondary-foreground: 0 0% 98%;
-          --muted: 240 3.7% 15.9%;
-          --muted-foreground: 240 5% 64.9%;
-          --accent: 43 96% 56%;
-          --accent-foreground: 240 5.9% 10%;
-          --destructive: 0 62.8% 30.6%;
-          --destructive-foreground: 0 0% 98%;
-          --border: 240 3.7% 15.9%;
-          --input: 240 3.7% 15.9%;
-          --ring: 271 81% 56%;
-    }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background-color: var(--bg-0);
+  color: var(--text);
+  /* Manrope = body/UI; Quicksand reserved for brand + headings */
+  font-family: 'Manrope', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .4s var(--ease), color .4s var(--ease);
 }
 
-@layer base {
-    * { @apply border-border; }
-    body { @apply bg-background text-foreground; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* subtle ambient float — "objects drifting through water" */
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-5px); }
+}
+
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
+
+input::placeholder,
+textarea::placeholder { color: var(--text-muted); opacity: .8; }
+
+select option { background: var(--glass-bg-strong); color: var(--text); }
+
+/* ── Responsive grid — fluid, fills any screen width ─ */
+.visby-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+@media (min-width: 640px) {
+  .visby-grid { grid-template-columns: repeat(3, 1fr); gap: 18px; }
+}
+@media (min-width: 1024px) {
+  .visby-grid { grid-template-columns: repeat(4, 1fr); gap: 20px; }
+}
+@media (min-width: 1440px) {
+  .visby-grid { grid-template-columns: repeat(5, 1fr); gap: 22px; }
+}
+@media (min-width: 1920px) {
+  .visby-grid { grid-template-columns: repeat(6, 1fr); gap: 24px; }
+}
+@media (max-width: 359px) {
+  .visby-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Page container — fluid, no hard aspect lock ──── */
+.visby-page {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+@media (min-width: 640px) {
+  .visby-page { padding: 0 32px; }
+}
+@media (min-width: 1024px) {
+  .visby-page { padding: 0 48px; }
+}
+@media (min-width: 1600px) {
+  .visby-page { padding: 0 64px; }
+}
+
+/* ── Single-column inner pages (dashboard, settings, etc.) ── */
+.visby-inner {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+@media (min-width: 640px) {
+  .visby-inner { padding: 0 24px; }
+}
+@media (min-width: 1024px) {
+  .visby-inner { max-width: 960px; padding: 0 32px; }
+}
+
+/* ── Bottom nav: hide on desktop ─────────────────── */
+.bottom-nav-wrap {
+  display: block;
+}
+@media (min-width: 768px) {
+  .bottom-nav-wrap { display: none; }
 }

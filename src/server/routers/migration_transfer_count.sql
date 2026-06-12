@@ -1,0 +1,1 @@
+ALTER TABLE items ADD COLUMN IF NOT EXISTS transfer_count integer NOT NULL DEFAULT 0;

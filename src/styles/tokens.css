@@ -1,0 +1,124 @@
+/* Visby design tokens — "Ambient Glass Futurism"
+   Two themes flip via [data-theme]. Dark = light, just darker.
+   The aurora/glow lives ONLY in the background field (dark mode);
+   glass, gradient accents, and text never glow. */
+
+:root {
+  /* raw brand palette (mode-independent) */
+  --aqua: #6DE4D5;
+  --turquoise: #5ED9D1;
+  --sky: #59B4F5;
+  --electric: #4B93F1;
+  --orchid: #D54AF2;
+  --magenta: #C62FEA;
+  --peach: #FFC6A3;
+  --amber: #FFB36B;
+  --lime: #9BE15D;
+
+  /* neutrals */
+  --cloud: #FAF9FC;
+  --pearl: #F4F0F7;
+  --lavender: #EEE7F5;
+  --soft-gray: #CFC8D8;
+  --slate: #655B78;
+  --plum: #40384E;
+
+  /* shared gradients (identical in both modes) */
+  --grad-brand: linear-gradient(135deg, #6DE4D5 0%, #59B4F5 50%, #D54AF2 100%);
+  --grad-brand-h: linear-gradient(90deg, #6DE4D5 0%, #59B4F5 50%, #D54AF2 100%);
+  --grad-glow: linear-gradient(135deg, #5ED9D1 0%, #8EDFF7 50%, #E9B4F7 100%);
+
+  /* radii + motion */
+  --r-sm: 16px;
+  --r: 22px;
+  --r-lg: 30px;
+  --r-xl: 36px;
+  --pill: 999px;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --dur: .5s;
+
+  /* cursor/tilt parallax origin (updated by BackgroundField in dark mode) */
+  --glow-x: 50%;
+  --glow-y: 38%;
+}
+
+/* ---------- LIGHT (default) ---------- */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0: #ECECEE;
+  /* neutral greyscale field — colour comes only from the brand gradient on UI */
+  --bg-field:
+    radial-gradient(110% 80% at 10% 0%,   #F4F4F5 0%, rgba(244,244,245,0) 52%),
+    radial-gradient(110% 80% at 90% 0%,   #E6E6E8 0%, rgba(230,230,232,0) 52%),
+    radial-gradient(100% 90% at 50% 110%, #DEDEE0 0%, rgba(222,222,224,0) 58%),
+    radial-gradient(80%  70% at 20% 60%,  #EAEAEC 0%, rgba(234,234,236,0) 50%),
+    linear-gradient(160deg, #F1F1F2 0%, #E2E2E4 100%);
+  --field-glow: transparent; /* light mode never glows */
+
+  --text: #26262A;
+  --text-strong: #161618;
+  --text-muted: #66666E;
+  --text-on-cta: #FFFFFF;
+
+  --glass-bg: rgba(255, 255, 255, .10);
+  --glass-bg-strong: rgba(255, 255, 255, .20);
+  --glass-border: rgba(255, 255, 255, .45);
+  --glass-hairline: rgba(40, 40, 44, .06);
+  --glass-blur: 30px;
+  --glass-shadow: 0 12px 40px rgba(30, 30, 34, .12), 0 2px 8px rgba(30, 30, 34, .05);
+  --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .70);
+  --scrim: rgba(255, 255, 255, .0);
+
+  --field-input-bg: rgba(255, 255, 255, .35);
+  --divider: rgba(40, 40, 44, .12);
+}
+
+/* ---------- DARK (night, subtle background glow only) ---------- */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-0: #0A0A0B;
+  /* neutral greyscale night — colour comes only from the brand gradient on UI */
+  --bg-field:
+    radial-gradient(130% 100% at 15% 0%,   #1B1B1E 0%, rgba(27,27,30,0) 55%),
+    radial-gradient(120% 90%  at 85% 5%,   #161619 0%, rgba(22,22,25,0) 55%),
+    radial-gradient(110% 80%  at 50% 100%, #1C1C20 0%, rgba(28,28,32,0) 55%),
+    linear-gradient(170deg, #121214 0%, #08080A 100%);
+  /* subtle neutral light bloom — no colour */
+  --field-glow:
+    radial-gradient(55% 45% at var(--glow-x) var(--glow-y),
+      rgba(255, 255, 255, .07) 0%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(60% 50% at calc(var(--glow-x) + 18%) calc(var(--glow-y) + 12%),
+      rgba(255, 255, 255, .05) 0%, rgba(255, 255, 255, 0) 72%),
+    radial-gradient(55% 45% at calc(var(--glow-x) - 16%) calc(var(--glow-y) + 20%),
+      rgba(255, 255, 255, .04) 0%, rgba(255, 255, 255, 0) 72%);
+
+  --text: #EAEAEC;
+  --text-strong: #FFFFFF;
+  --text-muted: #9A9AA2;
+  --text-on-cta: #0C0A14;
+
+  --glass-bg: rgba(36, 36, 40, .12);
+  --glass-bg-strong: rgba(28, 28, 32, .22);
+  --glass-border: rgba(255, 255, 255, .12);
+  --glass-hairline: rgba(255, 255, 255, .05);
+  --glass-blur: 34px;
+  --glass-shadow: 0 18px 50px rgba(0, 0, 0, .50), 0 2px 10px rgba(0, 0, 0, .30);
+  --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .10);
+  --scrim: rgba(10, 10, 12, .30);
+
+  --field-input-bg: rgba(255, 255, 255, .06);
+  --divider: rgba(255, 255, 255, .10);
+}
+
+/* honor user accessibility prefs — fall back to near-solid surfaces */
+@media (prefers-reduced-transparency: reduce) {
+  :root, [data-theme="light"] { --glass-bg: rgba(238,238,240,.95); --glass-bg-strong: rgba(238,238,240,.98); --glass-blur: 0px; }
+  [data-theme="dark"] { --glass-bg: rgba(22,22,25,.95); --glass-bg-strong: rgba(16,16,18,.98); --glass-blur: 0px; }
+}
+@media (prefers-contrast: more) {
+  :root, [data-theme="light"] { --text: #101012; --text-muted: #45454C; --glass-bg-strong: rgba(255,255,255,.92); }
+  [data-theme="dark"] { --text: #FFFFFF; --text-muted: #C6C6CC; --glass-bg-strong: rgba(16,16,18,.96); }
+}

@@ -37,6 +37,26 @@ create table if not exists ownership_history (
     created_at    timestamptz not null default now()
   );
 
+-- ─── PAYOUT SETTINGS TABLE ──────────────────────────────────────────────────
+-- Seller payout preferences: bank account (Stripe Payouts) or crypto wallet
+create table if not exists payout_settings (
+    id                  uuid primary key default uuid_generate_v4(),
+    seller_wallet       text not null unique,
+    payout_type         text not null check (payout_type in ('bank', 'crypto')),
+    stripe_account_id   text,                      -- Stripe Connect account ID for bank payouts
+    crypto_wallet       text,                      -- Destination wallet for crypto payouts
+    crypto_chain        text default 'solana',     -- Chain for crypto payouts
+    created_at          timestamptz not null default now(),
+    updated_at          timestamptz not null default now()
+);
+
+create trigger payout_settings_updated_at
+  before update on payout_settings
+  for each row execute procedure update_updated_at_column();
+
+alter table payout_settings enable row level security;
+create policy "payout_service_write" on payout_settings for all using (true) with check (true);
+
 -- ─── INDEXES ─────────────────────────────────────────────────────────────────
 create index if not exists idx_items_serial    on items(serial_number);
 create index if not exists idx_items_owner     on items(current_owner_wallet);
