@@ -8,10 +8,10 @@ import { trpc } from '@/lib/trpc/client';
 import { t, S, card, surface, avatar, btn, sectionLabel } from '@/lib/ui';
 
 const AVATAR_GRADS = [
-  'linear-gradient(135deg,#6DE4D5,#59B4F5 50%,#D54AF2)',
-  'linear-gradient(135deg,#6DE4D5,#5ED9D1)',
-  'linear-gradient(135deg,#59B4F5,#D54AF2)',
-  'linear-gradient(135deg,#5ED9D1,#59B4F5)',
+  'linear-gradient(135deg,#25CDB8,#2A8AED 50%,#BC2DE6)',
+  'linear-gradient(135deg,#25CDB8,#22C6B7)',
+  'linear-gradient(135deg,#2A8AED,#BC2DE6)',
+  'linear-gradient(135deg,#22C6B7,#2A8AED)',
 ];
 
 function shortAddr(a: string) {

@@ -5,11 +5,11 @@
 
 :root {
   /* raw brand palette (mode-independent) */
-  --aqua: #6DE4D5;
-  --turquoise: #5ED9D1;
-  --sky: #59B4F5;
+  --aqua: #25CDB8;
+  --turquoise: #22C6B7;
+  --sky: #2A8AED;
   --electric: #4B93F1;
-  --orchid: #D54AF2;
+  --orchid: #BC2DE6;
   --magenta: #C62FEA;
   --peach: #FFC6A3;
   --amber: #FFB36B;
@@ -24,9 +24,9 @@
   --plum: #40384E;
 
   /* shared gradients (identical in both modes) */
-  --grad-brand: linear-gradient(135deg, #6DE4D5 0%, #59B4F5 50%, #D54AF2 100%);
-  --grad-brand-h: linear-gradient(90deg, #6DE4D5 0%, #59B4F5 50%, #D54AF2 100%);
-  --grad-glow: linear-gradient(135deg, #5ED9D1 0%, #8EDFF7 50%, #E9B4F7 100%);
+  --grad-brand: linear-gradient(135deg, #25CDB8 0%, #2A8AED 50%, #BC2DE6 100%);
+  --grad-brand-h: linear-gradient(90deg, #25CDB8 0%, #2A8AED 50%, #BC2DE6 100%);
+  --grad-glow: linear-gradient(135deg, #22C6B7 0%, #8EDFF7 50%, #E9B4F7 100%);
 
   /* radii + motion — tightened for an editorial feel (was 16/22/30/36) */
   --r-sm: 12px;

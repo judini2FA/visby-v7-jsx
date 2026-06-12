@@ -22,7 +22,7 @@ Three principles decide most arguments:
 - The **Visby wordmark/logo** is frozen. Never restyle it.
 - Background is the global greyscale **aurora** (`<BackgroundField/>`); dark mode adds a near
   imperceptible white bloom. Glass never glows. Page roots stay `transparent`.
-- Colour comes **only** from `--grad-brand` (`135deg #6DE4D5 → #59B4F5 → #D54AF2`). Functional
+- Colour comes **only** from `--grad-brand` (`135deg #25CDB8 → #2A8AED → #BC2DE6`). Functional
   red `#FF3B5C` and green `#00C48C` appear **only** on real error/success states.
 - No emojis anywhere — inline SVG icons only.
 

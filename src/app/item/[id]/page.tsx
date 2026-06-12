@@ -9,8 +9,8 @@ import CheckoutModal from '@/components/checkout-modal';
 import { S, t, price, card, btn, badge, avatar, sectionLabel, input } from '@/lib/ui';
 
 const C = {
-  navy: 'transparent', teal: '#5ED9D1', cyan: '#6DE4D5',
-  blue: '#59B4F5', mag: '#D54AF2', muted: 'var(--text-muted)',
+  navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
+  blue: '#2A8AED', mag: '#BC2DE6', muted: 'var(--text-muted)',
   green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
 };
 const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;

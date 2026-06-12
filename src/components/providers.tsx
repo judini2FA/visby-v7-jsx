@@ -33,7 +33,7 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
         loginMethods: ['email', 'wallet'],
         appearance: {
           theme: mode === 'dark' ? 'dark' : 'light',
-          accentColor: '#59B4F5',
+          accentColor: '#2A8AED',
           logo: '/visby-logo-mark.png',
         },
         embeddedWallets: {

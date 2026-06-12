@@ -41,7 +41,7 @@ export function Navbar() {
               ) : (
                 <button
                   onClick={login}
-                  className="text-sm px-4 py-2 rounded-full font-semibold bg-gradient-to-r from-[#6DE4D5] via-[#59B4F5] to-[#D54AF2] text-white hover:opacity-90 transition"
+                  className="text-sm px-4 py-2 rounded-full font-semibold bg-gradient-to-r from-[#25CDB8] via-[#2A8AED] to-[#BC2DE6] text-white hover:opacity-90 transition"
                 >
                   Sign in
             </button>

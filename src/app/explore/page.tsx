@@ -6,12 +6,12 @@ import { trpc } from '@/lib/trpc/client';
 import { t, S, price, card, badge, btn, input, avatar, sectionLabel } from '@/lib/ui';
 
 const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg,#6DE4D5,#59B4F5)',
-  'linear-gradient(135deg,#59B4F5,#D54AF2)',
-  'linear-gradient(135deg,#D54AF2,#FFC6A3)',
-  'linear-gradient(135deg,#5ED9D1,#4B93F1)',
-  'linear-gradient(135deg,#FFB36B,#D54AF2)',
-  'linear-gradient(135deg,#9BE15D,#5ED9D1)',
+  'linear-gradient(135deg,#25CDB8,#2A8AED)',
+  'linear-gradient(135deg,#2A8AED,#BC2DE6)',
+  'linear-gradient(135deg,#BC2DE6,#FFC6A3)',
+  'linear-gradient(135deg,#22C6B7,#4B93F1)',
+  'linear-gradient(135deg,#FFB36B,#BC2DE6)',
+  'linear-gradient(135deg,#9BE15D,#22C6B7)',
 ];
 
 const shortAddr = (a?: string | null) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : '—');

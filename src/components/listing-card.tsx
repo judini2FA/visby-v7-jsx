@@ -5,7 +5,7 @@ import { useSolanaWallets } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
 import { card, t, price, avatar, badge, S } from '@/lib/ui';
 
-const C = { red: '#FF3B5C', cyan: '#6DE4D5', blue: '#59B4F5', mag: '#D54AF2', teal: '#5ED9D1' };
+const C = { red: '#FF3B5C', cyan: '#25CDB8', blue: '#2A8AED', mag: '#BC2DE6', teal: '#22C6B7' };
 const AVATAR_GH = [
   `linear-gradient(135deg,${C.cyan},${C.blue} 50%,${C.mag})`,
   `linear-gradient(135deg,${C.cyan},${C.teal})`,

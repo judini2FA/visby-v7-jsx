@@ -10,7 +10,7 @@ import { S, t, price, card, sheet, surface, btn, badge, sectionLabel, avatar, in
 
 const C = {
   navy: 'transparent',
-  teal: '#5ED9D1', cyan: '#6DE4D5', blue: '#59B4F5', mag: '#D54AF2',
+  teal: '#22C6B7', cyan: '#25CDB8', blue: '#2A8AED', mag: '#BC2DE6',
   muted: 'var(--text-muted)',
   border: 'var(--glass-border)',
 };

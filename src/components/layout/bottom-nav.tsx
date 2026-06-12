@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const C = { cyan: '#6DE4D5', blue: '#59B4F5', mag: '#D54AF2' };
+const C = { cyan: '#25CDB8', blue: '#2A8AED', mag: '#BC2DE6' };
 
 function Icon({ id, active }: { id: string; active: boolean }) {
   const gid    = `ng-${id}`;

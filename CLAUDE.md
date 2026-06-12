@@ -19,7 +19,7 @@ Visby is a mobile-first Next.js marketplace for buying/selling physical luxury g
 > The old "solid `#0d0d0d`, no gradient backgrounds, dark-only" rule is **retired.** The aesthetic is now light suspended in polished glass — calm, warm, premium, never cyberpunk.
 
 ### Always use design tokens — never hardcode theme colors
-All colors/surfaces come from CSS variables in `src/styles/tokens.css`. Inline styles reference them, e.g. `color: 'var(--text)'`, `background: 'var(--glass-bg)'`. Do **not** hardcode `#0d0d0d`/`#fff`/`rgba(255,255,255,.x)` for theme colors — they won't flip with light/dark. Brand accent hexes (`#6DE4D5 #59B4F5 #D54AF2`, etc.) and functional colors (green `#00C48C`, red `#FF3B5C`) are mode-independent and may stay literal.
+All colors/surfaces come from CSS variables in `src/styles/tokens.css`. Inline styles reference them, e.g. `color: 'var(--text)'`, `background: 'var(--glass-bg)'`. Do **not** hardcode `#0d0d0d`/`#fff`/`rgba(255,255,255,.x)` for theme colors — they won't flip with light/dark. Brand accent hexes (`#25CDB8 #2A8AED #BC2DE6`, etc.) and functional colors (green `#00C48C`, red `#FF3B5C`) are mode-independent and may stay literal.
 
 Key tokens: `--bg-0`, `--bg-field`, `--field-glow`, `--text` / `--text-strong` / `--text-muted`, `--glass-bg` / `--glass-bg-strong` / `--glass-border` / `--glass-shadow` / `--glass-inner`, `--surface-bg`, `--img-scrim`, `--divider`, `--field-input-bg`, `--grad-brand` / `--grad-brand-h` / `--grad-glow`, type sizes `--fs-*`, spacing `--s-1…--s-8`, radii `--r-sm/--r/--r-lg/--r-xl/--pill`. Helpers in `src/lib/ui.ts`: `t()` (type scale), `S` (spacing grid), `price()`, `card()`, `sheet()`, `surface()`, `glass()`, `btn()`, `badge()`, `avatar()`, `tabSlider()`, `sectionLabel()`, `input()`, `cta()`, token map `T`.
 
@@ -52,12 +52,12 @@ All emoji characters have been replaced with inline SVG icons. Never add emojis 
 ### Colour palette (brand — mode-independent)
 ```js
 // Primary brand accents (literal hex OK — same in light & dark)
-aqua '#6DE4D5'  turquoise '#5ED9D1'  sky '#59B4F5'  electric '#4B93F1'
-orchid '#D54AF2'  magenta '#C62FEA'  peach '#FFC6A3'  amber '#FFB36B'  lime '#9BE15D'
+aqua '#25CDB8'  turquoise '#22C6B7'  sky '#2A8AED'  electric '#4B93F1'
+orchid '#BC2DE6'  magenta '#C62FEA'  peach '#FFC6A3'  amber '#FFB36B'  lime '#9BE15D'
 // Neutrals (drive the light/dark tokens)
 cloud '#FAF9FC'  pearl '#F4F0F7'  lavender '#EEE7F5'  softGray '#CFC8D8'  slate '#655B78'  plum '#40384E'
 // Brand gradient (text/CTAs/avatars/story rings AND backgrounds now)
---grad-brand: linear-gradient(135deg,#6DE4D5,#59B4F5 50%,#D54AF2)
+--grad-brand: linear-gradient(135deg,#25CDB8,#2A8AED 50%,#BC2DE6)
 ```
 Per-page files keep a local `const C = {...}` for convenience, but its values now point at tokens (e.g. `navy:'transparent'`, `muted:'var(--text-muted)'`, `border:'var(--glass-border)'`) with brand accents as literal hex. The Visby logo/wordmark on the homepage is intentionally frozen — never restyle it.
 

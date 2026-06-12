@@ -8,7 +8,7 @@ import { trpc } from '@/lib/trpc/client';
 import { t, S, price, card, sheet, surface, btn, badge, sectionLabel, avatar, input } from '@/lib/ui';
 
 const C = {
-  cyan: '#6DE4D5', teal: '#5ED9D1', blue: '#59B4F5', mag: '#D54AF2',
+  cyan: '#25CDB8', teal: '#22C6B7', blue: '#2A8AED', mag: '#BC2DE6',
 };
 
 const CATS   = ['All', 'Sneakers', 'Watches', 'Bags', 'Memorabilia', 'Vintage', 'Electronics'];

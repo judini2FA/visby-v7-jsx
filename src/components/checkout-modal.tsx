@@ -8,8 +8,8 @@ import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } f
 import { useTheme } from '@/lib/theme';
 
 const C = {
-  navy: 'var(--bg-0)', teal: '#5ED9D1', cyan: '#6DE4D5',
-  blue: '#59B4F5', mag: '#D54AF2', muted: 'var(--text-muted)',
+  navy: 'var(--bg-0)', teal: '#22C6B7', cyan: '#25CDB8',
+  blue: '#2A8AED', mag: '#BC2DE6', muted: 'var(--text-muted)',
   green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
 };
 const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;

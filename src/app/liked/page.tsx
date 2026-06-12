@@ -7,10 +7,10 @@ import { trpc } from '@/lib/trpc/client';
 import { t, S, price, card, btn, badge, avatar } from '@/lib/ui';
 
 const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg,#6DE4D5,#59B4F5)',
-  'linear-gradient(135deg,#59B4F5,#D54AF2)',
-  'linear-gradient(135deg,#D54AF2,#FFC6A3)',
-  'linear-gradient(135deg,#5ED9D1,#9BE15D)',
+  'linear-gradient(135deg,#25CDB8,#2A8AED)',
+  'linear-gradient(135deg,#2A8AED,#BC2DE6)',
+  'linear-gradient(135deg,#BC2DE6,#FFC6A3)',
+  'linear-gradient(135deg,#22C6B7,#9BE15D)',
 ];
 
 function shortAddr(addr?: string) {
