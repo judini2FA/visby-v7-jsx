@@ -24,15 +24,19 @@ export const profilesRouter = createTRPCRouter({
     }))
     .mutation(async ({ input }) => {
       const supabase = createServiceClient();
+      // Only write the fields actually provided — a partial edit (e.g. just bio) must not
+      // null out the others, nor touch columns it didn't intend to (e.g. preferred_currency).
+      const patch: Record<string, unknown> = {
+        wallet: input.wallet,
+        updated_at: new Date().toISOString(),
+      };
+      if (input.display_name !== undefined) patch.display_name = input.display_name || null;
+      if (input.bio !== undefined) patch.bio = input.bio || null;
+      if (input.preferred_currency !== undefined) patch.preferred_currency = input.preferred_currency || null;
+
       const { data, error } = await supabase
         .from('profiles')
-        .upsert({
-          wallet:             input.wallet,
-          display_name:       input.display_name ?? null,
-          bio:                input.bio ?? null,
-          preferred_currency: input.preferred_currency ?? null,
-          updated_at:         new Date().toISOString(),
-        }, { onConflict: 'wallet' })
+        .upsert(patch, { onConflict: 'wallet' })
         .select()
         .single();
       if (error) throw new Error(error.message);
