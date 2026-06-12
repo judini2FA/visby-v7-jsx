@@ -93,8 +93,13 @@ export default function PublicProfilePage() {
   );
   const isFollowing = followData?.following ?? false;
 
-  const followMut   = trpc.follows.follow.useMutation({ onSuccess: () => refetchFollow() });
-  const unfollowMut = trpc.follows.unfollow.useMutation({ onSuccess: () => refetchFollow() });
+  const { data: counts, refetch: refetchCounts } = trpc.follows.getCounts.useQuery(
+    { wallet: profileWallet },
+    { enabled: !!profileWallet }
+  );
+
+  const followMut   = trpc.follows.follow.useMutation({ onSuccess: () => { refetchFollow(); refetchCounts(); } });
+  const unfollowMut = trpc.follows.unfollow.useMutation({ onSuccess: () => { refetchFollow(); refetchCounts(); } });
 
   const { data: profile } = trpc.profiles.getProfile.useQuery(
     { wallet },
@@ -216,6 +221,20 @@ export default function PublicProfilePage() {
                 <div style={{ ...price('sm'), margin: '0 auto' }}>{s.value}</div>
                 <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
               </div>
+            ))}
+          </div>
+
+          {/* Followers / Following */}
+          <div style={{ display: 'flex', gap: S[2], width: '100%', maxWidth: 360 }}>
+            {([
+              { label: 'Followers', value: counts?.followers ?? 0, tab: 'followers' },
+              { label: 'Following', value: counts?.following ?? 0, tab: 'following' },
+            ] as const).map(s => (
+              <Link key={s.label} href={`/connections/${profileWallet}?tab=${s.tab}`}
+                style={{ ...surface({ pad: '12px 8px' }), flex: 1, textAlign: 'center', textDecoration: 'none' }}>
+                <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>{s.value}</div>
+                <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
+              </Link>
             ))}
           </div>
 

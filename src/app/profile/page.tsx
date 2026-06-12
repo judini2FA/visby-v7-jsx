@@ -497,6 +497,7 @@ export default function ProfilePage() {
   const { data: profile }        = trpc.profiles.getProfile.useQuery({ wallet: walletAddress }, { enabled: !!walletAddress });
   const { data: ownedItems = [] } = trpc.listings.getByOwner.useQuery({ wallet: walletAddress }, { enabled: !!walletAddress });
   const { data: soldItems  = [] } = trpc.listings.getSoldByWallet.useQuery({ wallet: walletAddress }, { enabled: !!walletAddress });
+  const { data: counts }          = trpc.follows.getCounts.useQuery({ wallet: walletAddress }, { enabled: !!walletAddress });
 
   const displayName = profile?.display_name ?? user?.email?.address ?? shortAddr(walletAddress);
   const initial     = (displayName[0] ?? '?').toUpperCase();
@@ -562,6 +563,20 @@ export default function ProfilePage() {
                   <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.bio}</div>
                 )}
               </div>
+            </div>
+
+            {/* Social */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[2], marginBottom: S[2] }}>
+              {([
+                { label: 'Followers', value: counts?.followers ?? 0, tab: 'followers' },
+                { label: 'Following', value: counts?.following ?? 0, tab: 'following' },
+              ] as const).map(s => (
+                <Link key={s.label} href={`/connections/${walletAddress}?tab=${s.tab}`}
+                  style={{ ...surface({ pad: '14px 12px' }), textAlign: 'center', textDecoration: 'none' }}>
+                  <div style={{ ...t('title'), color: 'var(--text-strong)' }}>{s.value}</div>
+                  <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
+                </Link>
+              ))}
             </div>
 
             {/* Stats */}

@@ -90,6 +90,67 @@ export const followsRouter = createTRPCRouter({
         .sort((a, b) => b.listing_count - a.listing_count);
     }),
 
+  // Follower / following counts for a wallet.
+  getCounts: publicProcedure
+    .input(z.object({ wallet: z.string() }))
+    .query(async ({ input }) => {
+      if (!input.wallet) return { followers: 0, following: 0 };
+      const supabase = createServiceClient();
+      const [followers, following] = await Promise.all([
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_wallet', input.wallet),
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_wallet', input.wallet),
+      ]);
+      return { followers: followers.count ?? 0, following: following.count ?? 0 };
+    }),
+
+  // A wallet's followers or following list, each marked with whether `viewer_wallet` follows them.
+  getConnections: publicProcedure
+    .input(z.object({
+      wallet: z.string(),
+      type: z.enum(['followers', 'following']),
+      viewer_wallet: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      if (!input.wallet) return [];
+      const supabase = createServiceClient();
+
+      const matchCol = input.type === 'followers' ? 'following_wallet' : 'follower_wallet';
+      const pickCol = input.type === 'followers' ? 'follower_wallet' : 'following_wallet';
+
+      const { data: rows } = await supabase
+        .from('follows')
+        .select(`${pickCol}, created_at`)
+        .eq(matchCol, input.wallet)
+        .order('created_at', { ascending: false });
+      if (!rows?.length) return [];
+
+      const wallets = rows.map((r: any) => r[pickCol] as string);
+
+      const { data: profiles } = await supabase
+        .from('profiles').select('wallet, display_name, bio').in('wallet', wallets);
+      const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.wallet, p]));
+
+      const { data: items } = await supabase
+        .from('items').select('current_owner_wallet').eq('is_listed', true).in('current_owner_wallet', wallets);
+      const counts: Record<string, number> = {};
+      for (const it of items ?? []) counts[it.current_owner_wallet] = (counts[it.current_owner_wallet] ?? 0) + 1;
+
+      let viewerSet = new Set<string>();
+      if (input.viewer_wallet) {
+        const { data: vf } = await supabase
+          .from('follows').select('following_wallet').eq('follower_wallet', input.viewer_wallet);
+        viewerSet = new Set((vf ?? []).map(r => r.following_wallet));
+      }
+
+      return wallets.map(w => ({
+        wallet: w,
+        display_name: (profileMap[w]?.display_name as string | null) ?? null,
+        bio: (profileMap[w]?.bio as string | null) ?? null,
+        listing_count: counts[w] ?? 0,
+        viewer_following: viewerSet.has(w),
+      }));
+    }),
+
   getFollowing: publicProcedure
     .input(z.object({ wallet: z.string() }))
     .query(async ({ input }) => {
