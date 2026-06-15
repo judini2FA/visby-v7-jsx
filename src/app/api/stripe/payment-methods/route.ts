@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
+import { callerOwnsWallet } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -10,6 +11,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const wallet = searchParams.get('wallet');
     if (!wallet) return NextResponse.json({ error: 'Missing wallet' }, { status: 400 });
+
+    if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createServiceClient();
     const { data } = await supabase

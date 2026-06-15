@@ -36,6 +36,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, already_transferred: true, name: item.name, item_id: item.id });
     }
 
+    // Prevent double-transfer when a second PaymentIntent for the same item also succeeds
+    if (!item.is_listed) {
+      return NextResponse.json({ error: 'Item already sold' }, { status: 409 });
+    }
+
     const previousOwner = item.current_owner_wallet;
     const nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
 
@@ -54,7 +59,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, name: item.name, item_id: item.id });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    console.error('[stripe/confirm]', err);
+    return NextResponse.json({ error: 'Payment processing error' }, { status: 500 });
   }
 }

@@ -1,18 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
-import { transferFromAuthority } from '@/lib/nft';
+import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
+import { callerOwnsWallet } from '@/lib/auth';
 
-/**
- * Phase 1 Buy Route
- * -----------------
- * For Phase 1 (devnet), we simulate the USDC transfer
- * and record the ownership change in Supabase.
- * 
- * Phase 2 will add real USDC token transfers via @solana/web3.js
- * and SPL token program.
- */
 export async function POST(req: Request) {
     try {
+          if (getRpcUrl().includes('mainnet')) {
+                  return NextResponse.json({ error: 'Simulated purchase is disabled on mainnet' }, { status: 503 });
+                }
+
           const { item_id, buyer_wallet, serial } = await req.json();
 
           if (!item_id || !buyer_wallet) {
@@ -23,6 +19,8 @@ export async function POST(req: Request) {
 
           if (!serial) return NextResponse.json({ error: 'Missing serial' }, { status: 400 });
           if (buyer_wallet.startsWith('0x')) return NextResponse.json({ error: 'Solana wallet required' }, { status: 400 });
+
+          if (!(await callerOwnsWallet(req, buyer_wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
           // Fetch the item to validate — use limit(1) to avoid .single() failing on dupes
           const { data: rows, error: fetchError } = await supabase
@@ -36,7 +34,11 @@ export async function POST(req: Request) {
           const item = rows?.[0];
 
           if (fetchError || !item) {
-                  return NextResponse.json({ error: 'Item not found', detail: fetchError?.message }, { status: 404 });
+                  return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+                }
+
+          if (item.id !== item_id) {
+                  return NextResponse.json({ error: 'item mismatch' }, { status: 400 });
                 }
 
           if (!item.is_listed) {
@@ -47,22 +49,29 @@ export async function POST(req: Request) {
                   return NextResponse.json({ error: 'You already own this item' }, { status: 400 });
                 }
 
-          // Transfer NFT on-chain: escrow (mint authority) → buyer
-          const nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
-
+          // CAS: atomically mark as sold — only succeeds if still listed
           const previousOwner = item.current_owner_wallet;
-          const { error: updateError } = await supabase
+          const { data: casRows, error: casError } = await supabase
             .from('items')
             .update({
                       current_owner_wallet: buyer_wallet,
                       is_listed: false,
                       price_usdc: null,
                     })
-            .eq('id', item.id);
+            .eq('id', item.id)
+            .eq('is_listed', true)
+            .select();
 
-          if (updateError) {
-                  return NextResponse.json({ error: updateError.message }, { status: 500 });
+          if (casError) {
+                  return NextResponse.json({ error: 'Purchase failed' }, { status: 500 });
                 }
+
+          if (!casRows || casRows.length === 0) {
+                  return NextResponse.json({ error: 'Item is no longer available' }, { status: 409 });
+                }
+
+          // Transfer NFT on-chain: escrow (mint authority) → buyer
+          const nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
 
           // Record ownership history
           await supabase.from('ownership_history').insert({
@@ -80,7 +89,8 @@ export async function POST(req: Request) {
                   new_owner: buyer_wallet,
                   price_usdc: item.price_usdc,
                 });
-        } catch (err: any) {
-          return NextResponse.json({ error: err.message }, { status: 500 });
+        } catch (err: unknown) {
+          console.error('[buy] error:', err);
+          return NextResponse.json({ error: 'Purchase failed' }, { status: 500 });
         }
   }

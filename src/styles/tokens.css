@@ -91,6 +91,7 @@
   --glass-shadow: 0 12px 40px rgba(30, 30, 34, .12), 0 2px 8px rgba(30, 30, 34, .05);
   --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .70);
   --scrim: rgba(255, 255, 255, .0);
+  --modal-scrim: rgba(15, 12, 24, .45);
 
   /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
   --surface-bg: rgba(255, 255, 255, .45);
@@ -132,6 +133,7 @@
   --glass-shadow: 0 18px 50px rgba(0, 0, 0, .50), 0 2px 10px rgba(0, 0, 0, .30);
   --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .10);
   --scrim: rgba(10, 10, 12, .30);
+  --modal-scrim: rgba(0, 0, 0, .65);
 
   /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
   --surface-bg: rgba(255, 255, 255, .05);

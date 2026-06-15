@@ -8,6 +8,7 @@ import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 import { ThemeToggle, useTheme } from '@/lib/theme';
 import { t, S, price, card, surface, btn, badge, avatar, input, sectionLabel, tabSlider, T } from '@/lib/ui';
+import PayoutSettings from '@/components/payout-settings';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -29,103 +30,6 @@ async function fetchSolBalance(addr: string, rpc: string): Promise<number | null
     const d = await res.json();
     return d.result?.value != null ? d.result.value / 1e9 : null;
   } catch { return null; }
-}
-
-// ─────────────────────────────────────────────────────────────
-// PAYOUT (shown at bottom of Wallet tab)
-// ─────────────────────────────────────────────────────────────
-function PayoutSection({ wallet }: { wallet: string }) {
-  const [payoutType, setPayoutType] = useState<'bank' | 'crypto'>('crypto');
-  const [stripeAccountId, setStripeAccountId] = useState('');
-  const [cryptoWallet,    setCryptoWallet]    = useState(wallet);
-  const [cryptoChain,     setCryptoChain]     = useState('solana');
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [errMsg, setErrMsg] = useState('');
-
-  useEffect(() => {
-    if (!wallet) return;
-    fetch(`/api/payout?wallet=${wallet}`)
-      .then(r => r.json())
-      .then(d => {
-        if (!d.settings) return;
-        setPayoutType(d.settings.payout_type ?? 'crypto');
-        setStripeAccountId(d.settings.stripe_account_id ?? '');
-        setCryptoWallet(d.settings.crypto_wallet ?? wallet);
-        setCryptoChain(d.settings.crypto_chain ?? 'solana');
-      })
-      .catch(() => {});
-  }, [wallet]);
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setStatus('saving'); setErrMsg('');
-    try {
-      const res = await fetch('/api/payout', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seller_wallet: wallet, payout_type: payoutType, stripe_account_id: payoutType === 'bank' ? stripeAccountId : undefined, crypto_wallet: payoutType === 'crypto' ? cryptoWallet : undefined, crypto_chain: payoutType === 'crypto' ? cryptoChain : undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Save failed');
-      setStatus('saved');
-      setTimeout(() => setStatus('idle'), 2500);
-    } catch (err: any) { setErrMsg(err.message ?? 'Save failed'); setStatus('error'); }
-  }
-
-  return (
-    <div style={{ borderTop: '1px solid var(--divider)', paddingTop: S[5], marginTop: S[2] }}>
-      <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>Payout Settings</div>
-      <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[4] }}>
-        Choose how you receive payment when an item sells.
-      </div>
-
-      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: S[4] }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[2] }}>
-          {(['crypto', 'bank'] as const).map(pt => (
-            <button key={pt} type="button" onClick={() => setPayoutType(pt)}
-              style={{ ...surface({ pad: '14px 12px' }), borderColor: payoutType === pt ? 'var(--text-strong)' : 'var(--glass-hairline)', cursor: 'pointer', textAlign: 'left' }}>
-              <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)', marginBottom: S[1] }}>
-                {pt === 'crypto' ? 'Crypto wallet' : 'Bank account'}
-              </div>
-              <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                {pt === 'crypto' ? 'SOL/USDC · instant' : 'via Stripe · 2–7 days'}
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {payoutType === 'crypto' && (
-          <>
-            <div>
-              <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Receiving wallet</div>
-              <input value={cryptoWallet} onChange={e => setCryptoWallet(e.target.value)} placeholder="Solana wallet address" style={input()} />
-            </div>
-            <div>
-              <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Chain</div>
-              <select value={cryptoChain} onChange={e => setCryptoChain(e.target.value)}
-                style={{ ...input(), cursor: 'pointer' }}>
-                <option value="solana">Solana (SOL / USDC)</option>
-                <option value="ethereum">Ethereum (ETH / USDC)</option>
-              </select>
-            </div>
-          </>
-        )}
-
-        {payoutType === 'bank' && (
-          <div>
-            <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Stripe Connect account ID</div>
-            <input value={stripeAccountId} onChange={e => setStripeAccountId(e.target.value)} placeholder="acct_1ABC123…" style={input()} />
-          </div>
-        )}
-
-        {errMsg && <div style={{ ...surface({ pad: '10px 14px' }), ...t('body'), color: C.red, borderColor: 'rgba(255,59,92,.2)' }}>{errMsg}</div>}
-
-        <button type="submit" disabled={status === 'saving'}
-          style={{ ...btn(status === 'saved' ? 'secondary' : 'primary', { full: true }), opacity: status === 'saving' ? 0.7 : 1, cursor: status === 'saving' ? 'not-allowed' : 'pointer', color: status === 'saved' ? C.green : undefined }}>
-          {status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save Payout Settings'}
-        </button>
-      </form>
-    </div>
-  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -206,6 +110,12 @@ function WalletTab({ exportWallet, logout }: { exportWallet: () => void; logout:
 
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: S[3], justifyContent: 'center' }}>
+          <Link href="/buy-crypto" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2] }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', background: T.gradBrand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            </div>
+            <span style={{ ...t('meta'), color: 'var(--text)' }}>Add Funds</span>
+          </Link>
           <Link href="/dashboard/seller" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2] }}>
             <div style={{ width: 48, height: 48, borderRadius: '50%', background: T.gradBrand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -274,7 +184,9 @@ function WalletTab({ exportWallet, logout }: { exportWallet: () => void; logout:
       <AppearanceRow />
 
       {/* Payout settings */}
-      <PayoutSection wallet={wallet} />
+      <div style={{ borderTop: '1px solid var(--divider)', paddingTop: S[5], marginTop: S[2] }}>
+        <PayoutSettings wallet={wallet} />
+      </div>
 
       {/* Sign out */}
       <button onClick={logout} style={{ ...btn('danger', { full: true }), marginTop: S[5] }}>

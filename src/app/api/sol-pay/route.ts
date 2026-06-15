@@ -7,15 +7,20 @@ const TREASURY = process.env.MINT_AUTHORITY_ADDRESS!;
 // Allow up to 2% slippage from quoted price at time of payment
 const SLIPPAGE_TOLERANCE = 0.02;
 
-async function getSolPrice(): Promise<number> {
-  const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-  const d = await r.json();
-  return d.solana?.usd ?? 0;
+async function getSolPrice(): Promise<number | null> {
+  try {
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.solana?.usd ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
   try {
-    const { item_id, tx_signature, buyer_wallet } = await req.json();
+    const { item_id, tx_signature, buyer_wallet, quoted_sol_price } = await req.json();
     if (!item_id || !tx_signature || !buyer_wallet) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
@@ -41,7 +46,6 @@ export async function POST(req: Request) {
     if (tx.meta?.err) return NextResponse.json({ error: 'Transaction failed on-chain' }, { status: 400 });
 
     // Verify the transaction sent SOL to treasury
-    const treasuryKey = new PublicKey(TREASURY);
     const accountKeys = tx.transaction.message.getAccountKeys
       ? tx.transaction.message.getAccountKeys().staticAccountKeys
       : (tx.transaction.message as any).accountKeys as PublicKey[];
@@ -62,7 +66,12 @@ export async function POST(req: Request) {
     }
 
     // Verify amount matches price (with slippage tolerance)
-    const solPrice = await getSolPrice();
+    const solPrice = (typeof quoted_sol_price === 'number' && quoted_sol_price > 0)
+      ? quoted_sol_price
+      : await getSolPrice();
+    if (!solPrice) {
+      return NextResponse.json({ error: 'Price feed unavailable, retry' }, { status: 503 });
+    }
     const solPriceAtPayment = solReceived * solPrice;
     const expectedUsd = item.price_usdc;
     const discrepancy = Math.abs(solPriceAtPayment - expectedUsd) / expectedUsd;
@@ -73,15 +82,37 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Transfer NFT on-chain
-    const previousOwner = item.current_owner_wallet;
-    const nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
+    // Replay guard — silently skip if sol_payments table is absent
+    try {
+      const { data: existing } = await supabase
+        .from('sol_payments')
+        .select('signature')
+        .eq('signature', tx_signature)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({ error: 'Transaction already used' }, { status: 409 });
+      }
+    } catch {
+      // table absent — continue
+    }
 
-    await supabase
+    // CAS: atomically mark as sold before touching the chain
+    const previousOwner = item.current_owner_wallet;
+    const { data: casRows } = await supabase
       .from('items')
       .update({ current_owner_wallet: buyer_wallet, is_listed: false, price_usdc: null, listed_at: null })
-      .eq('id', item_id);
+      .eq('id', item_id)
+      .eq('is_listed', true)
+      .select();
 
+    if (!casRows || casRows.length === 0) {
+      return NextResponse.json({ error: 'Item already sold' }, { status: 409 });
+    }
+
+    // Transfer NFT on-chain — only reached after CAS wins
+    const nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
+
+    // Record ownership history (canonical tx record)
     await supabase.from('ownership_history').insert({
       item_id,
       owner_wallet:  buyer_wallet,
@@ -91,8 +122,16 @@ export async function POST(req: Request) {
       price_usdc:    item.price_usdc,
     });
 
+    // Record signature for replay protection — silently skip if table absent
+    try {
+      await supabase.from('sol_payments').insert({ signature: tx_signature, item_id, buyer_wallet });
+    } catch {
+      // table absent — ignore
+    }
+
     return NextResponse.json({ ok: true, item_id: item.id, nft_tx: nftTxHash });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    console.error('[sol-pay] unexpected error:', err);
+    return NextResponse.json({ error: 'Payment processing error' }, { status: 500 });
   }
 }

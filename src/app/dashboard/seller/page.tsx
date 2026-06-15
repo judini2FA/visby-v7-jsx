@@ -7,6 +7,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, price, card, surface, btn, badge, sectionLabel, input, tabSlider } from '@/lib/ui';
+import PayoutSettings from '@/components/payout-settings';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -23,7 +24,7 @@ const CONDS = [
   { key: 'Fair',      desc: 'Heavy wear, flaws noted in description' },
 ];
 
-type Mode = 'mint' | 'resell';
+type Mode = 'mint' | 'resell' | 'payouts';
 type MintStatus = 'idle' | 'uploading' | 'minting' | 'done' | 'error';
 
 // ─────────────────────────────────────────────────────────────
@@ -420,8 +421,9 @@ export default function SellerDashboardPage() {
         {/* Toggle */}
         <div style={tabSlider().wrap}>
           {([
-            { id: 'mint'   as Mode, label: 'Mint New' },
-            { id: 'resell' as Mode, label: 'Relist'   },
+            { id: 'mint'    as Mode, label: 'Mint New' },
+            { id: 'resell'  as Mode, label: 'Relist'   },
+            { id: 'payouts' as Mode, label: 'Payouts'  },
           ]).map(tab => (
             <button key={tab.id} onClick={() => setMode(tab.id)}
               style={{ ...tabSlider().item, ...(mode === tab.id ? tabSlider().itemActive : null) }}>
@@ -430,8 +432,13 @@ export default function SellerDashboardPage() {
           ))}
         </div>
 
-        {mode === 'mint'   && <MintForm    wallet={wallet} />}
-        {mode === 'resell' && <RelistPanel wallet={wallet} />}
+        {mode === 'mint'    && <MintForm    wallet={wallet} />}
+        {mode === 'resell'  && <RelistPanel wallet={wallet} />}
+        {mode === 'payouts' && (
+          <div style={{ ...card({ pad: S[5] }), marginTop: S[5] }}>
+            <PayoutSettings wallet={wallet} />
+          </div>
+        )}
       </div>
 
       <style>{`

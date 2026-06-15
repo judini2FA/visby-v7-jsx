@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
+import { callerOwnsWallet } from '@/lib/auth';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -11,6 +12,8 @@ export async function POST(req: Request) {
     if (!item_id || !buyer_wallet || !payment_method_id) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
+
+    if (!(await callerOwnsWallet(req, buyer_wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createServiceClient();
 

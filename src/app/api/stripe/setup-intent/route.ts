@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
+import { callerOwnsWallet } from '@/lib/auth';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -31,6 +32,8 @@ export async function POST(req: Request) {
   try {
     const { wallet } = await req.json();
     if (!wallet) return NextResponse.json({ error: 'Missing wallet' }, { status: 400 });
+
+    if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const customerId = await getOrCreateCustomer(wallet);
 
