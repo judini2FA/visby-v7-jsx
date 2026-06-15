@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
+import { createOrder } from '@/lib/orders';
 
 // Settles a Li.Fi crypto-swap purchase and transfers the NFT to the buyer.
 //
@@ -54,6 +55,11 @@ export async function POST(req: Request) {
       tx_hash:      nftTxHash,
       event_type:   'transfer',
       price_usdc:   pricePaid,
+    });
+
+    await createOrder({
+      item_id, buyer_wallet, seller_wallet: previousOwner,
+      price_usdc: pricePaid, pay_method: (from_currency ?? 'eth').toLowerCase(), nft_tx: nftTxHash,
     });
 
     return NextResponse.json({

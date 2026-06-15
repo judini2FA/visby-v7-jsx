@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
+import { createOrder } from '@/lib/orders';
 
 export async function POST(req: Request) {
     try {
@@ -81,6 +82,11 @@ export async function POST(req: Request) {
                   tx_hash: nftTxHash,
                   event_type: 'transfer',
                   price_usdc: item.price_usdc,
+                });
+
+          await createOrder({
+                  item_id: item.id, buyer_wallet, seller_wallet: previousOwner,
+                  price_usdc: item.price_usdc, pay_method: 'usdc', nft_tx: nftTxHash,
                 });
 
           return NextResponse.json({

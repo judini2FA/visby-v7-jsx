@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
-import { t, S, card, surface, btn, badge, avatar, sectionLabel, tabSlider, T } from '@/lib/ui';
+import { t, S, card, surface, btn, badge, avatar, sectionLabel, tabSlider, input, T } from '@/lib/ui';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -14,7 +14,133 @@ const C = {
   green: '#00C48C', red: '#FF3B5C',
 };
 
-type Tab = 'notifications' | 'sales' | 'messages';
+type Tab = 'notifications' | 'sales' | 'messages' | 'purchases';
+
+// ─────────────────────────────────────────────────────────────
+// Shared order types
+// ─────────────────────────────────────────────────────────────
+type OrderStatus = 'paid' | 'shipped' | 'delivered' | 'cancelled';
+
+interface OrderItem {
+  id: string;
+  name: string;
+  category: string;
+  condition: string;
+  serial_number: string;
+  image_url: string | null;
+  nft_mint_address: string | null;
+}
+
+interface Order {
+  id: string;
+  item_id: string;
+  buyer_wallet: string;
+  seller_wallet: string;
+  price_usdc: number;
+  pay_method: string;
+  status: OrderStatus;
+  ship_name: string | null;
+  ship_address: { line1: string; line2?: string; city: string; state: string; postal: string; country: string } | null;
+  tracking_carrier: string | null;
+  tracking_number: string | null;
+  payout_released: boolean;
+  nft_tx: string | null;
+  created_at: string;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  items: OrderItem;
+}
+
+// ─────────────────────────────────────────────────────────────
+// PURCHASES tab
+// ─────────────────────────────────────────────────────────────
+function PurchasesTab({ wallet }: { wallet: string }) {
+  const { getAccessToken } = usePrivy();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(`/api/orders?wallet=${encodeURIComponent(wallet)}&role=buyer`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (!cancelled) setOrders(json.orders ?? []);
+      } catch {
+        if (!cancelled) setOrders([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, getAccessToken]);
+
+  function statusBadge(status: OrderStatus) {
+    if (status === 'delivered') return <span style={{ ...badge('success') }}>Delivered</span>;
+    if (status === 'shipped') return (
+      <span style={{ ...badge('default'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+        </svg>
+        In Transit
+      </span>
+    );
+    return <span style={{ ...badge('default') }}>Paid</span>;
+  }
+
+  if (loading) return (
+    <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[2] }}>
+      {[1, 2, 3].map(i => <div key={i} style={{ ...card(), height: 72, animation: 'pulse 2s infinite' }} />)}
+    </div>
+  );
+
+  if (orders.length === 0) return (
+    <div style={{ textAlign: 'center', padding: `${S[7]}px 0` }}>
+      <div style={{ ...t('heading'), color: 'var(--text)', marginBottom: S[2] }}>No purchases yet</div>
+      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Items you buy will appear here</div>
+    </div>
+  );
+
+  return (
+    <div style={{ paddingTop: S[4] }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {orders.map((order) => {
+          const item = order.items;
+          return (
+            <Link key={order.id} href={`/order/${order.item_id}`} style={{ textDecoration: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+                <div style={{ ...surface(), width: 52, height: 52, overflow: 'hidden', flexShrink: 0 }}>
+                  {item?.image_url
+                    ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                      </div>
+                  }
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item?.name ?? '—'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginTop: S[1], flexWrap: 'wrap' }}>
+                    {statusBadge(order.status)}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ ...t('heading'), color: C.green }}>
+                    {order.price_usdc != null ? `$${Number(order.price_usdc).toFixed(2)}` : '—'}
+                  </div>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // NOTIFICATIONS tab
@@ -60,16 +186,121 @@ function NotificationsTab({ wallet }: { wallet: string }) {
 // ─────────────────────────────────────────────────────────────
 // SALES HISTORY tab
 // ─────────────────────────────────────────────────────────────
+
+interface FulfillRowProps {
+  order: Order;
+  onShipped: (id: string) => void;
+}
+
+function FulfillRow({ order, onShipped }: FulfillRowProps) {
+  const { getAccessToken } = usePrivy();
+  const [carrier, setCarrier] = useState('');
+  const [tracking, setTracking] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const item = order.items;
+
+  async function markShipped() {
+    if (!carrier.trim() || !tracking.trim()) { setErr('Enter carrier and tracking number'); return; }
+    setSaving(true);
+    setErr('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/orders/ship', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ order_id: order.id, seller_wallet: order.seller_wallet, carrier: carrier.trim(), tracking_number: tracking.trim() }),
+      });
+      const json = await res.json();
+      if (json.ok) { onShipped(order.id); }
+      else { setErr(json.error ?? 'Something went wrong'); }
+    } catch {
+      setErr('Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ ...card({ pad: S[4] }), marginBottom: S[3] }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: S[3], marginBottom: S[3] }}>
+        <div style={{ ...surface(), width: 48, height: 48, overflow: 'hidden', flexShrink: 0 }}>
+          {item?.image_url
+            ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+              </div>
+          }
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item?.name ?? '—'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginTop: S[1] }}>
+            <span style={{ ...badge('default') }}>Awaiting shipment</span>
+            <span style={{ ...t('meta'), color: C.green }}>${Number(order.price_usdc).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+        <input
+          value={carrier}
+          onChange={e => setCarrier(e.target.value)}
+          placeholder="Carrier (e.g. UPS, FedEx)"
+          style={{ ...input(), boxSizing: 'border-box' }}
+        />
+        <input
+          value={tracking}
+          onChange={e => setTracking(e.target.value)}
+          placeholder="Tracking number"
+          style={{ ...input(), boxSizing: 'border-box' }}
+        />
+        {err && <div style={{ ...t('meta'), color: C.red }}>{err}</div>}
+        <button onClick={markShipped} disabled={saving} style={{ ...btn('primary', { full: true, pill: false }), opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : 'Mark shipped'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SalesTab({ wallet }: { wallet: string }) {
+  const { getAccessToken } = usePrivy();
   const { data: sales = [], isLoading } = trpc.listings.getSoldByWallet.useQuery(
     { wallet },
     { enabled: !!wallet }
   );
 
+  const [sellerOrders, setSellerOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [fulfilledIds, setFulfilledIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    (async () => {
+      setOrdersLoading(true);
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(`/api/orders?wallet=${encodeURIComponent(wallet)}&role=seller`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (!cancelled) setSellerOrders(json.orders ?? []);
+      } catch {
+        if (!cancelled) setSellerOrders([]);
+      } finally {
+        if (!cancelled) setOrdersLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, getAccessToken]);
+
+  const toFulfill = sellerOrders.filter(o => o.status === 'paid' && !fulfilledIds.has(o.id));
+  const alreadyHandled = sellerOrders.filter(o => (o.status === 'shipped' || o.status === 'delivered') || (o.status === 'paid' && fulfilledIds.has(o.id)));
+
   const totalRevenue = sales.reduce((a: number, s: any) => a + (s.price_usdc ?? 0), 0);
   const avgPrice     = sales.length ? totalRevenue / sales.length : 0;
 
-  if (isLoading) return (
+  if (isLoading || ordersLoading) return (
     <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[2] }}>
       {[1,2,3].map(i => <div key={i} style={{ ...card(), height: 72, animation: 'pulse 2s infinite' }} />)}
     </div>
@@ -77,7 +308,47 @@ function SalesTab({ wallet }: { wallet: string }) {
 
   return (
     <div style={{ paddingTop: S[4] }}>
-      {/* Stats */}
+
+      {/* ── To fulfill ── */}
+      {(toFulfill.length > 0 || alreadyHandled.length > 0) && (
+        <div style={{ marginBottom: S[6] }}>
+          <div style={{ ...sectionLabel(), marginBottom: S[3] }}>
+            To fulfill · {toFulfill.length}
+          </div>
+          {toFulfill.length === 0 && (
+            <div style={{ ...t('meta'), color: 'var(--text-muted)', paddingBottom: S[2] }}>All orders fulfilled</div>
+          )}
+          {toFulfill.map(order => (
+            <FulfillRow
+              key={order.id}
+              order={order}
+              onShipped={id => setFulfilledIds(prev => new Set([...prev, id]))}
+            />
+          ))}
+          {alreadyHandled.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+              {alreadyHandled.map(order => (
+                <div key={order.id} style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '10px 0', borderBottom: '1px solid var(--divider)' }}>
+                  <div style={{ ...surface(), width: 36, height: 36, overflow: 'hidden', flexShrink: 0 }}>
+                    {order.items?.image_url
+                      ? <img src={order.items.image_url} alt={order.items.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <div style={{ width: '100%', height: '100%', background: 'var(--surface-bg)' }} />
+                    }
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...t('body'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.items?.name ?? '—'}</div>
+                  </div>
+                  <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                    {order.status === 'delivered' ? 'Delivered' : 'Shipped'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Revenue stats ── */}
       <div style={{ ...card({ pad: S[4] }), marginBottom: S[6] }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[3] }}>
           {[
@@ -286,6 +557,7 @@ export default function NotificationsPage() {
   const TABS: { id: Tab; label: string }[] = [
     { id: 'notifications', label: 'Notifications' },
     { id: 'sales',         label: 'Sales History' },
+    { id: 'purchases',     label: 'Purchases'     },
     { id: 'messages',      label: 'Messages'      },
   ];
 
@@ -314,6 +586,7 @@ export default function NotificationsPage() {
       <div className="visby-inner" style={{ paddingBottom: 100 }}>
         {tab === 'notifications' && <NotificationsTab wallet={wallet} />}
         {tab === 'sales'         && <SalesTab wallet={wallet} />}
+        {tab === 'purchases'     && <PurchasesTab wallet={wallet} />}
         {tab === 'messages'      && <MessagesTab wallet={wallet} />}
       </div>
 

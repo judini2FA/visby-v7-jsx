@@ -56,6 +56,7 @@ export default function ItemPage() {
   const [copiedTx, setCopiedTx]       = useState<string | null>(null);
   const [showCheckout, setShowCheckout] = useState(false);
   const [privateMode, setPrivateMode] = useState(false);
+  const [itemOrder, setItemOrder] = useState<{ status: string; shipped_at: string | null; delivered_at: string | null } | null | undefined>(undefined);
   useEffect(() => {
     try { setPrivateMode(localStorage.getItem('visby-private-mode') === '1'); } catch {}
   }, []);
@@ -68,6 +69,16 @@ export default function ItemPage() {
   }, []);
 
   const isOwner = !!(walletAddress && item?.current_owner_wallet === walletAddress);
+
+  useEffect(() => {
+    if (!id) return;
+    fetch(`/api/orders/item/${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { order: { status: string; shipped_at: string | null; delivered_at: string | null } | null } | null) => {
+        setItemOrder(d?.order ?? null);
+      })
+      .catch(() => setItemOrder(null));
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -269,6 +280,20 @@ export default function ItemPage() {
                   </Link>
                 )}
               </>
+            ) : itemOrder ? (
+              <div>
+                <span style={{ ...badge('default') }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Sold
+                </span>
+                <div style={{ ...t('meta'), color: C.muted, marginTop: S[2] }}>
+                  {itemOrder.status === 'shipped'
+                    ? 'In transit'
+                    : itemOrder.status === 'delivered'
+                    ? 'Delivered'
+                    : 'Awaiting shipment'}
+                </div>
+              </div>
             ) : (
               <div style={{ ...t('body'), color: C.muted }}>Not listed for sale</div>
             )

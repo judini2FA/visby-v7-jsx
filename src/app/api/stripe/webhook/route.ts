@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
+import { createOrder } from '@/lib/orders';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -45,6 +46,12 @@ async function fulfillPurchase(item_id: string, buyer_wallet: string, price_usdc
     tx_hash:      txRef,
     event_type:   'transfer',
     price_usdc:   price_usdc ? parseFloat(price_usdc) : item.price_usdc,
+  });
+
+  await createOrder({
+    item_id, buyer_wallet, seller_wallet: previousOwner,
+    price_usdc: price_usdc ? parseFloat(price_usdc) : item.price_usdc,
+    pay_method: 'card', nft_tx: txRef,
   });
 }
 

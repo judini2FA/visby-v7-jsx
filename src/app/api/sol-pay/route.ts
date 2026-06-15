@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
+import { createOrder } from '@/lib/orders';
 
 const TREASURY = process.env.MINT_AUTHORITY_ADDRESS!;
 // Allow up to 2% slippage from quoted price at time of payment
@@ -120,6 +121,11 @@ export async function POST(req: Request) {
       tx_hash:       nftTxHash,
       event_type:    'transfer',
       price_usdc:    item.price_usdc,
+    });
+
+    await createOrder({
+      item_id, buyer_wallet, seller_wallet: previousOwner,
+      price_usdc: item.price_usdc, pay_method: 'sol', nft_tx: nftTxHash,
     });
 
     // Record signature for replay protection — silently skip if table absent
