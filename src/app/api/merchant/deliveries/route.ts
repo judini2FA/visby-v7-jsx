@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 function isMissingSchema(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false;
-  if (['42P01', 'PGRST205'].includes(error.code ?? '')) return true;
+  if (['42P01', 'PGRST205', '42703', 'PGRST204'].includes(error.code ?? '')) return true;
   return !!error.message?.includes('does not exist');
 }
 

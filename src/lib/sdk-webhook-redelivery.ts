@@ -64,7 +64,13 @@ export async function redeliverPendingSdkWebhooks(opts?: { limit?: number }): Pr
     .order('webhook_next_attempt_at', { ascending: true })
     .limit(limit);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Pre-migration the webhook_* columns don't exist — treat as "nothing due" (mirrors sdk-mint-retry)
+    // so the cron returns a clean empty summary instead of a 500.
+    const missing = ['42703', '42P01', 'PGRST205', 'PGRST204'].includes(error.code ?? '') || !!error.message?.includes('does not exist');
+    if (missing) return { scanned: 0, delivered: 0, failed: 0, exhausted: 0, skipped: 0 };
+    throw new Error(error.message);
+  }
 
   const due = (data ?? []) as unknown as DueRow[];
   const summary: RedeliverySummary = { scanned: due.length, delivered: 0, failed: 0, exhausted: 0, skipped: 0 };
