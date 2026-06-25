@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
+import { createOrder } from '@/lib/orders';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -69,6 +70,13 @@ export async function POST(req: Request) {
       tx_hash:      nftTxHash,
       event_type:   'transfer',
       price_usdc:   item.price_usdc,
+    });
+
+    await createOrder({
+      item_id, buyer_wallet, seller_wallet: previousOwner,
+      price_usdc: item.price_usdc,
+      pay_method: 'card', nft_tx: nftTxHash,
+      stripe_payment_intent: paymentIntent.id,
     });
 
     return NextResponse.json({ ok: true, item_id: item.id, name: item.name });

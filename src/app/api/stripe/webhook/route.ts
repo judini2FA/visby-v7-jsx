@@ -3,12 +3,13 @@ import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { createOrder } from '@/lib/orders';
+import { captureError } from '@/lib/monitoring';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export const runtime = 'nodejs';
 
-async function fulfillPurchase(item_id: string, buyer_wallet: string, price_usdc: string | undefined) {
+async function fulfillPurchase(item_id: string, buyer_wallet: string, price_usdc: string | undefined, payment_intent_id?: string | null) {
   const supabase = createServiceClient();
 
   const { data: item } = await supabase
@@ -52,6 +53,7 @@ async function fulfillPurchase(item_id: string, buyer_wallet: string, price_usdc
     item_id, buyer_wallet, seller_wallet: previousOwner,
     price_usdc: price_usdc ? parseFloat(price_usdc) : item.price_usdc,
     pay_method: 'card', nft_tx: txRef,
+    stripe_payment_intent: payment_intent_id ?? null,
   });
 }
 
@@ -83,7 +85,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Missing metadata' }, { status: 400 });
       }
 
-      await fulfillPurchase(item_id, buyer_wallet, price_usdc);
+      const sessPi = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+      await fulfillPurchase(item_id, buyer_wallet, price_usdc, sessPi);
     } else if (event.type === 'payment_intent.succeeded') {
       const pi = event.data.object as Stripe.PaymentIntent;
       const { item_id, buyer_wallet, price_usdc } = pi.metadata ?? {};
@@ -92,10 +95,11 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Missing metadata' }, { status: 400 });
       }
 
-      await fulfillPurchase(item_id, buyer_wallet, price_usdc);
+      await fulfillPurchase(item_id, buyer_wallet, price_usdc, pi.id);
     }
   } catch (err) {
     console.error('Webhook processing error:', err);
+    captureError(err, { stage: 'stripe webhook fulfill', event_type: event.type });
     return NextResponse.json({ error: 'Webhook processing error' }, { status: 500 });
   }
 

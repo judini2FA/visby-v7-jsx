@@ -13,15 +13,22 @@ export async function POST(req: Request) {
     const { payment_intent_id, session_id } = body;
 
     let item_id: string, buyer_wallet: string, price_usdc: string, seller_wallet: string;
+    // The PaymentIntent that the card payout/refund draws from. MUST be resolved for hosted checkout too
+    // (the session metadata has no PI) or the seller can never be paid and the buyer can never be refunded.
+    let resolvedPi: string | null = null;
 
     if (payment_intent_id) {
       const pi = await stripe.paymentIntents.retrieve(payment_intent_id);
       if (pi.status !== 'succeeded') return NextResponse.json({ error: 'Payment not completed' }, { status: 402 });
       ({ item_id, buyer_wallet, price_usdc, seller_wallet } = pi.metadata as any);
+      resolvedPi = payment_intent_id;
     } else if (session_id) {
-      const session = await stripe.checkout.sessions.retrieve(session_id);
+      const session = await stripe.checkout.sessions.retrieve(session_id, { expand: ['payment_intent'] });
       if (session.payment_status !== 'paid') return NextResponse.json({ error: 'Payment not completed' }, { status: 402 });
       ({ item_id, buyer_wallet, price_usdc } = session.metadata as any);
+      resolvedPi = typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null;
     } else {
       return NextResponse.json({ error: 'Missing payment_intent_id or session_id' }, { status: 400 });
     }
@@ -63,6 +70,7 @@ export async function POST(req: Request) {
       item_id, buyer_wallet, seller_wallet: previousOwner,
       price_usdc: price_usdc ? parseFloat(price_usdc) : item.price_usdc,
       pay_method: 'card', nft_tx: nftTxHash,
+      stripe_payment_intent: resolvedPi,
     });
 
     return NextResponse.json({ ok: true, name: item.name, item_id: item.id });

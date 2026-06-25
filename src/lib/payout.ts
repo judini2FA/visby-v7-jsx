@@ -1,0 +1,72 @@
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { sendSolFromAuthority } from '@/lib/solana-fund';
+import { captureError } from '@/lib/monitoring';
+
+// Escrow release. Buyer funds are held until delivery is confirmed; then the seller's net
+// (price − platform fee − shipping) is paid to their PRIMARY payout method.
+//
+// Today the only payout-CAPABLE method is the seller's Visby crypto wallet — you can't push funds onto a
+// credit card, and bank rails aren't built yet. So every sale (card OR crypto) settles to the seller's
+// wallet in SOL from the treasury, and Visby keeps the buyer's USD/crypto as the float. When a bank rail
+// lands and is a seller's Primary, route it here via Stripe Connect; until then, wallet is the Primary.
+//
+// FX caveat: the treasury received SOL at purchase-time price and disburses net-USD-worth at the current
+// price — immaterial on devnet; for mainnet, escrow in USDC or cap per-order against SOL received.
+// Idempotency is the caller's job (release only once, gated on payout not already done).
+
+export type PayoutOrder = {
+  id: string;
+  item_id?: string;
+  seller_wallet: string;
+  payout_method?: 'card' | 'crypto' | string | null;
+  seller_net_usd: number;            // already computed: price − fee − shipping
+  gross_usd?: number | null;         // order price (for the crypto FX-cap ratio: seller gets ≤ net/gross of received SOL)
+  received_lamports?: number | null; // SOL actually received at purchase (crypto) — cap the payout against this
+  stripe_payment_intent?: string | null;
+};
+
+export type PayoutResult = { ok: boolean; payout_tx: string | null; error?: string };
+
+async function solPriceUsd(): Promise<number | null> {
+  try {
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const d = await r.json();
+    return d?.solana?.usd ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function releasePayout(order: PayoutOrder): Promise<PayoutResult> {
+  const net = Number(order.seller_net_usd);
+  if (!Number.isFinite(net)) {
+    console.error('[payout] invalid net for order', order.id, order.seller_net_usd);
+    return { ok: false, payout_tx: null, error: 'Invalid net amount' };
+  }
+  if (net <= 0) return { ok: true, payout_tx: null }; // nothing owed (e.g. shipping ≥ net)
+  if (!order.seller_wallet) return { ok: false, payout_tx: null, error: 'No seller wallet on file for payout.' };
+
+  try {
+    const solUsd = await solPriceUsd();
+    if (!solUsd || solUsd <= 0) return { ok: false, payout_tx: null, error: 'SOL price feed unavailable.' };
+    let lamports = Math.round((net / solUsd) * LAMPORTS_PER_SOL);
+
+    // FX CAP (crypto purchases only): the treasury received `received_lamports` of SOL for this order. Never
+    // disburse more SOL to the seller than their net share of what actually came in — otherwise a drop in
+    // SOL between purchase and delivery would have the treasury paying out more SOL than it took in. Card
+    // purchases settled in USD (no SOL received) keep the current-price conversion, bounded by the USD float.
+    const isCrypto = (order.payout_method ?? 'crypto') === 'crypto';
+    if (isCrypto && order.received_lamports && order.received_lamports > 0 && order.gross_usd && order.gross_usd > 0) {
+      const capLamports = Math.floor(order.received_lamports * (net / order.gross_usd));
+      if (lamports > capLamports) lamports = capLamports;
+    }
+
+    if (lamports <= 0) return { ok: true, payout_tx: null };
+    const sig = await sendSolFromAuthority(order.seller_wallet, lamports);
+    return { ok: true, payout_tx: sig };
+  } catch (err) {
+    console.error('[payout] release failed:', err);
+    captureError(err, { stage: 'releasePayout', order_id: order.id, seller_wallet: order.seller_wallet, net });
+    return { ok: false, payout_tx: null, error: err instanceof Error ? err.message : 'Payout failed' };
+  }
+}

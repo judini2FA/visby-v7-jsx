@@ -26,8 +26,6 @@ async function getOrCreateCustomer(wallet: string): Promise<string> {
   return customer.id;
 }
 
-export { getOrCreateCustomer };
-
 export async function POST(req: Request) {
   try {
     const { wallet } = await req.json();
@@ -37,10 +35,12 @@ export async function POST(req: Request) {
 
     const customerId = await getOrCreateCustomer(wallet);
 
+    // Card-only so the client's confirmCardSetup() works cleanly. (automatic_payment_methods enables
+    // redirect-based methods that require confirmSetup + a return_url, which silently breaks card saves.)
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       usage: 'off_session',
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ['card'],
     });
 
     return NextResponse.json({ client_secret: setupIntent.client_secret });
