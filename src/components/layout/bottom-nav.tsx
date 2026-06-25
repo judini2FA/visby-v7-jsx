@@ -25,7 +25,7 @@ function Icon({ id, active }: { id: string; active: boolean }) {
   if (id === 'home')     return <svg {...s}><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>;
   if (id === 'messages') return <svg {...s}><g transform="translate(2 0)"><path d="M5 7 H11.5 A5.5 5.5 0 0 0 17 12.5 V19 A2 2 0 0 1 15 21 H5 A2 2 0 0 1 3 19 V9 A2 2 0 0 1 5 7 Z" /><circle cx="17" cy="7" r="2.2" /></g></svg>;
   if (id === 'sell')     return <svg {...{ ...s, strokeWidth: 2 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
-  if (id === 'wallet')   return <svg {...s}><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" /></svg>;
+  if (id === 'wallet')   return <svg {...s}><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9z" /><circle cx="16.5" cy="12" r="1.35" fill={color} stroke="none" /></svg>;
   return <svg {...s}><circle cx="12" cy="8" r="4" /><path d="M12 14c-4.4 0-8 2.6-8 5.8 0 .7.6 1.2 1.3 1.2h13.4c.7 0 1.3-.5 1.3-1.2 0-3.2-3.6-5.8-8-5.8z" /></svg>;
 }
 

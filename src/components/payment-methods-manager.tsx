@@ -7,8 +7,9 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { usePlaidLink } from 'react-plaid-link';
 import { useTheme } from '@/lib/theme';
-import { t, S, surface, btn } from '@/lib/ui';
+import { t, S, surface, btn, input } from '@/lib/ui';
 import { solscanAccount } from '@/lib/explorer';
+import { trpc } from '@/lib/trpc/client';
 
 // Wallet "connected methods" manager — the stacked method-card layout from Judah's sketch.
 // Each tile: big amount+currency (or just the currency when no amount, e.g. cards), name + masked id,
@@ -23,6 +24,18 @@ const RED = 'var(--danger)';
 const ORDER_KEY = 'visby-payment-order';
 const GRAD = 'linear-gradient(135deg,#25CDB8,#2A8AED 50%,#BC2DE6)';   // saturated — icon + amount text
 const BOX_GRAD = 'var(--grad-brand)';                                // lighter pastel — the primary slot box
+
+// Connected (external) crypto wallets share the cross-chain registry used by the Tally Destination picker.
+const CW_KEY = 'visby-connected-wallets';
+type ConnWallet = { id: string; chain: 'solana' | 'ethereum' | 'bitcoin'; address: string; label?: string };
+const CHAIN_META: Record<ConnWallet['chain'], { sym: string; label: string }> = {
+  solana:   { sym: 'SOL', label: 'Solana' },
+  ethereum: { sym: 'ETH', label: 'Ethereum' },
+  bitcoin:  { sym: 'BTC', label: 'Bitcoin' },
+};
+function readConnWallets(): ConnWallet[] {
+  try { const v = JSON.parse(localStorage.getItem(CW_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
 
 type Kind = 'wallet' | 'card' | 'bank' | 'brokerage';
 type Method = {
@@ -88,10 +101,12 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
   if (!isDefault) items.push({ a: 'default', label: 'Make default' });
   if (!isFirst) items.push({ a: 'up', label: 'Order up' });
   if (!isLast) items.push({ a: 'down', label: 'Order down' });
-  if (m.kind === 'wallet') {
+  if (m.kind === 'wallet' && m.id === 'wallet') {
     items.push({ a: 'addfunds', label: 'Add funds', href: '/buy-crypto' });
     items.push({ a: 'export', label: 'Export key' });
     items.push({ a: 'explorer', label: 'Open in explorer' });
+  } else if (m.kind === 'wallet') {
+    items.push({ a: 'remove', label: 'Remove', danger: true });
   }
   if (m.kind === 'card') items.push({ a: 'remove', label: 'Remove', danger: true });
   if (m.kind === 'bank' || m.kind === 'brokerage') {
@@ -312,12 +327,43 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
   const [order, setOrder] = useState<string[]>([]);
   const [openMenu, setOpenMenu] = useState('');
   const [dragId, setDragId] = useState('');
-  const [addMode, setAddMode] = useState<'' | 'choose' | 'card' | 'bank' | 'brokerage'>('');
+  const [addMode, setAddMode] = useState<'' | 'choose' | 'card' | 'bank' | 'brokerage' | 'wallet'>('');
+  const [connWallets, setConnWallets] = useState<ConnWallet[]>([]);
   const [err, setErr] = useState('');
+  const upsertProfile = trpc.profiles.upsertProfile.useMutation();
 
   useEffect(() => {
     try { const s = JSON.parse(localStorage.getItem(ORDER_KEY) || '[]'); if (Array.isArray(s)) setOrder(s); } catch {}
   }, []);
+
+  // Connected external wallets — local cache first, then the authed server copy (cross-device, shared with
+  // the Tally Destination picker).
+  useEffect(() => {
+    if (previewMethods) return;
+    setConnWallets(readConnWallets());
+    if (!wallet) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const r = await fetch(`/api/profile/private?wallet=${encodeURIComponent(wallet)}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!cancelled && Array.isArray(d.connected_wallets) && d.connected_wallets.length) {
+          setConnWallets(d.connected_wallets);
+          try { localStorage.setItem(CW_KEY, JSON.stringify(d.connected_wallets)); } catch {}
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, getAccessToken, previewMethods]);
+
+  function saveConnWallets(next: ConnWallet[]) {
+    setConnWallets(next);
+    try { localStorage.setItem(CW_KEY, JSON.stringify(next)); } catch {}
+    if (wallet) upsertProfile.mutate({ wallet, connected_wallets: next });
+  }
 
   // Server is the source of truth (follows the user across devices + feeds VisbyPay checkout); localStorage
   // is a fast local cache. On mount, a non-empty server order overrides the cached one.
@@ -397,6 +443,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
     if (previewMethods) return previewMethods;
     const live: Method[] = [];
     if (wallet) live.push({ id: 'wallet', kind: 'wallet', currency: 'SOL', amount: balance != null ? balance.toFixed(3) : null, name: 'Solana wallet', masked: shortAddr(wallet), address: wallet });
+    connWallets.forEach(w => live.push({ id: `cw:${w.id}`, kind: 'wallet', currency: CHAIN_META[w.chain].sym, amount: null, name: w.label || `${CHAIN_META[w.chain].label} wallet`, masked: shortAddr(w.address), address: w.address }));
     (cards ?? []).forEach(c => live.push({ id: c.id, kind: 'card', currency: 'USD', amount: null, name: brandLabel(c.brand), masked: `···· ${c.last4}` }));
     banks.forEach(b => live.push({ id: b.id, kind: 'bank', currency: b.currency, amount: b.balance != null ? fmtMoney(b.balance) : null, name: b.institution, masked: b.mask ? `···· ${b.mask}` : '', item_id: b.item_id }));
     brokerages.forEach(b => live.push({ id: b.id, kind: 'brokerage', currency: b.currency, amount: b.balance != null ? fmtMoney(b.balance) : null, name: b.institution, masked: b.mask ? `···· ${b.mask}` : '' }));
@@ -405,7 +452,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
     const seen = new Set(ordered.map(m => m.id));
     live.forEach(m => { if (!seen.has(m.id)) ordered.push(m); });
     return ordered;
-  }, [wallet, balance, cards, order, previewMethods]);
+  }, [wallet, balance, cards, banks, brokerages, connWallets, order, previewMethods]);
 
   function reorder(ids: string[]) { persistOrder(ids); }
   function idsOf() { return methods.map(m => m.id); }
@@ -456,11 +503,16 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : 'Could not disconnect brokerage'); }
   }
 
+  function removeWallet(m: Method) {
+    setOpenMenu('');
+    saveConnWallets(connWallets.filter(w => `cw:${w.id}` !== m.id));
+  }
+
   function handleAction(m: Method, a: MenuAction) {
     if (a === 'default') return makeDefault(m.id);
     if (a === 'up') return move(m.id, -1);
     if (a === 'down') return move(m.id, 1);
-    if (a === 'remove') return removeCard(m.id);
+    if (a === 'remove') return m.kind === 'wallet' ? removeWallet(m) : removeCard(m.id);
     if (a === 'export') { setOpenMenu(''); onExportWallet?.(); return; }
     if (a === 'explorer') { setOpenMenu(''); if (m.address) window.open(solscanAccount(m.address), '_blank', 'noopener'); return; }
     if (a === 'disconnect') return m.kind === 'brokerage' ? disconnectBrokerage() : disconnectBank(m);
@@ -502,9 +554,12 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
         <ConnectBankButton wallet={wallet} onConnected={() => { setAddMode(''); loadBanks(); }} onCancel={() => setAddMode('')} />
       ) : addMode === 'brokerage' ? (
         <ConnectBrokerageButton wallet={wallet} onConnected={() => { setAddMode(''); loadBrokerages(); }} onCancel={() => setAddMode('')} />
+      ) : addMode === 'wallet' ? (
+        <ConnectWalletForm existing={connWallets} onAdd={w => { saveConnWallets([...connWallets, w]); setAddMode(''); }} onCancel={() => setAddMode('')} />
       ) : addMode === 'choose' ? (
         <div style={{ ...surface({ pad: `${S[2]}px` }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
           <AddRow kind="card" label="Add a card" onClick={() => setAddMode('card')} />
+          <AddRow kind="wallet" label="Connect a wallet" onClick={() => setAddMode('wallet')} />
           <AddRow kind="bank" label="Connect a bank" onClick={() => setAddMode('bank')} />
           <AddRow kind="brokerage" label="Connect a brokerage" onClick={() => setAddMode('brokerage')} />
           <button onClick={() => setAddMode('')} style={{ ...t('meta'), color: 'var(--text-muted)', background: 'none', border: 0, cursor: 'pointer', padding: `${S[2]}px 0 ${S[1]}px`, textAlign: 'center' }}>Cancel</button>
@@ -515,6 +570,41 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
           Add payment method
         </button>
       )}
+    </div>
+  );
+}
+
+// Connect an external crypto wallet (paste address) into the shared cross-chain registry. Honest: a pasted
+// wallet receives Tallys + shows here, but paying FROM it (signing) needs real wallet-connect — coming soon.
+function ConnectWalletForm({ existing, onAdd, onCancel }: { existing: ConnWallet[]; onAdd: (w: ConnWallet) => void; onCancel: () => void }) {
+  const [chain, setChain] = useState<ConnWallet['chain']>('solana');
+  const [address, setAddress] = useState('');
+  const [label, setLabel] = useState('');
+  const [formErr, setFormErr] = useState('');
+
+  function add() {
+    const a = address.trim();
+    if (!a) { setFormErr('Enter a wallet address'); return; }
+    if (existing.some(w => w.address === a)) { setFormErr('That wallet is already connected'); return; }
+    onAdd({ id: `${a.slice(0, 8)}-${existing.length}`, chain, address: a, label: label.trim() || undefined });
+  }
+
+  return (
+    <div style={{ ...surface({ pad: S[4] }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
+      <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>Connect a wallet</div>
+      <div style={{ display: 'flex', gap: S[2] }}>
+        {(['solana', 'ethereum', 'bitcoin'] as const).map(c => (
+          <button key={c} onClick={() => setChain(c)} style={{ ...btn(chain === c ? 'primary' : 'secondary'), padding: '7px 12px', fontSize: 12, flex: 1, ...(chain === c ? {} : { color: 'var(--text-muted)' }) }}>{CHAIN_META[c].label}</button>
+        ))}
+      </div>
+      <input value={address} onChange={e => { setAddress(e.target.value); setFormErr(''); }} placeholder={`${CHAIN_META[chain].label} wallet address`} style={input()} />
+      <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Label (optional)" style={input()} />
+      {formErr && <div style={{ ...t('meta'), color: RED }}>{formErr}</div>}
+      <div style={{ display: 'flex', gap: S[2] }}>
+        <button onClick={add} disabled={!address.trim()} style={{ ...btn('primary', { full: true }), flex: 1, opacity: address.trim() ? 1 : 0.5 }}>Connect wallet</button>
+        <button onClick={onCancel} style={btn('secondary')}>Cancel</button>
+      </div>
+      <div style={{ ...t('micro'), color: 'var(--text-muted)', lineHeight: 1.5 }}>Connected wallets receive your Tallys and appear here. Paying from an external wallet (signing) is coming soon.</div>
     </div>
   );
 }
