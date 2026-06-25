@@ -93,17 +93,25 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
 
       <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: S[4] }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[2] }}>
-          {(['crypto', 'bank'] as const).map(pt => (
-            <button key={pt} type="button" onClick={() => setPayoutType(pt)}
-              style={{ ...surface({ pad: '14px 12px' }), borderColor: payoutType === pt ? 'var(--text-strong)' : 'var(--glass-hairline)', cursor: 'pointer', textAlign: 'left' }}>
-              <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)', marginBottom: S[1] }}>
-                {pt === 'crypto' ? 'Crypto wallet' : 'Bank account'}
-              </div>
-              <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                {pt === 'crypto' ? 'SOL/USDC · instant' : 'via Stripe · 2–7 days'}
-              </div>
-            </button>
-          ))}
+          {(['crypto', 'bank'] as const).map(pt => {
+            const sel = payoutType === pt;
+            return (
+              <button key={pt} type="button" onClick={() => setPayoutType(pt)}
+                style={{ ...surface({ pad: '14px 12px' }), cursor: 'pointer', textAlign: 'left', position: 'relative', boxShadow: sel ? '0 4px 16px rgba(90,160,210,.22)' : 'var(--box-shadow-soft)' }}>
+                <div style={{ ...t('body'), fontWeight: 700, marginBottom: S[1], ...(sel ? { background: 'var(--grad-brand)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: 'var(--text-strong)' }) }}>
+                  {pt === 'crypto' ? 'Crypto wallet' : 'Bank account'}
+                </div>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                  {pt === 'crypto' ? 'SOL/USDC · instant' : 'via Stripe · 2–7 days'}
+                </div>
+                {sel && (
+                  <span style={{ position: 'absolute', top: 10, right: 10, width: 16, height: 16, borderRadius: '50%', background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-on-cta)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {payoutType === 'crypto' && (

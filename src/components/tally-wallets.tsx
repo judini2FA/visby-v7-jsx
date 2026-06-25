@@ -27,6 +27,14 @@ function ChainBadge({ chain, size = 34 }: { chain: Chain; size?: number }) {
   );
 }
 
+function DragGrip() {
+  return (
+    <svg width="11" height="18" viewBox="0 0 12 20" fill="currentColor" aria-hidden style={{ flexShrink: 0 }}>
+      {[4, 10, 16].map(y => [3, 9].map(x => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.4" />))}
+    </svg>
+  );
+}
+
 export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [dest, setDest] = useState('');           // chosen destination address; '' = Visby wallet
@@ -34,6 +42,7 @@ export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
   const [addAddr, setAddAddr] = useState('');
   const [addLabel, setAddLabel] = useState('');
   const [adding, setAdding] = useState(false);
+  const [openMenu, setOpenMenu] = useState('');
 
   const upsert = trpc.profiles.upsertProfile.useMutation();
   const { getAccessToken } = usePrivy();
@@ -97,40 +106,45 @@ export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
         Connect wallets across chains and choose where new Tallys are kept.
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-        {all.map(w => {
-          const isDest = w.address === destAddr;
-          return (
-            <div key={w.id} style={{ ...surface({ pad: '12px 14px' }), display: 'flex', alignItems: 'center', gap: S[3], border: isDest ? '1.5px solid var(--text-strong)' : undefined }}>
-              <ChainBadge chain={w.chain} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {w.label || CHAINS[w.chain].label}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }} onClick={() => openMenu && setOpenMenu('')}>
+        {(() => {
+          const destWallet = all.find(w => w.address === destAddr) ?? all[0];
+          const ordered = [destWallet, ...all.filter(w => w.address !== destWallet.address)];
+          return ordered.map(w => {
+            const isDest = w.address === destAddr;
+            const isVisby = w.id === 'visby';
+            const tileBody = (
+              <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+                <span style={{ color: 'var(--text-muted)', display: 'inline-flex', flexShrink: 0 }}><DragGrip /></span>
+                <ChainBadge chain={w.chain} size={28} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.label || CHAINS[w.chain].label}</div>
+                  <div style={{ ...t('micro'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{short(w.address)}{isVisby ? ' · default' : ''}</div>
                 </div>
-                <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {short(w.address)}{w.id === 'visby' ? ' · default' : ''}
+                <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                  <button onClick={() => setOpenMenu(openMenu === w.id ? '' : w.id)} aria-label="Wallet options" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'inline-flex' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
+                  </button>
+                  {openMenu === w.id && (
+                    <div style={{ position: 'absolute', top: 30, right: 0, zIndex: 20, minWidth: 160, ...surface({ pad: '6px' }), background: 'var(--glass-bg-strong)', border: '1px solid var(--glass-border)', boxShadow: 'var(--glass-shadow)', display: 'flex', flexDirection: 'column' }}>
+                      {!isDest && <button onClick={() => { setDestination(isVisby ? '' : w.address); setOpenMenu(''); }} style={{ ...t('body'), color: 'var(--text)', background: 'none', border: 0, textAlign: 'left', cursor: 'pointer', padding: '9px 12px', borderRadius: 'var(--r-sm)' }}>Set as destination</button>}
+                      {isDest && <div style={{ ...t('meta'), color: 'var(--text-muted)', padding: '9px 12px' }}>Current destination</div>}
+                      {!isVisby && <button onClick={() => { remove(w); setOpenMenu(''); }} style={{ ...t('body'), color: 'var(--danger)', background: 'none', border: 0, textAlign: 'left', cursor: 'pointer', padding: '9px 12px', borderRadius: 'var(--r-sm)' }}>Remove</button>}
+                    </div>
+                  )}
                 </div>
               </div>
-              {isDest ? (
-                <span style={{ ...t('micro'), color: 'var(--text-strong)', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7L12 16.9 5.7 21 8 14 2 9.4h7.6z"/></svg>
-                  Destination
-                </span>
-              ) : (
-                <button onClick={() => setDestination(w.id === 'visby' ? '' : w.address)}
-                  style={{ ...t('micro'), color: 'var(--text-muted)', background: 'none', border: 0, cursor: 'pointer', flexShrink: 0 }}>
-                  Set
-                </button>
-              )}
-              {w.id !== 'visby' && (
-                <button onClick={() => remove(w)} aria-label="Remove wallet"
-                  style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--text-muted)', padding: 4, flexShrink: 0, display: 'inline-flex' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              )}
-            </div>
-          );
-        })}
+            );
+            return isDest ? (
+              <div key={w.id} style={{ position: 'relative', borderRadius: 'var(--r-lg)', background: 'var(--grad-brand)', padding: '20px 3px 3px', boxShadow: '0 6px 20px rgba(120,110,160,.20)' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', ...t('micro'), color: 'var(--text-on-cta)', letterSpacing: '0.16em', pointerEvents: 'none' }}>DESTINATION</div>
+                <div style={{ background: 'var(--surface-bg)', borderRadius: 'var(--r)', padding: '10px 12px' }}>{tileBody}</div>
+              </div>
+            ) : (
+              <div key={w.id} style={{ ...surface({ pad: '10px 12px' }) }}>{tileBody}</div>
+            );
+          });
+        })()}
       </div>
 
       {adding ? (
