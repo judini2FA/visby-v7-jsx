@@ -20,12 +20,13 @@ function Icon({ id, active }: { id: string; active: boolean }) {
     return <svg {...f}><circle cx="12" cy="8" r="4" /><path d="M12 14c-4.4 0-8 2.6-8 5.8 0 .7.6 1.2 1.3 1.2h13.4c.7 0 1.3-.5 1.3-1.2 0-3.2-3.6-5.8-8-5.8z" /></svg>;
   }
 
-  const s = { width: 23, height: 23, viewBox: '0 0 24 24', fill: 'none' as const, stroke: color, strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-  if (id === 'home')     return <svg {...s}><path d="M9 22H3.8a.8 .8 0 0 1-.8-.8V9l9-7 9 7v12.2a.8 .8 0 0 1-.8 .8H15" /><polyline points="9 22 9 12 15 12 15 22" /></svg>;
+  // home / wallet / profile: stroke the SAME paths as their filled versions so the two states match.
+  const s = { width: 23, height: 23, viewBox: '0 0 24 24', fill: 'none' as const, stroke: color, strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  if (id === 'home')     return <svg {...s}><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>;
   if (id === 'messages') return <svg {...s}><g transform="translate(2 0)"><path d="M5 7 H11.5 A5.5 5.5 0 0 0 17 12.5 V19 A2 2 0 0 1 15 21 H5 A2 2 0 0 1 3 19 V9 A2 2 0 0 1 5 7 Z" /><circle cx="17" cy="7" r="2.2" /></g></svg>;
   if (id === 'sell')     return <svg {...{ ...s, strokeWidth: 2 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
-  if (id === 'wallet')   return <svg {...s}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v15.2a.8 .8 0 0 0 .8 .8h17.2v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4z" /></svg>;
-  return <svg {...s}><path d="M20 21V16.5A1.5 1.5 0 0 0 18.5 15H5.5A1.5 1.5 0 0 0 4 16.5V21" /><circle cx="12" cy="7" r="4" /></svg>;
+  if (id === 'wallet')   return <svg {...s}><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" /></svg>;
+  return <svg {...s}><circle cx="12" cy="8" r="4" /><path d="M12 14c-4.4 0-8 2.6-8 5.8 0 .7.6 1.2 1.3 1.2h13.4c.7 0 1.3-.5 1.3-1.2 0-3.2-3.6-5.8-8-5.8z" /></svg>;
 }
 
 const TABS = [

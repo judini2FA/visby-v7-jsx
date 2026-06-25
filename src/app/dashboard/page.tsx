@@ -327,10 +327,10 @@ function NotificationsTab({ wallet }: { wallet: string }) {
               <button onClick={markAllRead} style={{ ...btn('text'), padding: '4px 8px' }}>Mark all read</button>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
             {notifs.map(n => {
               const Row = (
-                <div style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+                <div style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
                   <div style={{ ...surface({ radius: '50%' }), width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
                     <NotifIcon type={n.type} />
                   </div>
@@ -363,9 +363,9 @@ function NotificationsTab({ wallet }: { wallet: string }) {
       {likeNotifs.length > 0 && (
         <div style={{ marginTop: notifs.length > 0 ? S[6] : 0 }}>
           <div style={{ ...sectionLabel(), padding: '0 16px', marginBottom: S[2] }}>Likes</div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
             {likeNotifs.map((n: any) => (
-              <div key={n.item_id} style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+              <div key={n.item_id} style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
                 <div style={{ ...surface({ radius: '50%' }), width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
@@ -916,10 +916,10 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
           <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Buyers can message you from item pages</div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
           {conversations.map((conv: any) => (
             <button key={conv.partner_wallet} onClick={() => openConv(conv.partner_wallet)}
-              style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)', background: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+              style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3], cursor: 'pointer', textAlign: 'left', width: '100%' }}>
               <div style={{ ...avatar('md'), width: 44, height: 44, background: T.gradBrand }}>
                 {(conv.partner_name ?? conv.partner_wallet).slice(0, 2).toUpperCase()}
               </div>
@@ -983,8 +983,8 @@ function DashboardInner() {
   // Sales history + purchases live in the three-bar menu now; here we only tab between
   // notifications and messages. Sales/purchases still render as focused views via ?tab=.
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'notifications', label: 'Notifications' },
     { id: 'messages',      label: 'Messages'      },
+    { id: 'notifications', label: 'Notifications' },
   ];
   const pageTitle = tab === 'sales' ? 'Sales History' : tab === 'purchases' ? 'Purchases' : 'Notifications';
   const showSlider = tab === 'notifications' || tab === 'messages';
