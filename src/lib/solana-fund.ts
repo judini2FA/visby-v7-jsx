@@ -12,7 +12,9 @@ export async function sendSolFromAuthority(toWallet: string, lamports: number): 
   const conn = new Connection(getRpcUrl(), 'confirmed');
 
   let balance = await conn.getBalance(authority.publicKey);
-  if (balance < lamports + 5_000_000) {
+  // Only auto-airdrop on devnet. Never attempt an airdrop against a mainnet RPC.
+  const isDevnet = !getRpcUrl().includes('mainnet');
+  if (isDevnet && balance < lamports + 5_000_000) {
     try {
       const sig = await conn.requestAirdrop(authority.publicKey, 1_000_000_000);
       await conn.confirmTransaction(sig, 'confirmed');

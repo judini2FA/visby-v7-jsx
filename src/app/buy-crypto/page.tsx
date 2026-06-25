@@ -8,6 +8,7 @@ import { Elements, CardElement, useStripe, useElements } from '@stripe/react-str
 import { useVisbWallet } from '@/lib/wallet';
 import { useTheme } from '@/lib/theme';
 import { t, S, price, card, surface, btn, badge, sectionLabel, input } from '@/lib/ui';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 const C = {
   navy: 'transparent',
@@ -15,8 +16,8 @@ const C = {
   blue: '#2A8AED',
   mag: '#BC2DE6',
   muted: 'var(--text-muted)',
-  green: '#00C48C',
-  red: '#FF3B5C',
+  green: 'var(--ok)',
+  red: 'var(--danger)',
   border: 'var(--glass-border)',
 };
 
@@ -44,7 +45,7 @@ const cardStyle = (dark: boolean) => ({
     fontSmoothing: 'antialiased' as const,
     '::placeholder': { color: dark ? '#9E97B4' : '#6B6480' },
   },
-  invalid: { color: '#FF3B5C', iconColor: '#FF3B5C' },
+  invalid: { color: 'var(--danger)', iconColor: 'var(--danger)' },
 });
 
 function Spinner() {
@@ -350,6 +351,7 @@ export default function BuyCryptoPage() {
             </svg>
           </button>
           <div style={{ flex: 1, ...t('heading'), color: 'var(--text-strong)' }}>Add Funds</div>
+          <HeaderMenu />
         </div>
       </div>
 
@@ -561,8 +563,8 @@ export default function BuyCryptoPage() {
               {cardErr && (
                 <div
                   style={{
-                    background: 'rgba(255,59,92,.08)',
-                    border: '1px solid rgba(255,59,92,.2)',
+                    background: 'var(--danger-soft)',
+                    border: '1px solid var(--danger-soft)',
                     borderRadius: 'var(--r-sm)',
                     padding: '12px 16px',
                     ...t('body'),
@@ -599,8 +601,8 @@ export default function BuyCryptoPage() {
               {faucetErr && (
                 <div
                   style={{
-                    background: 'rgba(255,59,92,.08)',
-                    border: '1px solid rgba(255,59,92,.2)',
+                    background: 'var(--danger-soft)',
+                    border: '1px solid var(--danger-soft)',
                     borderRadius: 'var(--r-sm)',
                     padding: '12px 16px',
                     ...t('body'),

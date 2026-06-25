@@ -24,8 +24,13 @@
   --plum: #40384E;
 
   /* shared gradients (identical in both modes) */
-  --grad-brand: linear-gradient(135deg, #25CDB8 0%, #2A8AED 50%, #BC2DE6 100%);
-  --grad-brand-h: linear-gradient(90deg, #25CDB8 0%, #2A8AED 50%, #BC2DE6 100%);
+  --grad-brand: linear-gradient(100deg, #5AD0CB 0%, #A9C4EE 50%, #CB9DDD 100%);
+  --grad-brand-h: linear-gradient(100deg, #5AD0CB 0%, #A9C4EE 50%, #CB9DDD 100%);
+  /* same hue family as the pastel button gradient, but theme-aware (--brand-* below) so WORDS and
+     footer ICONS get real contrast: deep in light mode, pastel in dark. */
+  --grad-brand-text: linear-gradient(100deg, var(--brand-1) 0%, var(--brand-2) 50%, var(--brand-3) 100%);
+  /* lightened brand gradient — the "tangible object" surface for NFT / Tally cards (dark ink on top) */
+  --grad-tally: linear-gradient(135deg, #CFF1ED 0%, #D7E5FB 48%, #F0DAF4 100%);
   --grad-glow: linear-gradient(135deg, #22C6B7 0%, #8EDFF7 50%, #E9B4F7 100%);
 
   /* radii + motion — tightened for an editorial feel (was 16/22/30/36) */
@@ -68,49 +73,59 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --bg-0: #ECECEE;
-  /* neutral greyscale field — colour comes only from the brand gradient on UI */
-  --bg-field:
-    radial-gradient(110% 80% at 10% 0%,   #F4F4F5 0%, rgba(244,244,245,0) 52%),
-    radial-gradient(110% 80% at 90% 0%,   #E6E6E8 0%, rgba(230,230,232,0) 52%),
-    radial-gradient(100% 90% at 50% 110%, #DEDEE0 0%, rgba(222,222,224,0) 58%),
-    radial-gradient(80%  70% at 20% 60%,  #EAEAEC 0%, rgba(234,234,236,0) 50%),
-    linear-gradient(160deg, #F1F1F2 0%, #E2E2E4 100%);
+  --bg-0: #FFFFFF;
+  /* white canvas — matches the white header/footer so the chrome separates by shadow only, not colour */
+  --bg-field: #FFFFFF;
   --field-glow: transparent; /* light mode never glows */
 
-  --text: #26262A;
-  --text-strong: #161618;
-  --text-muted: #66666E;
-  --text-on-cta: #FFFFFF;
+  --text: #0A0A0B;
+  --text-strong: #000000;
+  --text-muted: #56565E;
+  /* dark text on the pastel gradient buttons (like the reference) so the words stay crisp */
+  --text-on-cta: #15121C;
+  /* deep brand stops for gradient WORDS + footer icons in light mode (good contrast on white) */
+  --brand-1: #128B7C;
+  --brand-2: #2E63CC;
+  --brand-3: #9430B6;
 
-  --glass-bg: rgba(255, 255, 255, .10);
-  --glass-bg-strong: rgba(255, 255, 255, .20);
-  --glass-border: rgba(255, 255, 255, .45);
-  --glass-hairline: rgba(40, 40, 44, .06);
-  --glass-blur: 30px;
-  --glass-shadow: 0 12px 40px rgba(30, 30, 34, .12), 0 2px 8px rgba(30, 30, 34, .05);
-  --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .70);
+  /* solid, borderless objects — separation by fill contrast + shadow, not lines */
+  --glass-bg: #FFFFFF;
+  --glass-bg-strong: #FFFFFF;
+  --glass-border: transparent;
+  --glass-hairline: transparent;
+  --glass-blur: 0px;
+  --glass-shadow: 0 12px 40px rgba(30, 30, 34, .14), 0 2px 8px rgba(30, 30, 34, .06);
+  --glass-inner: none;
   --scrim: rgba(255, 255, 255, .0);
   --modal-scrim: rgba(15, 12, 24, .45);
 
-  /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
-  --surface-bg: rgba(255, 255, 255, .45);
+  /* nested fill — white in light mode; boxes separate by shadow, not a grey fill */
+  --surface-bg: #FFFFFF;
+  --box-shadow-soft: 0 3px 12px rgba(17, 17, 34, .10), 0 1px 3px rgba(17, 17, 34, .07);
 
-  --field-input-bg: rgba(255, 255, 255, .35);
-  --divider: rgba(40, 40, 44, .12);
+  --field-input-bg: #FFFFFF;
+  --divider: #E6E6EA;
+
+  /* functional accents — MONOCHROME in light (B&W experiment), full colour in dark. The brand
+     gradient, photos, and avatars are intentionally exempt and stay colourful. */
+  --ok: #1A1A1A;
+  --danger: #1A1A1A;
+  --warn: #1A1A1A;
+  --ok-soft: #EFEFF2;
+  --danger-soft: #EFEFF2;
+  --warn-soft: #EFEFF2;
+  --accent: #1A1A1A;
 }
 
 /* ---------- DARK (night, subtle background glow only) ---------- */
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg-0: #0A0A0B;
-  /* neutral greyscale night — colour comes only from the brand gradient on UI */
+  --bg-0: #000000;
+  /* near-black field — true Cash App-style contrast under lighter objects */
   --bg-field:
-    radial-gradient(130% 100% at 15% 0%,   #1B1B1E 0%, rgba(27,27,30,0) 55%),
-    radial-gradient(120% 90%  at 85% 5%,   #161619 0%, rgba(22,22,25,0) 55%),
-    radial-gradient(110% 80%  at 50% 100%, #1C1C20 0%, rgba(28,28,32,0) 55%),
-    linear-gradient(170deg, #121214 0%, #08080A 100%);
+    radial-gradient(120% 90% at 50% 0%, #101013 0%, rgba(16,16,19,0) 60%),
+    linear-gradient(170deg, #070709 0%, #000000 100%);
   /* subtle neutral light bloom — no colour */
   --field-glow:
     radial-gradient(55% 45% at var(--glow-x) var(--glow-y),
@@ -120,26 +135,41 @@
     radial-gradient(55% 45% at calc(var(--glow-x) - 16%) calc(var(--glow-y) + 20%),
       rgba(255, 255, 255, .04) 0%, rgba(255, 255, 255, 0) 72%);
 
-  --text: #EAEAEC;
+  --text: #FFFFFF;
   --text-strong: #FFFFFF;
-  --text-muted: #9A9AA2;
+  --text-muted: #9C9CA6;
   --text-on-cta: #0C0A14;
+  /* dark mode: words + footer icons keep the pastel gradient (it already contrasts on the dark canvas) */
+  --brand-1: #5AD0CB;
+  --brand-2: #A9C4EE;
+  --brand-3: #CB9DDD;
 
-  --glass-bg: rgba(36, 36, 40, .12);
-  --glass-bg-strong: rgba(28, 28, 32, .22);
-  --glass-border: rgba(255, 255, 255, .12);
-  --glass-hairline: rgba(255, 255, 255, .05);
-  --glass-blur: 34px;
-  --glass-shadow: 0 18px 50px rgba(0, 0, 0, .50), 0 2px 10px rgba(0, 0, 0, .30);
-  --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .10);
+  /* solid, borderless objects — lighter than the near-black field so they pop by contrast, not lines */
+  --glass-bg: #1B1B1E;
+  --glass-bg-strong: #222226;
+  --glass-border: transparent;
+  --glass-hairline: transparent;
+  --glass-blur: 0px;
+  --glass-shadow: 0 18px 50px rgba(0, 0, 0, .55), 0 2px 10px rgba(0, 0, 0, .35);
+  --glass-inner: none;
   --scrim: rgba(10, 10, 12, .30);
   --modal-scrim: rgba(0, 0, 0, .65);
 
-  /* near-solid fill for nested panels (no blur) — keeps glass from stacking on glass */
-  --surface-bg: rgba(255, 255, 255, .05);
+  /* nested fill — lighter grey so a panel inside a card reads without a border */
+  --surface-bg: #2A2A2F;
+  --box-shadow-soft: none;   /* dark keeps its grey fills — no added shadow */
 
-  --field-input-bg: rgba(255, 255, 255, .06);
-  --divider: rgba(255, 255, 255, .10);
+  --field-input-bg: #1C1C20;
+  --divider: #242428;
+
+  /* functional accents — full colour in dark mode */
+  --ok: #00C48C;
+  --danger: #FF3B5C;
+  --warn: #FFB36B;
+  --ok-soft: rgba(0, 196, 140, .14);
+  --danger-soft: rgba(255, 59, 92, .14);
+  --warn-soft: rgba(255, 179, 107, .14);
+  --accent: #4B93F1;
 }
 
 /* honor user accessibility prefs — fall back to near-solid surfaces */

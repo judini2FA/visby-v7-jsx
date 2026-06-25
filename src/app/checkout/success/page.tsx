@@ -5,9 +5,10 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { t, S, card, surface, btn } from '@/lib/ui';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 const C = {
-  green: '#00C48C', red: '#FF3B5C',
+  green: 'var(--ok)', red: 'var(--danger)',
 };
 
 function CheckoutSuccessInner() {
@@ -42,7 +43,11 @@ function CheckoutSuccessInner() {
   }, [sessionId]);
 
   return (
-    <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif", display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: S[5] }}>
+    <div style={{ position: 'relative', background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif", display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: S[5] }}>
+
+      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 50 }}>
+        <HeaderMenu />
+      </div>
 
       {status === 'loading' && (
         <>
@@ -90,7 +95,7 @@ function CheckoutSuccessInner() {
 
       {status === 'error' && (
         <div style={{ ...card(), width: '100%', maxWidth: 380, padding: S[6], display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[4] }}>
-          <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,59,92,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'var(--danger-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2], textAlign: 'center' }}>

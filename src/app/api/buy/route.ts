@@ -71,8 +71,19 @@ export async function POST(req: Request) {
                   return NextResponse.json({ error: 'Item is no longer available' }, { status: 409 });
                 }
 
-          // Transfer NFT on-chain: escrow (mint authority) → buyer
-          const nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
+          // Transfer NFT on-chain: escrow (mint authority) → buyer. This is the simulated/devnet path —
+          // no real payment is captured here, so on a transfer failure roll the listing back (restore
+          // is_listed + price) rather than stranding the item sold with no order.
+          let nftTxHash: string;
+          try {
+            nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
+          } catch (transferErr) {
+            await supabase.from('items')
+              .update({ current_owner_wallet: previousOwner, is_listed: true, price_usdc: item.price_usdc })
+              .eq('id', item.id);
+            console.error('[buy] NFT transfer failed — listing restored:', transferErr);
+            return NextResponse.json({ error: 'Item transfer failed — please try again.' }, { status: 502 });
+          }
 
           // Record ownership history
           await supabase.from('ownership_history').insert({

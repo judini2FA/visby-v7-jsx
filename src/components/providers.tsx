@@ -4,7 +4,19 @@ import { PrivyProvider, usePrivy, useSolanaWallets } from '@privy-io/react-auth'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { trpc, trpcClient } from '@/lib/trpc/client';
+import { registerTrpcToken } from '@/lib/trpc/token-bridge';
 import { ThemeProvider, useTheme } from '@/lib/theme';
+import { NativeBootstrap } from '@/components/native-bootstrap';
+
+// Hands the tRPC client a way to fetch a fresh Privy token so protectedProcedures can authenticate.
+function TrpcAuthBridge() {
+  const { getAccessToken } = usePrivy();
+  useEffect(() => {
+    registerTrpcToken(getAccessToken);
+    return () => registerTrpcToken(null);
+  }, [getAccessToken]);
+  return null;
+}
 
 // Auto-creates a Solana embedded wallet for users who only have an Ethereum wallet
 function EnsureSolanaWallet({ children }: { children: React.ReactNode }) {
@@ -45,6 +57,7 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
       }}
     >
       <EnsureSolanaWallet>
+        <TrpcAuthBridge />
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
             {children}
@@ -65,7 +78,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider>
-      <PrivyWithTheme>{children}</PrivyWithTheme>
+      <PrivyWithTheme>
+        <NativeBootstrap />
+        {children}
+      </PrivyWithTheme>
     </ThemeProvider>
   );
 }

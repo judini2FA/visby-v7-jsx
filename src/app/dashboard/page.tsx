@@ -1,17 +1,20 @@
 'use client';
 
 import { usePrivy } from '@privy-io/react-auth';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card, surface, btn, badge, avatar, sectionLabel, tabSlider, input, T } from '@/lib/ui';
+import { HeaderMenu } from '@/components/layout/header-menu';
+import { feeBreakdown } from '@/lib/fees';
+import type { ShipRate } from '@/lib/shipping/types';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
   blue: '#2A8AED', mag: '#BC2DE6', muted: 'var(--text-muted)',
-  green: '#00C48C', red: '#FF3B5C',
+  green: 'var(--ok)', red: 'var(--danger)',
 };
 
 type Tab = 'notifications' | 'sales' | 'messages' | 'purchases';
@@ -19,7 +22,7 @@ type Tab = 'notifications' | 'sales' | 'messages' | 'purchases';
 // ─────────────────────────────────────────────────────────────
 // Shared order types
 // ─────────────────────────────────────────────────────────────
-type OrderStatus = 'paid' | 'shipped' | 'delivered' | 'cancelled';
+type OrderStatus = 'paid' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
 
 interface OrderItem {
   id: string;
@@ -44,11 +47,31 @@ interface Order {
   tracking_carrier: string | null;
   tracking_number: string | null;
   payout_released: boolean;
+  disputed?: boolean;
   nft_tx: string | null;
   created_at: string;
   shipped_at: string | null;
   delivered_at: string | null;
+  shipping_cost: number | null;
+  shipping_service: string | null;
+  label_url: string | null;
+  platform_fee_usd: number | null;
+  sale_channel: string | null;
+  seller_net_usd: number | null;
   items: OrderItem;
+}
+
+function DisputeBadge({ order }: { order: Pick<Order, 'status' | 'disputed'> }) {
+  if (order.status === 'refunded') return <span style={{ ...badge('default') }}>Refunded</span>;
+  if (!order.disputed) return null;
+  return (
+    <span style={{ ...badge('danger'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+      </svg>
+      Disputed
+    </span>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -81,6 +104,7 @@ function PurchasesTab({ wallet }: { wallet: string }) {
   }, [wallet, getAccessToken]);
 
   function statusBadge(status: OrderStatus) {
+    if (status === 'refunded') return null;
     if (status === 'delivered') return <span style={{ ...badge('success') }}>Delivered</span>;
     if (status === 'shipped') return (
       <span style={{ ...badge('default'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -126,6 +150,7 @@ function PurchasesTab({ wallet }: { wallet: string }) {
                   <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item?.name ?? '—'}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginTop: S[1], flexWrap: 'wrap' }}>
                     {statusBadge(order.status)}
+                    <DisputeBadge order={order} />
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -145,40 +170,215 @@ function PurchasesTab({ wallet }: { wallet: string }) {
 // ─────────────────────────────────────────────────────────────
 // NOTIFICATIONS tab
 // ─────────────────────────────────────────────────────────────
+interface NotificationRow {
+  id: string;
+  recipient_wallet: string;
+  type: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  created_at: string;
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diff = Date.now() - then;
+  const sec = Math.round(diff / 1000);
+  if (sec < 60) return 'now';
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.round(hr / 24);
+  if (day < 7) return `${day}d`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function NotifIcon({ type }: { type: string }) {
+  const s = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none' as const, stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  switch (type) {
+    case 'order_sold':
+      return <svg {...s}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>;
+    case 'order_shipped':
+      return <svg {...s}><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>;
+    case 'order_delivered':
+      return <svg {...s}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
+    case 'message':
+      return <svg {...s}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
+    case 'review':
+      return <svg {...s}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+    case 'dispute_opened':
+    case 'dispute_resolved':
+    case 'item_flagged':
+      return <svg {...s}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>;
+    case 'item_authenticated':
+      return <svg {...s}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>;
+    default:
+      return <svg {...s}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
+  }
+}
+
 function NotificationsTab({ wallet }: { wallet: string }) {
-  const { data: likeNotifs = [], isLoading } = trpc.likes.getForOwner.useQuery(
+  const { getAccessToken } = usePrivy();
+  const utils = trpc.useUtils();
+  const [notifs, setNotifs] = useState<NotificationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const { data: likeNotifs = [], isLoading: likesLoading } = trpc.likes.getForOwner.useQuery(
     { owner_wallet: wallet },
     { enabled: !!wallet }
   );
 
-  if (isLoading) return (
+  async function loadNotifs() {
+    if (!wallet) return;
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/notifications?wallet=${encodeURIComponent(wallet)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      setNotifs(Array.isArray(json.notifications) ? json.notifications : []);
+    } catch {
+      setNotifs([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!wallet) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(`/api/notifications?wallet=${encodeURIComponent(wallet)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (!cancelled) setNotifs(Array.isArray(json.notifications) ? json.notifications : []);
+      } catch {
+        if (!cancelled) setNotifs([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, getAccessToken]);
+
+  async function markRead(id: string) {
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    try {
+      const token = await getAccessToken();
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ wallet, id }),
+      });
+      utils.notifications.unreadCount.invalidate();
+    } catch {
+      // non-fatal — read state is cosmetic
+    }
+  }
+
+  async function markAllRead() {
+    setNotifs(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      const token = await getAccessToken();
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ wallet }),
+      });
+      utils.notifications.unreadCount.invalidate();
+      await loadNotifs();
+    } catch {
+      // non-fatal
+    }
+  }
+
+  if (loading || likesLoading) return (
     <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[2] }}>
       {[1,2,3].map(i => <div key={i} style={{ ...card(), height: 64, animation: 'pulse 2s infinite' }} />)}
     </div>
   );
 
+  const unreadCount = notifs.filter(n => !n.read).length;
+  const isEmpty = notifs.length === 0 && likeNotifs.length === 0;
+
+  if (isEmpty) return (
+    <div style={{ paddingTop: S[4] }}>
+      <div style={{ textAlign: 'center', padding: `${S[7]}px 0` }}>
+        <div style={{ ...t('heading'), color: 'var(--text)', marginBottom: S[2] }}>No notifications yet</div>
+        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>When someone likes your item you&apos;ll see it here</div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ paddingTop: S[4] }}>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {likeNotifs.map((n: any) => (
-          <div key={n.item_id} style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-            <div style={{ ...surface({ radius: '50%' }), width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      {notifs.length > 0 && (
+        <>
+          {unreadCount > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: S[1] }}>
+              <button onClick={markAllRead} style={{ ...btn('text'), padding: '4px 8px' }}>Mark all read</button>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>{n.count} like{n.count !== 1 ? 's' : ''}</div>
-              <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.item_name}</div>
-            </div>
-            <div style={{ ...t('meta'), color: 'var(--text-muted)', flexShrink: 0 }}>{new Date(n.latest_at).toLocaleDateString()}</div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {notifs.map(n => {
+              const Row = (
+                <div style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+                  <div style={{ ...surface({ radius: '50%' }), width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
+                    <NotifIcon type={n.type} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</div>
+                    {n.body && (
+                      <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.body}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: S[2], flexShrink: 0 }}>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{relativeTime(n.created_at)}</span>
+                    {!n.read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.gradBrand, flexShrink: 0 }} />}
+                  </div>
+                </div>
+              );
+              return n.link ? (
+                <Link key={n.id} href={n.link} onClick={() => { if (!n.read) markRead(n.id); }} style={{ textDecoration: 'none' }}>
+                  {Row}
+                </Link>
+              ) : (
+                <div key={n.id} onClick={() => { if (!n.read) markRead(n.id); }} style={{ cursor: n.read ? 'default' : 'pointer' }}>
+                  {Row}
+                </div>
+              );
+            })}
           </div>
-        ))}
-        {likeNotifs.length === 0 && (
-          <div style={{ textAlign: 'center', padding: `${S[7]}px 0` }}>
-            <div style={{ ...t('heading'), color: 'var(--text)', marginBottom: S[2] }}>No notifications yet</div>
-            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>When someone likes your item you'll see it here</div>
+        </>
+      )}
+
+      {likeNotifs.length > 0 && (
+        <div style={{ marginTop: notifs.length > 0 ? S[6] : 0 }}>
+          <div style={{ ...sectionLabel(), padding: '0 16px', marginBottom: S[2] }}>Likes</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {likeNotifs.map((n: any) => (
+              <div key={n.item_id} style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+                <div style={{ ...surface({ radius: '50%' }), width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>{n.count} like{n.count !== 1 ? 's' : ''}</div>
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.item_name}</div>
+                </div>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)', flexShrink: 0 }}>{new Date(n.latest_at).toLocaleDateString()}</div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -189,37 +389,91 @@ function NotificationsTab({ wallet }: { wallet: string }) {
 
 interface FulfillRowProps {
   order: Order;
-  onShipped: (id: string) => void;
+  shippingEnabled: boolean;
+  onShipped: (order: Order) => void;
 }
 
-function FulfillRow({ order, onShipped }: FulfillRowProps) {
+// Tie the rate-picker to the shipping contract (carrier is the 'UPS'|'FedEx'|'USPS' union, not a bare
+// string). Type-only import → erased at build, so no server carrier code leaks into the client bundle.
+type ShipRateOption = ShipRate;
+
+function FulfillRow({ order, shippingEnabled, onShipped }: FulfillRowProps) {
   const { getAccessToken } = usePrivy();
   const [carrier, setCarrier] = useState('');
   const [tracking, setTracking] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [errCode, setErrCode] = useState('');
+  const [manual, setManual] = useState(false);
+  const [rates, setRates] = useState<ShipRateOption[] | null>(null);
+  const [selectedId, setSelectedId] = useState('');
+  const [ratesLoading, setRatesLoading] = useState(false);
   const item = order.items;
+  const hasAddress = !!order.ship_address;
 
-  async function markShipped() {
-    if (!carrier.trim() || !tracking.trim()) { setErr('Enter carrier and tracking number'); return; }
+  async function ship(body: Record<string, unknown>) {
     setSaving(true);
     setErr('');
+    setErrCode('');
     try {
       const token = await getAccessToken();
       const res = await fetch('/api/orders/ship', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ order_id: order.id, seller_wallet: order.seller_wallet, carrier: carrier.trim(), tracking_number: tracking.trim() }),
+        body: JSON.stringify({ order_id: order.id, seller_wallet: order.seller_wallet, ...body }),
       });
       const json = await res.json();
-      if (json.ok) { onShipped(order.id); }
-      else { setErr(json.error ?? 'Something went wrong'); }
+      if (json.ok) { onShipped({ ...order, ...json.order, items: order.items }); }
+      else { setErr(json.error ?? 'Something went wrong'); setErrCode(json.code ?? ''); }
     } catch {
       setErr('Network error');
     } finally {
       setSaving(false);
     }
   }
+
+  async function getRates() {
+    setRatesLoading(true);
+    setErr('');
+    setErrCode('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/shipping/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ order_id: order.id, seller_wallet: order.seller_wallet }),
+      });
+      const json = await res.json();
+      if (Array.isArray(json.rates) && json.rates.length) {
+        const list = json.rates as ShipRateOption[];
+        setRates(list);
+        const rec = json.recommended_id || list.find(r => r.recommended)?.id || list[0]?.id || '';
+        setSelectedId(rec);
+      } else {
+        setRates(null);
+        setErr(json.error ?? 'No carrier rates were returned for this shipment.');
+        setErrCode(json.code ?? '');
+      }
+    } catch {
+      setErr('Network error');
+    } finally {
+      setRatesLoading(false);
+    }
+  }
+
+  function buyChosenLabel() {
+    const chosen = rates?.find(r => r.id === selectedId);
+    if (!chosen) { setErr('Select a shipping rate first'); return; }
+    ship({ auto_label: true, selected_carrier: chosen.carrier, selected_service: chosen.service_code });
+  }
+
+  function markShippedManual() {
+    if (!carrier.trim() || !tracking.trim()) { setErr('Enter carrier and tracking number'); return; }
+    ship({ carrier: carrier.trim(), tracking_number: tracking.trim() });
+  }
+
+  const selectedRate = rates?.find(r => r.id === selectedId) ?? null;
+  const showAuto = shippingEnabled && !manual;
 
   return (
     <div style={{ ...card({ pad: S[4] }), marginBottom: S[3] }}>
@@ -240,24 +494,107 @@ function FulfillRow({ order, onShipped }: FulfillRowProps) {
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-        <input
-          value={carrier}
-          onChange={e => setCarrier(e.target.value)}
-          placeholder="Carrier (e.g. UPS, FedEx)"
-          style={{ ...input(), boxSizing: 'border-box' }}
-        />
-        <input
-          value={tracking}
-          onChange={e => setTracking(e.target.value)}
-          placeholder="Tracking number"
-          style={{ ...input(), boxSizing: 'border-box' }}
-        />
-        {err && <div style={{ ...t('meta'), color: C.red }}>{err}</div>}
-        <button onClick={markShipped} disabled={saving} style={{ ...btn('primary', { full: true, pill: false }), opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : 'Mark shipped'}
-        </button>
-      </div>
+
+      {!hasAddress ? (
+        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Waiting for the buyer to enter their shipping address.</div>
+      ) : showAuto ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+            Rate-shop UPS, FedEx and USPS, then buy the label you choose. Its cost is deducted from your payout.
+          </div>
+          {err && (
+            <div style={{ ...t('meta'), color: C.red }}>
+              {err}{' '}
+              {errCode === 'no_ship_from' && <Link href="/dashboard/seller" style={{ color: 'var(--text-strong)' }}>Set ship-from address</Link>}
+              {errCode === 'no_weight' && item?.id && <Link href={`/item/${item.id}`} style={{ color: 'var(--text-strong)' }}>Edit listing</Link>}
+            </div>
+          )}
+
+          {!rates ? (
+            <button onClick={getRates} disabled={ratesLoading} style={{ ...btn('secondary', { full: true, pill: false }), opacity: ratesLoading ? 0.6 : 1 }}>
+              {ratesLoading ? 'Getting rates…' : 'Get shipping rates'}
+            </button>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                {rates.map(r => {
+                  const sel = r.id === selectedId;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => setSelectedId(r.id)}
+                      style={{
+                        ...surface({ pad: S[3] }),
+                        display: 'flex', alignItems: 'center', gap: S[3], width: '100%',
+                        textAlign: 'left', cursor: 'pointer',
+                        borderColor: sel ? C.blue : 'var(--glass-hairline)',
+                        borderWidth: sel ? 2 : 1, borderStyle: 'solid',
+                      }}
+                    >
+                      <div style={{
+                        width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: `1.5px solid ${sel ? C.blue : 'var(--glass-border)'}`,
+                        background: sel ? C.blue : 'transparent',
+                      }}>
+                        {sel && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>
+                          {r.carrier} {r.service}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginTop: 2 }}>
+                          {r.delivery_days != null && (
+                            <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>~{r.delivery_days}-day</span>
+                          )}
+                          {r.recommended && (
+                            <span style={{ ...badge('success') }}>
+                              Recommended · cheapest{r.delivery_days != null && r.delivery_days <= 2 ? ' 2-day' : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ ...t('heading'), color: 'var(--text-strong)', flexShrink: 0 }}>
+                        ${Number(r.rate).toFixed(2)}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedRate && (
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                  ${Number(selectedRate.rate).toFixed(2)} label cost will be deducted from your payout.
+                </div>
+              )}
+
+              <button onClick={buyChosenLabel} disabled={saving || !selectedRate} style={{ ...btn('primary', { full: true, pill: false }), opacity: (saving || !selectedRate) ? 0.6 : 1 }}>
+                {saving ? 'Buying label…' : 'Buy label & ship'}
+              </button>
+            </>
+          )}
+
+          <button onClick={() => { setManual(true); setErr(''); }} style={{ ...btn('text'), alignSelf: 'center' }}>
+            Enter tracking manually
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          <input value={carrier} onChange={e => setCarrier(e.target.value)} placeholder="Carrier (e.g. UPS, FedEx)" style={{ ...input(), boxSizing: 'border-box' }} />
+          <input value={tracking} onChange={e => setTracking(e.target.value)} placeholder="Tracking number" style={{ ...input(), boxSizing: 'border-box' }} />
+          {err && <div style={{ ...t('meta'), color: C.red }}>{err}</div>}
+          <button onClick={markShippedManual} disabled={saving} style={{ ...btn('primary', { full: true, pill: false }), opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Mark shipped'}
+          </button>
+          {shippingEnabled && (
+            <button onClick={() => { setManual(false); setErr(''); }} style={{ ...btn('text'), alignSelf: 'center' }}>
+              Buy a label automatically instead
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -271,7 +608,11 @@ function SalesTab({ wallet }: { wallet: string }) {
 
   const [sellerOrders, setSellerOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [fulfilledIds, setFulfilledIds] = useState<Set<string>>(new Set());
+  const [shippingEnabled, setShippingEnabled] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/shipping/config').then(r => r.json()).then(d => setShippingEnabled(!!d.configured)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!wallet) return;
@@ -294,10 +635,10 @@ function SalesTab({ wallet }: { wallet: string }) {
     return () => { cancelled = true; };
   }, [wallet, getAccessToken]);
 
-  const toFulfill = sellerOrders.filter(o => o.status === 'paid' && !fulfilledIds.has(o.id));
-  const alreadyHandled = sellerOrders.filter(o => (o.status === 'shipped' || o.status === 'delivered') || (o.status === 'paid' && fulfilledIds.has(o.id)));
+  const toFulfill = sellerOrders.filter(o => o.status === 'paid');
+  const alreadyHandled = sellerOrders.filter(o => o.status === 'shipped' || o.status === 'delivered');
 
-  const totalRevenue = sales.reduce((a: number, s: any) => a + (s.price_usdc ?? 0), 0);
+  const totalRevenue = sales.reduce((a: number, s: any) => a + (Number(s.price_usdc) || 0), 0);
   const avgPrice     = sales.length ? totalRevenue / sales.length : 0;
 
   if (isLoading || ordersLoading) return (
@@ -322,27 +663,59 @@ function SalesTab({ wallet }: { wallet: string }) {
             <FulfillRow
               key={order.id}
               order={order}
-              onShipped={id => setFulfilledIds(prev => new Set([...prev, id]))}
+              shippingEnabled={shippingEnabled}
+              onShipped={updated => setSellerOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o))}
             />
           ))}
           {alreadyHandled.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-              {alreadyHandled.map(order => (
-                <div key={order.id} style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '10px 0', borderBottom: '1px solid var(--divider)' }}>
-                  <div style={{ ...surface(), width: 36, height: 36, overflow: 'hidden', flexShrink: 0 }}>
-                    {order.items?.image_url
-                      ? <img src={order.items.image_url} alt={order.items.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <div style={{ width: '100%', height: '100%', background: 'var(--surface-bg)' }} />
-                    }
+              {alreadyHandled.map(order => {
+                const shipCost = order.shipping_cost != null ? Number(order.shipping_cost) : 0;
+                const price = Number(order.price_usdc);
+                const feeUsd = order.platform_fee_usd != null
+                  ? Number(order.platform_fee_usd)
+                  : feeBreakdown(price, 0, order.sale_channel).platform_fee_usd;
+                const net = order.seller_net_usd != null
+                  ? Number(order.seller_net_usd)
+                  : Math.max(0, price - feeUsd - shipCost);
+                return (
+                  <div key={order.id} style={{ ...card({ pad: S[3] }), marginBottom: S[2] }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+                      <div style={{ ...surface(), width: 36, height: 36, overflow: 'hidden', flexShrink: 0 }}>
+                        {order.items?.image_url
+                          ? <img src={order.items.image_url} alt={order.items.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <div style={{ width: '100%', height: '100%', background: 'var(--surface-bg)' }} />
+                        }
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ ...t('body'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.items?.name ?? '—'}</div>
+                        {order.tracking_number && (
+                          <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>
+                            {order.tracking_carrier ? `${order.tracking_carrier} · ` : ''}{order.tracking_number}
+                          </div>
+                        )}
+                      </div>
+                      <span style={{ ...badge(order.status === 'delivered' ? 'success' : 'default') }}>
+                        {order.status === 'delivered' ? 'Delivered' : 'Shipped'}
+                      </span>
+                      <DisputeBadge order={order} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], marginTop: S[2], paddingTop: S[2], borderTop: '1px solid var(--divider)', flexWrap: 'wrap' }}>
+                      <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                        ${price.toFixed(2)} − ${feeUsd.toFixed(2)} fee{shipCost > 0 ? ` − $${shipCost.toFixed(2)} ship` : ''}
+                      </span>
+                      <span style={{ ...t('meta'), color: C.green }}>You net ${net.toFixed(2)}</span>
+                    </div>
+                    {order.label_url && (
+                      <a href={order.label_url} target="_blank" rel="noopener noreferrer"
+                        style={{ ...t('meta'), display: 'inline-flex', alignItems: 'center', gap: S[1], color: 'var(--text-strong)', textDecoration: 'none', marginTop: S[2] }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        Print shipping label
+                      </a>
+                    )}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ ...t('body'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.items?.name ?? '—'}</div>
-                  </div>
-                  <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                    {order.status === 'delivered' ? 'Delivered' : 'Shipped'}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -422,29 +795,64 @@ function SalesTab({ wallet }: { wallet: string }) {
 // ─────────────────────────────────────────────────────────────
 // MESSAGES tab
 // ─────────────────────────────────────────────────────────────
-function MessagesTab({ wallet }: { wallet: string }) {
-  const [activeConv, setActiveConv] = useState<string | null>(null);
+function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: string }) {
+  const { getAccessToken } = usePrivy();
+  const [activeConv, setActiveConv] = useState<string | null>(initialConv ?? null);
   const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
 
   const { data: conversations = [], isLoading, refetch } = trpc.messages.getConversations.useQuery(
     { wallet },
     { enabled: !!wallet, refetchInterval: 15000 }
   );
 
-  const { data: thread = [], refetch: refetchThread } = trpc.messages.getThread.useQuery(
+  const { data: thread = [], isLoading: threadLoading, refetch: refetchThread } = trpc.messages.getThread.useQuery(
     { wallet_a: wallet, wallet_b: activeConv ?? '' },
     { enabled: !!wallet && !!activeConv, refetchInterval: 8000 }
   );
 
-  const sendMsg = trpc.messages.send.useMutation({
-    onSuccess: () => { setDraft(''); refetch(); refetchThread(); }
-  });
-
-  const markRead = trpc.messages.markRead.useMutation();
-
-  function openConv(partnerWallet: string) {
+  // Open a conversation: mark messages from that partner as read via authed API route.
+  async function openConv(partnerWallet: string) {
     setActiveConv(partnerWallet);
-    markRead.mutate({ from_wallet: partnerWallet, to_wallet: wallet });
+    try {
+      const token = await getAccessToken();
+      await fetch('/api/messages/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ wallet, from_wallet: partnerWallet }),
+      });
+      refetch();
+    } catch {
+      // non-fatal — unread count is cosmetic
+    }
+  }
+
+  // If initialConv is set and conversations have loaded, mark it read immediately.
+  useEffect(() => {
+    if (initialConv && wallet) {
+      openConv(initialConv);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConv, wallet]);
+
+  async function sendMessage() {
+    if (!draft.trim() || !activeConv || sending) return;
+    setSending(true);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/messages/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ from_wallet: wallet, to_wallet: activeConv, content: draft.trim() }),
+      });
+      if (res.ok) {
+        setDraft('');
+        refetch();
+        refetchThread();
+      }
+    } finally {
+      setSending(false);
+    }
   }
 
   if (isLoading) return (
@@ -455,6 +863,7 @@ function MessagesTab({ wallet }: { wallet: string }) {
 
   if (activeConv) {
     const partnerConv = conversations.find((c: any) => c.partner_wallet === activeConv);
+    const displayName = partnerConv?.partner_name ?? `${activeConv.slice(0,6)}…${activeConv.slice(-4)}`;
     return (
       <div style={{ paddingTop: S[4], display: 'flex', flexDirection: 'column', height: 'calc(100vh - 220px)' }}>
         <button onClick={() => setActiveConv(null)} style={{ ...btn('text'), gap: S[2], marginBottom: S[4], padding: 0 }}>
@@ -462,7 +871,7 @@ function MessagesTab({ wallet }: { wallet: string }) {
           Back to conversations
         </button>
         <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[3] }}>
-          {partnerConv?.partner_name ?? `${activeConv.slice(0,6)}…${activeConv.slice(-4)}`}
+          {displayName}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: S[2], marginBottom: S[3] }}>
           {thread.map((msg: any) => {
@@ -476,20 +885,20 @@ function MessagesTab({ wallet }: { wallet: string }) {
               </div>
             );
           })}
-          {thread.length === 0 && <div style={{ textAlign: 'center', ...t('meta'), color: 'var(--text-muted)', paddingTop: S[5] }}>Start the conversation</div>}
+          {thread.length === 0 && !threadLoading && <div style={{ textAlign: 'center', ...t('meta'), color: 'var(--text-muted)', paddingTop: S[5] }}>Start the conversation</div>}
         </div>
         <div style={{ display: 'flex', gap: S[2] }}>
           <input
             value={draft}
             onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && draft.trim()) { e.preventDefault(); sendMsg.mutate({ from_wallet: wallet, to_wallet: activeConv, content: draft.trim() }); } }}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && draft.trim()) { e.preventDefault(); sendMessage(); } }}
             placeholder="Message…"
             style={{ ...surface({ radius: 16 }), flex: 1, padding: '10px 14px', color: 'var(--text)', ...t('body'), outline: 'none' }}
           />
-          <button onClick={() => { if (draft.trim()) sendMsg.mutate({ from_wallet: wallet, to_wallet: activeConv, content: draft.trim() }); }}
-            disabled={!draft.trim() || sendMsg.isPending}
+          <button onClick={sendMessage}
+            disabled={!draft.trim() || sending}
             style={{ ...btn('primary', { pill: false }), opacity: !draft.trim() ? 0.5 : 1 }}>
-            Send
+            {sending ? '…' : 'Send'}
           </button>
         </div>
       </div>
@@ -535,11 +944,28 @@ function MessagesTab({ wallet }: { wallet: string }) {
 // ─────────────────────────────────────────────────────────────
 // PAGE
 // ─────────────────────────────────────────────────────────────
-export default function NotificationsPage() {
+function DashboardInner() {
   const { ready, authenticated } = usePrivy();
   const { address: wallet }      = useVisbWallet();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>('notifications');
+  const [msgTarget, setMsgTarget] = useState<string | undefined>(undefined);
+
+  // ?msg=<wallet> deep-link: switch to Messages tab and pre-open that conversation.
+  // ?tab=<sales|purchases|messages|notifications> deep-link: open that tab directly.
+  useEffect(() => {
+    const msg = searchParams.get('msg');
+    if (msg) {
+      setTab('messages');
+      setMsgTarget(msg);
+      return;
+    }
+    const tp = searchParams.get('tab');
+    if (tp === 'sales' || tp === 'purchases' || tp === 'messages' || tp === 'notifications') {
+      setTab(tp as Tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (ready && !authenticated) router.push('/login');
@@ -554,12 +980,14 @@ export default function NotificationsPage() {
     );
   }
 
+  // Sales history + purchases live in the three-bar menu now; here we only tab between
+  // notifications and messages. Sales/purchases still render as focused views via ?tab=.
   const TABS: { id: Tab; label: string }[] = [
     { id: 'notifications', label: 'Notifications' },
-    { id: 'sales',         label: 'Sales History' },
-    { id: 'purchases',     label: 'Purchases'     },
     { id: 'messages',      label: 'Messages'      },
   ];
+  const pageTitle = tab === 'sales' ? 'Sales History' : tab === 'purchases' ? 'Purchases' : 'Notifications';
+  const showSlider = tab === 'notifications' || tab === 'messages';
 
   const slider = tabSlider();
 
@@ -569,17 +997,22 @@ export default function NotificationsPage() {
       {/* Header */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
         <div className="visby-inner" style={{ paddingTop: S[3], paddingBottom: S[3] }}>
-          <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Notifications</div>
-
-          {/* Tab slider */}
-          <div style={{ ...slider.wrap, marginTop: S[3] }}>
-            {TABS.map(tb => (
-              <button key={tb.id} onClick={() => setTab(tb.id)}
-                style={{ ...slider.item, ...(tab === tb.id ? slider.itemActive : null) }}>
-                {tb.label}
-              </button>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2] }}>
+            <div style={{ ...t('title'), color: 'var(--text-strong)' }}>{pageTitle}</div>
+            <HeaderMenu />
           </div>
+
+          {/* Tab slider — notifications / messages only */}
+          {showSlider && (
+            <div style={{ ...slider.wrap, marginTop: S[3] }}>
+              {TABS.map(tb => (
+                <button key={tb.id} onClick={() => setTab(tb.id)}
+                  style={{ ...slider.item, ...(tab === tb.id ? slider.itemActive : null) }}>
+                  {tb.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -587,7 +1020,7 @@ export default function NotificationsPage() {
         {tab === 'notifications' && <NotificationsTab wallet={wallet} />}
         {tab === 'sales'         && <SalesTab wallet={wallet} />}
         {tab === 'purchases'     && <PurchasesTab wallet={wallet} />}
-        {tab === 'messages'      && <MessagesTab wallet={wallet} />}
+        {tab === 'messages'      && <MessagesTab wallet={wallet} initialConv={msgTarget} />}
       </div>
 
       <style>{`
@@ -596,5 +1029,14 @@ export default function NotificationsPage() {
         @keyframes spin   { to { transform: rotate(360deg); } }
       `}</style>
     </div>
+  );
+}
+
+// useSearchParams (?msg= deep-link) requires a Suspense boundary in the App Router.
+export default function NotificationsPage() {
+  return (
+    <Suspense fallback={<div style={{ background: 'transparent', minHeight: '100vh' }} />}>
+      <DashboardInner />
+    </Suspense>
   );
 }

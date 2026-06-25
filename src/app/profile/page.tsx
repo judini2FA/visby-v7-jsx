@@ -7,200 +7,92 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 import { ThemeToggle, useTheme } from '@/lib/theme';
-import { t, S, price, card, surface, btn, badge, avatar, input, sectionLabel, tabSlider, T } from '@/lib/ui';
-import PayoutSettings from '@/components/payout-settings';
+import { t, S, price, card, surface, sheet, btn, badge, avatar, input, sectionLabel, tabSlider, T } from '@/lib/ui';
+import { useCurrency } from '@/lib/currency';
+import { TallyCard } from '@/components/tally-card';
+import { ListingCard } from '@/components/listing-card';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
   blue: '#2A8AED', mag: '#BC2DE6', muted: 'var(--text-muted)',
-  green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
+  green: 'var(--ok)', red: 'var(--danger)', border: 'var(--glass-border)',
 };
 const GD = `linear-gradient(135deg,${C.cyan},${C.blue} 50%,${C.mag})`;
 
-type Tab = 'public' | 'wallet' | 'items';
+type Tab = 'public' | 'items';
 
 function shortAddr(a: string) {
   if (!a || a.length < 12) return a;
   return `${a.slice(0, 6)}…${a.slice(-6)}`;
 }
 
-async function fetchSolBalance(addr: string, rpc: string): Promise<number | null> {
-  try {
-    const res = await fetch(rpc, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [addr] }) });
-    const d = await res.json();
-    return d.result?.value != null ? d.result.value / 1e9 : null;
-  } catch { return null; }
-}
-
-// ─────────────────────────────────────────────────────────────
-// APPEARANCE (theme toggle, shown in Wallet tab)
-// ─────────────────────────────────────────────────────────────
-function AppearanceRow() {
-  const { mode } = useTheme();
-  return (
-    <div style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3], marginBottom: S[3] }}>
-      <div style={{ ...surface({ radius: 'var(--r-sm)' }), width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
-        <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>Appearance</span>
-        <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{mode === 'dark' ? 'Night' : 'Day'} mode</span>
-      </div>
-      <div style={{ marginLeft: 'auto' }}><ThemeToggle /></div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// WALLET TAB
-// ─────────────────────────────────────────────────────────────
-function WalletTab({ exportWallet, logout }: { exportWallet: () => void; logout: () => void }) {
-  const { address: wallet } = useVisbWallet();
-  const { wallets: solanaWallets, createWallet: createSolanaWallet } = useSolanaWallets();
-  const [balance, setBalance]       = useState<number | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [creating, setCreating]     = useState(false);
-
-  const solAddress = solanaWallets[0]?.address ?? '';
-
-  useEffect(() => {
-    if (!solAddress) return;
-    setBalanceLoading(true);
-    const rpc = process.env.NEXT_PUBLIC_HELIUS_RPC_URL ?? 'https://api.devnet.solana.com';
-    fetchSolBalance(solAddress, rpc).then(b => { setBalance(b); setBalanceLoading(false); });
-  }, [solAddress]);
-
-  const balanceDisplay = balanceLoading ? '…' : balance != null ? balance.toFixed(4) : '0.0000';
-
-  return (
-    <div style={{ paddingTop: S[4] }}>
-      {/* SOL balance card */}
-      <div style={{ ...surface({ pad: S[5] }), marginBottom: S[4], textAlign: 'center' }}>
-        <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
-          Solana Wallet
-        </div>
-        {solAddress ? (
-          <>
-            <div style={{ ...price('lg'), fontSize: 42, margin: '0 auto 4px' }}>
-              {balanceDisplay}
-            </div>
-            <div style={{ ...t('heading'), color: 'var(--text-muted)', marginBottom: S[3] }}>SOL</div>
-            {balance === 0 && !balanceLoading && (
-              <div style={{ ...surface({ pad: '10px 14px' }), ...t('meta'), color: 'var(--text-muted)', marginBottom: S[4] }}>
-                Get free SOL at{' '}
-                <a href="https://faucet.solana.com" target="_blank" rel="noreferrer" style={{ color: 'var(--text-strong)', textDecoration: 'none', fontWeight: 700 }}>faucet.solana.com</a>
-                {' '}→ paste your address below
-              </div>
-            )}
-            <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5], wordBreak: 'break-all', padding: '0 8px', cursor: 'pointer' }}
-              onClick={() => navigator.clipboard.writeText(solAddress)} title="Click to copy">
-              {solAddress}
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ ...t('body'), color: 'var(--text-muted)', marginBottom: S[5] }}>No Solana wallet yet</div>
-            <button onClick={async () => { setCreating(true); try { await createSolanaWallet(); } catch {} setCreating(false); }}
-              disabled={creating}
-              style={{ ...btn('primary'), marginBottom: S[5], opacity: creating ? 0.7 : 1 }}>
-              {creating ? 'Creating…' : 'Create Solana Wallet'}
-            </button>
-          </>
-        )}
-
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: S[3], justifyContent: 'center' }}>
-          <Link href="/buy-crypto" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2] }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: T.gradBrand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-            </div>
-            <span style={{ ...t('meta'), color: 'var(--text)' }}>Add Funds</span>
-          </Link>
-          <Link href="/dashboard/seller" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2] }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: T.gradBrand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </div>
-            <span style={{ ...t('meta'), color: 'var(--text)' }}>Mint</span>
-          </Link>
-          <div onClick={() => exportWallet()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2], cursor: 'pointer' }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: T.gradBrand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </div>
-            <span style={{ ...t('meta'), color: 'var(--text)' }}>Export</span>
-          </div>
-          <Link href="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2] }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: T.gradBrand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-            </div>
-            <span style={{ ...t('meta'), color: 'var(--text)' }}>Shop</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* Payment methods */}
-      <div style={{ marginBottom: S[3] }}>
-        <div style={{ ...sectionLabel(), marginBottom: S[3] }}>Payment Methods</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-          <div style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: `${C.green}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)' }}>Card via Stripe</div>
-              <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Pay with any credit or debit card</div>
-            </div>
-            <span style={badge('success')}>ACTIVE</span>
-          </div>
-          <div style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--surface-bg)', border: '1px solid var(--glass-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-muted)' }}>Crypto (SOL, ETH, BTC)</div>
-            </div>
-            <span style={badge('default')}>SOON</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Wallet security */}
-      <div style={{ marginBottom: S[3] }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[3] }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <div style={sectionLabel()}>Wallet Security</div>
-        </div>
-        <button onClick={() => exportWallet()} style={{ ...btn('primary', { full: true }), marginBottom: S[3] }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export Private Key
-        </button>
-        <div style={surface({ pad: S[4] })}>
-          <div style={{ ...t('body'), color: 'var(--text)', lineHeight: 1.7 }}>
-            Your key is split across secure servers. Export your private key anytime to import into Phantom or Solflare.
-          </div>
-        </div>
-      </div>
-
-      {/* Appearance */}
-      <AppearanceRow />
-
-      {/* Payout settings */}
-      <div style={{ borderTop: '1px solid var(--divider)', paddingTop: S[5], marginTop: S[2] }}>
-        <PayoutSettings wallet={wallet} />
-      </div>
-
-      {/* Sign out */}
-      <button onClick={logout} style={{ ...btn('danger', { full: true }), marginTop: S[5] }}>
-        Sign Out
-      </button>
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────
 // MY ITEMS TAB
 // ─────────────────────────────────────────────────────────────
+type ConnWallet = { id: string; chain: 'solana' | 'ethereum' | 'bitcoin'; address: string; label?: string };
+
 function MyItemsTab({ wallet }: { wallet: string }) {
-  const { data: ownedItems = [], isLoading } = trpc.listings.getByOwner.useQuery({ wallet }, { enabled: !!wallet });
+  const { getAccessToken } = usePrivy();
+  const [connected, setConnected] = useState<ConnWallet[]>([]);
+  const [transferItem, setTransferItem] = useState<any | null>(null);
+  const [destAddr, setDestAddr] = useState('');
+  const [xfer, setXfer] = useState<'idle' | 'sending' | 'done'>('idle');
+  const [xferErr, setXferErr] = useState('');
+
+  useEffect(() => {
+    try { setConnected(JSON.parse(localStorage.getItem('visby-connected-wallets') || '[]')); } catch {}
+  }, []);
+
+  // Prefer the server-synced wallet list (cross-device); fall back to the local cache. These are private
+  // fields, so read them from the AUTHED route (the public getProfile no longer exposes them).
+  const [serverWallets, setServerWallets] = useState<ConnWallet[] | null>(null);
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const res = await fetch(`/api/profile/private?wallet=${encodeURIComponent(wallet)}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const d = await res.json();
+        if (!cancelled && Array.isArray(d.connected_wallets)) setServerWallets(d.connected_wallets);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, getAccessToken]);
+  const effectiveConnected: ConnWallet[] = serverWallets && serverWallets.length ? serverWallets : connected;
+  const solWallets = effectiveConnected.filter(w => w.chain === 'solana' && w.address);
+  const allWallets = [...new Set([wallet, ...solWallets.map(w => w.address)].filter(Boolean))];
+
+  const { data: ownedItems = [], isLoading, refetch } = trpc.listings.getByOwnerBatch.useQuery(
+    { wallets: allWallets },
+    { enabled: allWallets.length > 0 },
+  );
+
+  // Destinations = the user's registered Solana wallets other than the one that holds the Tally.
+  const destsFor = (item: any) =>
+    [{ address: wallet, label: 'Visby wallet' }, ...solWallets.map(w => ({ address: w.address, label: w.label || 'Solana wallet' }))]
+      .filter(d => d.address && d.address !== item.current_owner_wallet);
+
+  async function doTransfer() {
+    if (!transferItem || !destAddr) return;
+    setXfer('sending'); setXferErr('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/tally/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ item_id: transferItem.id, from_wallet: transferItem.current_owner_wallet, to_wallet: destAddr }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Transfer failed');
+      setXfer('done');
+      await refetch();
+      setTimeout(() => { setTransferItem(null); setDestAddr(''); setXfer('idle'); }, 1100);
+    } catch (e: any) { setXfer('idle'); setXferErr(e?.message ?? 'Transfer failed'); }
+  }
 
   if (isLoading) return (
     <div style={{ paddingTop: S[4], display: 'flex', flexDirection: 'column', gap: S[2] }}>
@@ -221,52 +113,86 @@ function MyItemsTab({ wallet }: { wallet: string }) {
   );
 
   return (
-    <div style={{ paddingTop: S[4], display: 'flex', flexDirection: 'column', gap: S[2] }}>
-      {ownedItems.map((item: any) => (
-        <Link key={item.id} href={`/item/${item.id}`}
-          style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3], textDecoration: 'none' }}>
-          <div style={{ width: 52, height: 52, borderRadius: 10, background: 'var(--surface-bg)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-            {item.image_url
-              ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category?.slice(0,3)}</span>
-            }
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-            <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>{item.condition} · {item.category}</div>
-          </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            {item.is_listed && item.price_usdc ? (
-              <div style={price('sm')}>${item.price_usdc}</div>
+    <>
+      <div className="visby-grid" style={{ paddingTop: S[4] }}>
+        {ownedItems.map((item: any) => {
+          const canTransfer = item.current_owner_wallet === wallet;   // only the Privy-authed wallet can authorize a move
+          return (
+            <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+              <TallyCard
+                href={`/item/${item.id}`}
+                name={item.name}
+                serial={item.serial_number}
+                owners={item.owners?.length ? item.owners : [{ wallet: item.current_owner_wallet }]}
+              />
+              {canTransfer && (
+                <button onClick={() => { setTransferItem(item); setDestAddr(''); setXfer('idle'); setXferErr(''); }}
+                  style={{ ...t('meta'), fontWeight: 700, color: 'var(--text-muted)', background: 'none', border: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 4px', alignSelf: 'flex-start' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  Transfer
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {transferItem && (
+        <>
+          <div onClick={() => xfer !== 'sending' && setTransferItem(null)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }} />
+          <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, padding: `0 ${S[5]}px ${S[7]}px`, maxHeight: '82vh', overflowY: 'auto' }}>
+            <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `${S[4]}px auto ${S[5]}px` }} />
+            <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[1] }}>Transfer Tally</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[4] }}>Send “{transferItem.name}” to one of your wallets.</div>
+
+            {destsFor(transferItem).length === 0 ? (
+              <div style={{ ...surface({ pad: S[4] }), ...t('meta'), color: 'var(--text-muted)' }}>
+                Add another Solana wallet under Wallet → Details → Tally Destination to transfer to.
+              </div>
             ) : (
-              <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>NOT LISTED</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                {destsFor(transferItem).map(d => (
+                  <button key={d.address} onClick={() => setDestAddr(d.address)}
+                    style={{ ...surface({ pad: '12px 14px' }), display: 'flex', alignItems: 'center', gap: S[3], textAlign: 'left', cursor: 'pointer', border: destAddr === d.address ? '1.5px solid var(--text-strong)' : undefined }}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#14F195,#9945FF)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>SOL</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)' }}>{d.label}</div>
+                      <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.address.slice(0, 6)}…{d.address.slice(-5)}</div>
+                    </div>
+                    {destAddr === d.address && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-strong)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                  </button>
+                ))}
+              </div>
             )}
+
+            {xferErr && <div style={{ ...t('meta'), color: 'var(--danger)', marginTop: S[3] }}>{xferErr}</div>}
+
+            <button onClick={doTransfer} disabled={!destAddr || xfer !== 'idle'}
+              style={{ ...btn('primary', { full: true, pill: false }), marginTop: S[5], opacity: (!destAddr || xfer !== 'idle') ? 0.6 : 1 }}>
+              {xfer === 'sending' ? 'Transferring…' : xfer === 'done' ? 'Transferred' : 'Confirm transfer'}
+            </button>
+            <div style={{ ...t('micro'), color: 'var(--text-muted)', textAlign: 'center', marginTop: S[3] }}>On-chain Solana transfer · devnet</div>
           </div>
-        </Link>
-      ))}
-    </div>
+        </>
+      )}
+    </>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
 // PUBLIC VIEW TAB
 // ─────────────────────────────────────────────────────────────
-function PublicViewTab({ wallet, displayName, bio }: { wallet: string; displayName: string; bio?: string | null }) {
+function PublicViewTab({ wallet, displayName, bio, avatarUrl }: { wallet: string; displayName: string; bio?: string | null; avatarUrl?: string | null }) {
   const { data: ownedItems = [] } = trpc.listings.getByOwner.useQuery({ wallet }, { enabled: !!wallet });
   const listedItems = ownedItems.filter((i: any) => i.is_listed);
+  const { format: fmtPrice } = useCurrency();
 
   return (
     <div style={{ paddingTop: S[4] }}>
-      {/* Preview banner */}
-      <div style={{ ...surface({ pad: '12px 16px' }), marginBottom: S[5], display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Viewing as others see you</div>
-        <Link href={`/p/${wallet}`} style={{ ...t('meta'), fontWeight: 700, color: 'var(--text-strong)', textDecoration: 'none' }}>Open full page →</Link>
-      </div>
-
       {/* Avatar card */}
       <div style={{ ...surface({ pad: S[4] }), display: 'flex', alignItems: 'center', gap: S[3], marginBottom: S[5] }}>
-        <div style={{ ...avatar('md'), width: 56, height: 56, fontSize: 20, background: wallet ? `linear-gradient(135deg, hsl(${(wallet.charCodeAt(0)*7)%360},70%,55%), hsl(${(wallet.charCodeAt(4)*13)%360},70%,45%))` : GD }}>
-          {(displayName[0] ?? '?').toUpperCase()}
+        <div style={{ ...avatar('md'), width: 56, height: 56, fontSize: 20, background: avatarUrl ? 'var(--surface-bg)' : (wallet ? `linear-gradient(135deg, hsl(${(wallet.charCodeAt(0)*7)%360},70%,55%), hsl(${(wallet.charCodeAt(4)*13)%360},70%,45%))` : GD) }}>
+          {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (displayName[0] ?? '?').toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>{displayName}</div>
@@ -281,21 +207,9 @@ function PublicViewTab({ wallet, displayName, bio }: { wallet: string; displayNa
           <div style={{ ...sectionLabel(), marginBottom: S[3] }}>
             {listedItems.length} active listing{listedItems.length !== 1 ? 's' : ''}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[3] }}>
-            {listedItems.slice(0, 4).map((item: any) => (
-              <Link key={item.id} href={`/item/${item.id}`}
-                style={{ ...surface({ radius: 'var(--r)' }), display: 'flex', flexDirection: 'column', overflow: 'hidden', textDecoration: 'none' }}>
-                <div style={{ aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {item.image_url
-                    ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
-                  }
-                </div>
-                <div style={{ padding: S[3], display: 'flex', flexDirection: 'column', gap: S[1] }}>
-                  <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                  <div style={price('sm')}>${item.price_usdc}</div>
-                </div>
-              </Link>
+          <div className="visby-grid">
+            {listedItems.map((item: any) => (
+              <ListingCard key={item.id} item={item} />
             ))}
           </div>
         </>
@@ -315,24 +229,48 @@ function PublicViewTab({ wallet, displayName, bio }: { wallet: string; displayNa
 // ─────────────────────────────────────────────────────────────
 function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: string; onClose: () => void }) {
   const { data: existing } = trpc.profiles.getProfile.useQuery({ wallet }, { enabled: !!wallet });
-  const upsert = trpc.profiles.upsertProfile.useMutation();
+  const utils = trpc.useUtils();
+  const upsert = trpc.profiles.upsertProfile.useMutation({ onSuccess: () => utils.profiles.getProfile.invalidate() });
   const [name, setName] = useState('');
   const [bio,  setBio]  = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (existing) {
       setName(existing.display_name ?? '');
       setBio(existing.bio ?? '');
+      setAvatarUrl(existing.avatar_url ?? '');
     }
-  }, [existing?.display_name, existing?.bio]);
+  }, [existing?.display_name, existing?.bio, existing?.avatar_url]);
 
   const displayName = name || existing?.display_name || '';
-  const displayBio  = bio  || existing?.bio  || '';
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { setUploadErr('Image must be under 8MB.'); return; }
+    setUploading(true); setUploadErr('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload-image', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (res.ok && json.url) setAvatarUrl(json.url);
+      else setUploadErr(json.error || 'Upload failed — try again.');
+    } catch {
+      setUploadErr('Upload failed — check your connection.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    await upsert.mutateAsync({ wallet, display_name: name.trim() || undefined, bio: bio.trim() || undefined });
+    await upsert.mutateAsync({ wallet, display_name: name.trim() || undefined, bio: bio.trim() || undefined, avatar_url: avatarUrl });
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 1200);
   }
@@ -340,19 +278,36 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
   return (
     <div style={{ padding: `0 ${S[4]}px ${S[7]}px`, maxWidth: 600, margin: '0 auto' }}>
 
-      {/* Preview */}
+      {/* Preview + profile-picture upload */}
       <div style={{ ...card({ pad: S[4] }), display: 'flex', alignItems: 'center', gap: S[3], marginBottom: S[5] }}>
-        <div style={{ ...avatar('md'), background: wallet ? `linear-gradient(135deg, hsl(${(wallet.charCodeAt(0)*7)%360},70%,55%), hsl(${(wallet.charCodeAt(4)*13)%360},70%,45%))` : GD }}>
-          {wallet.slice(0,2).toUpperCase()}
-        </div>
+        <label title="Upload a profile picture"
+          style={{ ...avatar('lg'), position: 'relative', cursor: uploading ? 'wait' : 'pointer',
+                   background: avatarUrl ? 'var(--surface-bg)' : (wallet ? `linear-gradient(135deg, hsl(${(wallet.charCodeAt(0)*7)%360},70%,55%), hsl(${(wallet.charCodeAt(4)*13)%360},70%,45%))` : GD) }}>
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontSize: 22 }}>{wallet.slice(0,2).toUpperCase()}</span>}
+          <span aria-hidden style={{ position: 'absolute', right: -1, bottom: -1, width: 20, height: 20, borderRadius: '50%', background: 'var(--text-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px var(--glass-bg)' }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--bg-0)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </span>
+          <input type="file" accept="image/*" onChange={handleFile} disabled={uploading}
+            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'inherit' }} />
+        </label>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>
             {displayName || wallet.slice(0,6) + '…' + wallet.slice(-4)}
           </div>
-          {displayBio && <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayBio}</div>}
+          {uploading
+            ? <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Uploading photo…</div>
+            : avatarUrl
+              ? <button type="button" onClick={() => setAvatarUrl('')} style={{ ...t('meta'), color: C.red, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>Remove photo</button>
+              : <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Tap the photo to upload one</div>}
           <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{email ?? shortAddr(wallet)}</div>
         </div>
       </div>
+      {uploadErr && (
+        <div style={{ ...surface({ pad: '10px 14px' }), ...t('meta'), color: C.red, borderColor: 'var(--danger-soft)', marginBottom: S[4] }}>{uploadErr}</div>
+      )}
 
       <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: S[4] }}>
         <div>
@@ -377,7 +332,7 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
           </div>
         )}
         {upsert.isError && (
-          <div style={{ ...surface({ pad: '10px 14px' }), ...t('meta'), color: C.red, borderColor: 'rgba(255,59,92,.3)' }}>
+          <div style={{ ...surface({ pad: '10px 14px' }), ...t('meta'), color: C.red, borderColor: 'var(--danger-soft)' }}>
             Could not save — check your connection and try again.
           </div>
         )}
@@ -404,6 +359,10 @@ export default function ProfilePage() {
   const { address: walletAddress, ready: walletReady } = useVisbWallet();
   const router = useRouter();
   const [tab, setTab]         = useState<Tab>('public');
+  useEffect(() => {
+    const tp = new URLSearchParams(window.location.search).get('tab');
+    if (tp === 'items' || tp === 'public') setTab(tp as Tab);
+  }, []);
   const [editOpen, setEditOpen] = useState(false);
 
   const { data: profile }        = trpc.profiles.getProfile.useQuery({ wallet: walletAddress }, { enabled: !!walletAddress });
@@ -430,9 +389,8 @@ export default function ProfilePage() {
   }
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'public', label: 'Public View' },
-    { id: 'wallet', label: 'Wallet'      },
-    { id: 'items',  label: 'My Items'    },
+    { id: 'public', label: 'Public Listings' },
+    { id: 'items',  label: 'My Tallys'        },
   ];
 
   return (
@@ -440,8 +398,9 @@ export default function ProfilePage() {
 
       {/* ── Header ─────────────────────────────────────── */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
-        <div className="visby-page" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center' }}>
+        <div className="visby-page" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Profile</div>
+          <HeaderMenu />
         </div>
       </div>
 
@@ -457,15 +416,15 @@ export default function ProfilePage() {
 
             {/* Avatar + info */}
             <div style={{ display: 'flex', alignItems: 'center', gap: S[4], marginBottom: S[5] }}>
-              <div style={{ ...avatar('lg'), fontSize: 24, background: walletAddress ? `linear-gradient(135deg, hsl(${(walletAddress.charCodeAt(0)*7)%360},70%,55%), hsl(${(walletAddress.charCodeAt(4)*13)%360},70%,45%))` : GD }}>
-                {initial}
+              <div style={{ ...avatar('lg'), fontSize: 24, background: profile?.avatar_url ? 'var(--surface-bg)' : (walletAddress ? `linear-gradient(135deg, hsl(${(walletAddress.charCodeAt(0)*7)%360},70%,55%), hsl(${(walletAddress.charCodeAt(4)*13)%360},70%,45%))` : GD) }}>
+                {profile?.avatar_url ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[1] }}>
                   <div style={{ ...t('title'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{displayName}</div>
                   <button onClick={() => setEditOpen(o => !o)}
-                    style={{ ...surface({ radius: 8 }), width: 32, height: 32, borderColor: editOpen ? 'var(--text-strong)' : 'var(--glass-hairline)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={editOpen ? 'var(--text)' : 'var(--text-muted)'} strokeWidth="2" strokeLinecap="round">
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: S[1] }}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={editOpen ? 'var(--text-strong)' : 'var(--text-muted)'} strokeWidth="2" strokeLinecap="round">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                     </svg>
@@ -477,32 +436,25 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Social */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[2], marginBottom: S[2] }}>
+            {/* Stats — all numbers floating in one row, no boxes */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: S[2], marginBottom: S[5] }}>
               {([
-                { label: 'Followers', value: counts?.followers ?? 0, tab: 'followers' },
-                { label: 'Following', value: counts?.following ?? 0, tab: 'following' },
-              ] as const).map(s => (
-                <Link key={s.label} href={`/connections/${walletAddress}?tab=${s.tab}`}
-                  style={{ ...surface({ pad: '14px 12px' }), textAlign: 'center', textDecoration: 'none' }}>
-                  <div style={{ ...t('title'), color: 'var(--text-strong)' }}>{s.value}</div>
-                  <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
-                </Link>
-              ))}
-            </div>
-
-            {/* Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: S[2], marginBottom: S[5] }}>
-              {[
-                { label: 'Items Owned', value: ownedItems.length },
-                { label: 'Listed',      value: listedCount },
-                { label: 'Sold',        value: soldItems.length },
-              ].map(s => (
-                <div key={s.label} style={{ ...surface({ pad: '14px 12px' }), textAlign: 'center' }}>
-                  <div style={{ ...t('title'), color: 'var(--text-strong)' }}>{s.value}</div>
-                  <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
-                </div>
-              ))}
+                { label: 'Followers', value: counts?.followers ?? 0, href: `/connections/${walletAddress}?tab=followers` },
+                { label: 'Following', value: counts?.following ?? 0, href: `/connections/${walletAddress}?tab=following` },
+                { label: 'Owned',     value: ownedItems.length },
+                { label: 'Listed',    value: listedCount },
+                { label: 'Sold',      value: soldItems.length },
+              ] as { label: string; value: number; href?: string }[]).map(s => {
+                const inner = (
+                  <>
+                    <div style={{ ...t('title'), color: 'var(--text-strong)' }}>{s.value}</div>
+                    <div style={{ ...t('micro'), fontSize: 9.5, letterSpacing: '0.01em', color: 'var(--text-muted)', marginTop: S[1], whiteSpace: 'nowrap' }}>{s.label}</div>
+                  </>
+                );
+                return s.href
+                  ? <Link key={s.label} href={s.href} style={{ flex: 1, textAlign: 'center', textDecoration: 'none', minWidth: 0 }}>{inner}</Link>
+                  : <div key={s.label} style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>{inner}</div>;
+              })}
             </div>
 
             {/* Tab slider */}
@@ -517,10 +469,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="visby-page" style={{ paddingBottom: 100 }}>
-            <div style={{ ...card({ radius: 'var(--r-xl)', pad: S[4] }), marginTop: S[4] }}>
-              {tab === 'wallet' && <WalletTab exportWallet={exportWallet} logout={logout} />}
+            <div style={{ marginTop: S[2] }}>
               {tab === 'items'  && <MyItemsTab wallet={walletAddress} />}
-              {tab === 'public' && <PublicViewTab wallet={walletAddress} displayName={displayName} bio={profile?.bio} />}
+              {tab === 'public' && <PublicViewTab wallet={walletAddress} displayName={displayName} bio={profile?.bio} avatarUrl={profile?.avatar_url} />}
             </div>
           </div>
         </>

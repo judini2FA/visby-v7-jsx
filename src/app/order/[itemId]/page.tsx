@@ -6,8 +6,12 @@ import Link from 'next/link';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { S, t, price, card, surface, btn, badge, sectionLabel, input } from '@/lib/ui';
+import { solscanTx } from '@/lib/explorer';
+import { OrderReviewSection } from '@/components/reviews';
+import { DisputePanel } from '@/components/dispute-panel';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
-const GREEN = '#00C48C';
+const GREEN = 'var(--ok)';
 
 interface OwnershipRecord {
   id: string; owner_wallet: string; from_wallet?: string;
@@ -26,10 +30,11 @@ interface ShipAddress {
 interface Order {
   id: string; item_id: string; buyer_wallet: string; seller_wallet: string;
   price_usdc: number; pay_method: string;
-  status: 'paid' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'paid' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
   ship_name: string | null; ship_address: ShipAddress | null;
   tracking_carrier: string | null; tracking_number: string | null;
   payout_released: boolean; nft_tx: string | null;
+  disputed?: boolean; refunded_at?: string | null; refund_tx?: string | null;
   created_at: string; shipped_at: string | null; delivered_at: string | null;
   items: { id: string; name: string; category: string; condition: string; serial_number: string; image_url: string; nft_mint_address: string };
 }
@@ -159,7 +164,7 @@ export default function OrderPage() {
   const txHash    = transfer?.tx_hash ?? '';
   const pricePaid = transfer?.price_usdc;
   const isSolTx   = txHash.length > 40 && !txHash.startsWith('pi_') && !txHash.startsWith('stripe_');
-  const solscanUrl = isSolTx ? `https://solscan.io/tx/${txHash}?cluster=devnet` : null;
+  const solscanUrl = isSolTx ? solscanTx(txHash) : null;
 
   function copyTx() {
     navigator.clipboard.writeText(txHash).then(() => {
@@ -239,20 +244,34 @@ export default function OrderPage() {
     <div style={{ minHeight: '100vh', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: `${S[6]}px ${S[4]}px` }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pop { 0% { transform: scale(.7); opacity: 0; } 80% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }`}</style>
 
+      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 50 }}>
+        <HeaderMenu />
+      </div>
+
       <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: S[5] }}>
 
         {/* Success header */}
         <div style={{ ...card(), padding: S[6], textAlign: 'center', animation: 'pop .4s ease-out' }}>
-          <div style={{ ...surface({ radius: '50%' }), width: 72, height: 72, background: 'rgba(0,196,140,.12)', border: '1px solid rgba(0,196,140,.30)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: `0 auto ${S[5]}px` }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+          <div style={{ ...surface({ radius: '50%' }), width: 72, height: 72, background: order?.status === 'refunded' ? 'var(--surface-bg)' : 'var(--ok-soft)', border: order?.status === 'refunded' ? '1px solid var(--glass-border)' : '1px solid var(--ok-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: `0 auto ${S[5]}px` }}>
+            {order?.status === 'refunded' ? (
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+              </svg>
+            ) : (
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            )}
           </div>
           <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[2] }}>
-            {order?.status === 'delivered' ? 'Order delivered!' : 'Your order is on its way!'}
+            {order?.status === 'refunded' ? 'Order refunded'
+              : order?.status === 'delivered' ? 'Order delivered!'
+              : 'Your order is on its way!'}
           </div>
           <div style={{ ...t('body'), color: 'var(--text-muted)' }}>
-            You now own the verified chain of custody for this item.
+            {order?.status === 'refunded'
+              ? 'Your payment has been returned. This sale was reversed.'
+              : 'You now own the verified chain of custody for this item.'}
           </div>
           {pricePaid != null && (
             <div style={{ marginTop: S[5], display: 'inline-flex', alignItems: 'baseline', gap: S[2], ...surface({ pad: `${S[3]}px ${S[5]}px` }) }}>
@@ -309,8 +328,8 @@ export default function OrderPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
                       <div style={{
                         width: 32, height: 32, borderRadius: '50%',
-                        background: isDone ? 'rgba(0,196,140,.12)' : 'var(--surface-bg)',
-                        border: isDone ? '1px solid rgba(0,196,140,.30)' : '1px solid var(--glass-hairline)',
+                        background: isDone ? 'var(--ok-soft)' : 'var(--surface-bg)',
+                        border: isDone ? '1px solid var(--ok-soft)' : '1px solid var(--glass-hairline)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                         position: 'relative',
                       }}>
@@ -323,7 +342,7 @@ export default function OrderPage() {
                         )}
                       </div>
                       {!isLast && (
-                        <div style={{ width: 2, flex: 1, minHeight: 20, background: isDone ? 'rgba(0,196,140,.25)' : 'var(--divider)', marginTop: S[1] }} />
+                        <div style={{ width: 2, flex: 1, minHeight: 20, background: isDone ? 'var(--ok-soft)' : 'var(--divider)', marginTop: S[1] }} />
                       )}
                     </div>
 
@@ -429,7 +448,7 @@ export default function OrderPage() {
                     />
                   </div>
                   {addrError && (
-                    <div style={{ ...t('meta'), color: '#FF3B5C' }}>{addrError}</div>
+                    <div style={{ ...t('meta'), color: 'var(--danger)' }}>{addrError}</div>
                   )}
                   <button type="submit" disabled={addrSaving} style={{ ...btn('primary', { full: true }), opacity: addrSaving ? 0.6 : 1, cursor: addrSaving ? 'not-allowed' : 'pointer' }}>
                     {addrSaving ? (
@@ -459,14 +478,35 @@ export default function OrderPage() {
               </div>
             )}
 
+            {/* Report a problem */}
+            {order && walletAddress && (
+              <DisputePanel
+                orderId={order.id}
+                buyerWallet={walletAddress}
+                status={order.status}
+                payoutReleased={order.payout_released}
+                getAccessToken={getAccessToken}
+                onChange={fetchOrder}
+              />
+            )}
+
             {/* Confirm receipt */}
             {order.status === 'delivered' ? (
-              <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px`, radius: 'var(--r)' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
-                <span style={badge('success')}>
-                  <CheckIcon size={9} color={GREEN} />
-                  Delivered — provenance finalized
-                </span>
-              </div>
+              <>
+                <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px`, radius: 'var(--r)' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
+                  <span style={badge('success')}>
+                    <CheckIcon size={9} color={GREEN} />
+                    Delivered — provenance finalized
+                  </span>
+                </div>
+                {walletAddress && (
+                  <OrderReviewSection
+                    orderId={order.id}
+                    reviewerWallet={walletAddress}
+                    getAccessToken={getAccessToken}
+                  />
+                )}
+              </>
             ) : canConfirm ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
                 <button
@@ -479,7 +519,7 @@ export default function OrderPage() {
                   ) : 'Confirm receipt'}
                 </button>
                 {confirmError && (
-                  <div style={{ ...t('meta'), color: '#FF3B5C', textAlign: 'center' }}>{confirmError}</div>
+                  <div style={{ ...t('meta'), color: 'var(--danger)', textAlign: 'center' }}>{confirmError}</div>
                 )}
               </div>
             ) : null}

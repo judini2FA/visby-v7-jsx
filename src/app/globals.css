@@ -13,8 +13,16 @@ body {
   /* Manrope = body/UI; Quicksand reserved for brand + headings */
   font-family: 'Manrope', sans-serif;
   -webkit-font-smoothing: antialiased;
-  transition: background-color .4s var(--ease), color .4s var(--ease);
 }
+
+/* Motion off (by request): no transitions, no decorative keyframes anywhere. The ONLY exception is
+   the loading spinner — a frozen spinner is useless, so it's re-enabled below by its inline marker. */
+*, *::before, *::after {
+  transition: none !important;
+  animation: none !important;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+[style*="spin"] { animation: spin .8s linear infinite !important; }
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(14px); }
@@ -93,10 +101,11 @@ select option { background: var(--glass-bg-strong); color: var(--text); }
   .visby-inner { max-width: 960px; padding: 0 32px; }
 }
 
-/* ── Bottom nav: hide on desktop ─────────────────── */
+/* ── Homepage Visby logo + wordmark: slightly darker in light mode only ── */
+.visby-home-logo { filter: brightness(0.9); }
+[data-theme="dark"] .visby-home-logo { filter: none; }
+
+/* ── Bottom nav: full-width, shown on every width ── */
 .bottom-nav-wrap {
   display: block;
-}
-@media (min-width: 768px) {
-  .bottom-nav-wrap { display: none; }
 }

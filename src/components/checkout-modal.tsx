@@ -7,11 +7,12 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useTheme } from '@/lib/theme';
+import { AddressForm, EMPTY_SHIP_TO, shipToValid, shipToSummary, type ShipTo } from '@/components/address-form';
 
 const C = {
   navy: 'var(--bg-0)', teal: '#22C6B7', cyan: '#25CDB8',
   blue: '#2A8AED', mag: '#BC2DE6', muted: 'var(--text-muted)',
-  green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
+  green: 'var(--ok)', red: 'var(--danger)', border: 'var(--glass-border)',
 };
 const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
 const TREASURY = process.env.NEXT_PUBLIC_TREASURY_WALLET!;
@@ -36,7 +37,7 @@ const cardStyle = (dark: boolean) => ({
     fontSmoothing: 'antialiased' as const,
     '::placeholder': { color: dark ? '#9E97B4' : '#6B6480' },
   },
-  invalid: { color: '#FF3B5C', iconColor: '#FF3B5C' },
+  invalid: { color: 'var(--danger)', iconColor: 'var(--danger)' },
 });
 
 // Inherits the parent's text color via currentColor, so it reads on both gradient buttons and glass.
@@ -104,6 +105,15 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   const [swapLoading, setSwapLoading] = useState(false);
   const [solBalance,  setSolBalance]  = useState<number | null>(null);
 
+  // Shipping gate: load the buyer's saved address; if none, ask here before they can pay. Whatever is
+  // saved here is snapshotted onto the order by createOrder at settlement.
+  const [shipTo,      setShipTo]      = useState<ShipTo | null>(null);
+  const [shipLoading, setShipLoading] = useState(true);
+  const [editingAddr, setEditingAddr] = useState(false);
+  const [addrDraft,   setAddrDraft]   = useState<ShipTo>(EMPTY_SHIP_TO);
+  const [addrSaving,  setAddrSaving]  = useState(false);
+  const [addrErr,     setAddrErr]     = useState('');
+
   // Load price quotes — non-blocking, modal works fine without them
   useEffect(() => {
     fetch(`/api/lifi/quote?item_id=${itemId}`)
@@ -114,7 +124,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
 
   // Create PaymentIntent as soon as the card tab is active
   useEffect(() => {
-    if (currency !== 'CARD' || piSecret) return;
+    if (currency !== 'CARD' || piSecret || !buyerWallet || shipLoading) return;
     fetch('/api/stripe/payment-intent', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_id: itemId, buyer_wallet: buyerWallet }),
@@ -125,7 +135,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
         else setErrMsg(d.error ?? 'Could not start checkout');
       })
       .catch(() => setErrMsg('Network error — could not load checkout'));
-  }, [currency, itemId, buyerWallet, piSecret]);
+  }, [currency, itemId, buyerWallet, piSecret, shipLoading]);
 
   // Check the buyer's SOL balance when the SOL tab opens, so we can warn before a failed tx
   useEffect(() => {
@@ -146,6 +156,27 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
       .catch(() => setErrMsg('Could not load swap route'))
       .finally(() => setSwapLoading(false));
   }, [currency, itemId]);
+
+  // Load the buyer's saved shipping address; if there's none, open the inline form.
+  useEffect(() => {
+    if (!buyerWallet) { setShipLoading(false); setEditingAddr(true); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const r = await fetch(`/api/buyer/ship-to?wallet=${buyerWallet}`, { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json();
+        if (cancelled) return;
+        if (d.ship_to && d.ship_to.line1) setShipTo({ ...EMPTY_SHIP_TO, ...d.ship_to });
+        else { setEditingAddr(true); setAddrDraft(EMPTY_SHIP_TO); }
+      } catch {
+        if (!cancelled) setEditingAddr(true);
+      } finally {
+        if (!cancelled) setShipLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [buyerWallet, getAccessToken]);
 
   async function settle(fromCurrency: string, fromAmount: string) {
     setStatus('paying'); setErrMsg('');
@@ -193,15 +224,44 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     }
   }
 
+  const hasShip = !!(shipTo && shipTo.line1);
+
+  async function saveAddr() {
+    if (!shipToValid(addrDraft)) { setAddrErr('Enter street, city, state and ZIP'); return; }
+    setAddrSaving(true); setAddrErr('');
+    try {
+      const token = await getAccessToken();
+      const r = await fetch('/api/buyer/ship-to', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ buyer_wallet: buyerWallet, ship_to: addrDraft }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? 'Could not save address');
+      setShipTo({ ...addrDraft });
+      setEditingAddr(false);
+    } catch (e: any) {
+      setAddrErr(e?.message ?? 'Could not save address');
+    } finally {
+      setAddrSaving(false);
+    }
+  }
+
   const quote = currency === 'SOL' ? quotes?.SOL : currency === 'ETH' ? quotes?.ETH : quotes?.USDC;
+
+  // What the buyer pays in network/transfer fees, by method (shipping is always free to the buyer).
+  const transferFeeNote =
+    currency === 'SOL' ? 'Solana network fee · paid by you'
+    : (currency === 'ETH' || currency === 'BTC') ? 'Network + bridge fees included'
+    : 'None';
   const tabs: { id: Currency; label: string; soon?: boolean }[] = [
     { id: 'CARD', label: 'Card' }, { id: 'SOL', label: 'SOL' },
     { id: 'ETH', label: 'ETH' }, { id: 'BTC', label: 'BTC' }, { id: 'USDC', label: 'USDC' },
   ];
 
   return (
-    <div onClick={status === 'done' ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'var(--modal-scrim)', backdropFilter: 'blur(6px)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(28px) saturate(1.4)', WebkitBackdropFilter: 'blur(28px) saturate(1.4)', border: '1px solid var(--glass-border)', borderBottom: 'none', borderRadius: '30px 30px 0 0', padding: '24px 20px 36px', boxShadow: 'var(--glass-shadow)', maxHeight: '92vh', overflowY: 'auto' }}>
+    <div onClick={status === 'done' ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'var(--modal-scrim)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--glass-bg-strong)', border: '1px solid var(--glass-border)', borderBottom: 'none', borderRadius: '30px 30px 0 0', padding: '24px 20px 36px', boxShadow: 'var(--glass-shadow)', maxHeight: '92vh', overflowY: 'auto' }}>
 
         <div style={{ width: 40, height: 4, borderRadius: 2, background: 'var(--divider)', margin: '0 auto 20px' }} />
 
@@ -241,12 +301,45 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
-            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Seller receives</span>
-            <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Quicksand',sans-serif" }}>${priceUsdc.toFixed(2)} USD</span>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Shipping</span>
+            <span style={{ fontSize: 12, color: C.green, fontWeight: 700, fontFamily: "'Quicksand',sans-serif" }}>Free</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Transfer fee</span>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>{transferFeeNote}</span>
           </div>
         </div>
 
+        {/* Shipping gate — use the saved address, or ask for one before paying */}
+        {status !== 'done' && (
+          <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', marginBottom: 20 }}>
+            <div style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif", marginBottom: 8 }}>Ship to</div>
+            {shipLoading ? (
+              <div style={{ fontSize: 13, color: C.muted }}>Loading…</div>
+            ) : (hasShip && !editingAddr) ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, fontSize: 13, color: 'var(--text)', fontFamily: "'Manrope',sans-serif", lineHeight: 1.4 }}>{shipToSummary(shipTo)}</div>
+                <button onClick={() => { setAddrDraft(shipTo ?? EMPTY_SHIP_TO); setEditingAddr(true); setAddrErr(''); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-strong)', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: "'Manrope',sans-serif", flexShrink: 0 }}>
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {!hasShip && <div style={{ fontSize: 12, color: C.muted, fontFamily: "'Manrope',sans-serif" }}>Enter where your item should ship — we&apos;ll save it for next time.</div>}
+                <AddressForm value={addrDraft} onChange={setAddrDraft} />
+                {addrErr && <div style={{ fontSize: 12, color: C.red }}>{addrErr}</div>}
+                <button onClick={saveAddr} disabled={addrSaving}
+                  style={{ background: GH, border: 'none', borderRadius: 14, padding: '12px', fontWeight: 700, fontSize: 14, color: '#fff', cursor: addrSaving ? 'default' : 'pointer', fontFamily: "'Quicksand',sans-serif", opacity: addrSaving ? 0.7 : 1 }}>
+                  {addrSaving ? 'Saving…' : 'Save address'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tabs */}
+        {hasShip && !editingAddr && status !== 'done' && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'var(--glass-bg)', borderRadius: 16, padding: 4 }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => { setCurrency(t.id); setErrMsg(''); setStatus('idle'); setSwapQuote(null); }}
@@ -256,6 +349,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             </button>
           ))}
         </div>
+        )}
 
         {/* Success */}
         {status === 'done' ? (
@@ -266,10 +360,10 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             <div style={{ fontSize: 16, fontWeight: 800, color: C.green, fontFamily: "'Quicksand',sans-serif" }}>Purchase complete!</div>
             <div style={{ fontSize: 12, color: C.muted }}>NFT ownership transferred on Solana</div>
           </div>
-        ) : (
+        ) : (hasShip && !editingAddr) ? (
           <>
             {errMsg && (
-              <div style={{ background: 'rgba(255,59,92,.08)', border: '1px solid rgba(255,59,92,.2)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: C.red, marginBottom: 16 }}>
+              <div style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger-soft)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: C.red, marginBottom: 16 }}>
                 {errMsg}
               </div>
             )}
@@ -378,7 +472,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
               </div>
             )}
           </>
-        )}
+        ) : null}
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

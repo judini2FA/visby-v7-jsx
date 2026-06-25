@@ -7,6 +7,12 @@ import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, price, card, surface, btn, badge, sectionLabel, avatar, T } from '@/lib/ui';
+import { useCurrency } from '@/lib/currency';
+import { StarRating, ReputationBadge, ReviewList } from '@/components/reviews';
+import { BlockButton } from '@/components/block-button';
+import { ReportButton } from '@/components/report-button';
+import { HeaderMenu } from '@/components/layout/header-menu';
+import { ListingCard } from '@/components/listing-card';
 
 const GD = T.gradBrand;
 
@@ -23,29 +29,6 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ItemCard({ item, index }: { item: any; index: number }) {
-  return (
-    <Link
-      href={`/item/${item.id}`}
-      style={{ ...card({ radius: 'var(--r-lg)' }), display: 'flex', flexDirection: 'column', overflow: 'hidden', textDecoration: 'none', animation: `fadeUp .35s ease both`, animationDelay: `${index * 60}ms` }}
-    >
-      <div style={{ position: 'relative', aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {item.image_url
-          ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
-        }
-        <span style={{ ...badge('onImage'), position: 'absolute', top: S[3], left: S[3] }}>{item.condition}</span>
-      </div>
-      <div style={{ padding: S[4], display: 'flex', flexDirection: 'column', gap: S[2], flex: 1 }}>
-        <div style={{ ...t('heading'), color: 'var(--text-strong)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</div>
-        {item.is_listed && item.price_usdc
-          ? <div style={{ ...price('md'), marginTop: S[1] }}>${(item.price_usdc ?? 0).toLocaleString()}</div>
-          : <span style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>Not listed</span>
-        }
-      </div>
-    </Link>
-  );
-}
 
 function SoldRow({ sale, index }: { sale: any; index: number }) {
   const item = sale.items;
@@ -66,7 +49,7 @@ function SoldRow({ sale, index }: { sale: any; index: number }) {
           </div>
         </div>
         {sale.price_usdc && (
-          <div style={{ ...t('heading'), color: '#00C48C', flexShrink: 0 }}>
+          <div style={{ ...t('heading'), color: 'var(--ok)', flexShrink: 0 }}>
             +${sale.price_usdc.toLocaleString()}
           </div>
         )}
@@ -80,7 +63,7 @@ function SoldRow({ sale, index }: { sale: any; index: number }) {
 
 export default function PublicProfilePage() {
   const { wallet } = useParams() as { wallet: string };
-  const { user }   = usePrivy();
+  const { user, getAccessToken }   = usePrivy();
   const { wallets: solWallets } = useSolanaWallets();
   const myWallet = solWallets?.[0]?.address ?? '';
   const profileWallet = wallet as string;
@@ -112,6 +95,11 @@ export default function PublicProfilePage() {
   );
 
   const { data: soldItems = [], isLoading: loadingSold } = trpc.listings.getSoldByWallet.useQuery(
+    { wallet },
+    { enabled: !!wallet }
+  );
+
+  const { data: rep } = trpc.reviews.getBySeller.useQuery(
     { wallet },
     { enabled: !!wallet }
   );
@@ -156,6 +144,7 @@ export default function PublicProfilePage() {
               Edit
             </Link>
           )}
+          <HeaderMenu />
         </div>
       </div>
 
@@ -166,13 +155,10 @@ export default function PublicProfilePage() {
 
           {/* Avatar */}
           <div style={{ position: 'relative' }}>
-            <div style={{ ...avatar('lg'), width: 80, height: 80, fontSize: 28, background: avatarGrad }}>
-              {initials}
+            <div style={{ ...avatar('lg'), width: 80, height: 80, fontSize: 28, background: profile?.avatar_url ? 'var(--surface-bg)' : avatarGrad }}>
+              {profile?.avatar_url ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
             </div>
-            {/* Verified badge */}
-            <div style={{ position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: '50%', background: 'var(--glass-bg-strong)', border: '2px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
+
           </div>
 
           {/* Name + bio + trust */}
@@ -207,35 +193,33 @@ export default function PublicProfilePage() {
                 <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>New Seller</span>
               </div>
             )}
-          </div>
-
-          {/* Stats */}
-          <div style={{ ...card(), display: 'flex', gap: S[2], padding: S[2], width: '100%', maxWidth: 360 }}>
-            {[
-              { label: 'Owns', value: isLoading ? '—' : ownedItems.length },
-              { label: 'Listed', value: isLoading ? '—' : listedItems.length },
-              { label: 'Sold', value: isLoading ? '—' : soldItems.length },
-              { label: 'Volume', value: isLoading ? '—' : `$${totalVolume.toFixed(0)}` },
-            ].map((s) => (
-              <div key={s.label} style={{ ...surface({ pad: '14px 8px' }), flex: 1, textAlign: 'center' }}>
-                <div style={{ ...price('sm'), margin: '0 auto' }}>{s.value}</div>
-                <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
+            {rep && rep.count > 0 && (
+              <div style={{ marginTop: S[1] }}>
+                <ReputationBadge avg={rep.avg} count={rep.count} />
               </div>
-            ))}
+            )}
           </div>
 
-          {/* Followers / Following */}
-          <div style={{ display: 'flex', gap: S[2], width: '100%', maxWidth: 360 }}>
+          {/* Stats — all numbers floating in one row, no boxes */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: S[2], width: '100%', maxWidth: 390 }}>
             {([
-              { label: 'Followers', value: counts?.followers ?? 0, tab: 'followers' },
-              { label: 'Following', value: counts?.following ?? 0, tab: 'following' },
-            ] as const).map(s => (
-              <Link key={s.label} href={`/connections/${profileWallet}?tab=${s.tab}`}
-                style={{ ...surface({ pad: '12px 8px' }), flex: 1, textAlign: 'center', textDecoration: 'none' }}>
-                <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>{s.value}</div>
-                <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[1] }}>{s.label}</div>
-              </Link>
-            ))}
+              { label: 'Owns',      value: isLoading ? '—' : String(ownedItems.length) },
+              { label: 'Listed',    value: isLoading ? '—' : String(listedItems.length) },
+              { label: 'Sold',      value: isLoading ? '—' : String(soldItems.length) },
+              { label: 'Volume',    value: isLoading ? '—' : `$${totalVolume.toFixed(0)}` },
+              { label: 'Followers', value: String(counts?.followers ?? 0), href: `/connections/${profileWallet}?tab=followers` },
+              { label: 'Following', value: String(counts?.following ?? 0), href: `/connections/${profileWallet}?tab=following` },
+            ] as { label: string; value: string; href?: string }[]).map(s => {
+              const inner = (
+                <>
+                  <div style={{ ...t('title'), color: 'var(--text-strong)' }}>{s.value}</div>
+                  <div style={{ ...t('micro'), fontSize: 9, letterSpacing: '0.01em', color: 'var(--text-muted)', marginTop: S[1], whiteSpace: 'nowrap' }}>{s.label}</div>
+                </>
+              );
+              return s.href
+                ? <Link key={s.label} href={s.href} style={{ flex: 1, textAlign: 'center', textDecoration: 'none', minWidth: 0 }}>{inner}</Link>
+                : <div key={s.label} style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>{inner}</div>;
+            })}
           </div>
 
           {isMe && (
@@ -246,7 +230,7 @@ export default function PublicProfilePage() {
           )}
 
           {!privateMode && myWallet && myWallet !== profileWallet && (
-            <div style={{ display: 'flex', gap: S[2], marginTop: S[1] }}>
+            <div style={{ display: 'flex', gap: S[2], marginTop: S[1], flexWrap: 'wrap', justifyContent: 'center' }}>
               <button
                 onClick={() => isFollowing
                   ? unfollowMut.mutate({ follower_wallet: myWallet, following_wallet: profileWallet })
@@ -264,6 +248,18 @@ export default function PublicProfilePage() {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 Message
               </Link>
+              <BlockButton
+                viewerWallet={myVisbWallet ?? ''}
+                targetWallet={profileWallet}
+                getAccessToken={getAccessToken}
+              />
+              <ReportButton
+                targetType="seller"
+                targetId={profileWallet}
+                reporterWallet={myVisbWallet ?? ''}
+                getAccessToken={getAccessToken}
+                compact
+              />
             </div>
           )}
         </div>
@@ -286,22 +282,26 @@ export default function PublicProfilePage() {
                   Listed for Sale · {listedItems.length}
                 </div>
                 <div className="visby-grid">
-                  {listedItems.map((item: any, i: number) => (
-                    <ItemCard key={item.id} item={item} index={i} />
+                  {listedItems.map((item: any) => (
+                    <ListingCard key={item.id} item={item} />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Owned items (not listed) */}
-            {unlistedItems.length > 0 && (
+            {/* Collection (owned, not listed) — private: only the owner sees their own collection */}
+            {isMe && unlistedItems.length > 0 && (
               <div style={{ marginBottom: S[6] }}>
-                <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
+                <div style={{ ...sectionLabel(), marginBottom: S[4], display: 'flex', alignItems: 'center', gap: S[2] }}>
                   Collection · {unlistedItems.length}
+                  <span style={{ ...t('micro'), color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Private
+                  </span>
                 </div>
                 <div className="visby-grid">
-                  {unlistedItems.map((item: any, i: number) => (
-                    <ItemCard key={item.id} item={item} index={i} />
+                  {unlistedItems.map((item: any) => (
+                    <ListingCard key={item.id} item={item} />
                   ))}
                 </div>
               </div>
@@ -318,6 +318,45 @@ export default function PublicProfilePage() {
                     <SoldRow key={sale.id} sale={sale} index={i} />
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Reviews */}
+            {rep && rep.count > 0 && (
+              <div style={{ marginBottom: S[6] }}>
+                <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
+                  {'Reviews · '}{rep.count}
+                </div>
+                <div style={{ ...card(), padding: S[5], marginBottom: S[4], display: 'flex', flexDirection: 'column', gap: S[4] }}>
+                  {/* Average + stars */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: S[4] }}>
+                    <div style={{ ...t('title'), color: 'var(--text-strong)', fontWeight: 700 }}>
+                      {rep.avg.toFixed(1)}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+                      <StarRating value={Math.round(rep.avg)} readOnly />
+                      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{rep.count} reviews</div>
+                    </div>
+                  </div>
+                  {/* Breakdown bars 5→1 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                    {([5, 4, 3, 2, 1] as const).map((star) => {
+                      const starKey = String(star) as '1' | '2' | '3' | '4' | '5';
+                      const count = rep.breakdown?.[starKey] ?? 0;
+                      const pct = rep.count > 0 ? Math.round((count / rep.count) * 100) : 0;
+                      return (
+                        <div key={star} style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+                          <div style={{ ...t('micro'), color: 'var(--text-muted)', width: 8, textAlign: 'right', flexShrink: 0 }}>{star}</div>
+                          <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'var(--surface-bg)', overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', borderRadius: 2, background: 'var(--text)', transition: 'width .3s ease' }} />
+                          </div>
+                          <div style={{ ...t('micro'), color: 'var(--text-muted)', width: 20, textAlign: 'right', flexShrink: 0 }}>{count}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <ReviewList reviews={rep.reviews} />
               </div>
             )}
 

@@ -6,9 +6,11 @@ import { useEffect, useState } from 'react';
 import { ThemeToggle, useTheme } from '@/lib/theme';
 import { CURRENCIES, useCurrency } from '@/lib/currency';
 import { S, t, surface, btn, sectionLabel, T } from '@/lib/ui';
+import ShipToSettings from '@/components/ship-to-settings';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 const C = {
-  red: '#FF3B5C',
+  red: 'var(--danger)',
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -92,6 +94,7 @@ export default function SettingsPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style={{ ...t('title'), color: T.textStrong }}>Settings</div>
+          <div style={{ marginLeft: 'auto' }}><HeaderMenu /></div>
         </div>
       </div>
 
@@ -121,6 +124,15 @@ export default function SettingsPage() {
             </div>
           </div>
         </Section>
+
+        {/* Shipping address */}
+        {solanaWallets[0]?.address && (
+          <Section title="Shipping">
+            <div style={{ padding: '14px 16px' }}>
+              <ShipToSettings wallet={solanaWallets[0].address} />
+            </div>
+          </Section>
+        )}
 
         {/* Payment Methods */}
         <Section title="Payment Methods">

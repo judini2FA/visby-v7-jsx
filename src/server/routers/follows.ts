@@ -76,7 +76,7 @@ export const followsRouter = createTRPCRouter({
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('wallet, display_name, bio')
+        .select('wallet, display_name, bio, avatar_url')
         .in('wallet', wallets);
       const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.wallet, p]));
 
@@ -85,6 +85,7 @@ export const followsRouter = createTRPCRouter({
           wallet: w,
           display_name: (profileMap[w]?.display_name as string | null) ?? null,
           bio: (profileMap[w]?.bio as string | null) ?? null,
+          avatar_url: (profileMap[w]?.avatar_url as string | null) ?? null,
           listing_count: counts[w],
         }))
         .sort((a, b) => b.listing_count - a.listing_count);

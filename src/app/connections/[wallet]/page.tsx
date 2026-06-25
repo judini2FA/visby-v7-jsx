@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
 import { t, S, surface, avatar, btn, tabSlider } from '@/lib/ui';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 type Tab = 'followers' | 'following';
 
@@ -83,6 +84,7 @@ export default function ConnectionsPage() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <span style={{ ...t('title'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+          <div style={{ marginLeft: 'auto', flexShrink: 0 }}><HeaderMenu /></div>
         </div>
       </nav>
 

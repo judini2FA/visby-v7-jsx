@@ -5,10 +5,12 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useVisbWallet } from '@/lib/wallet';
+import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, card, surface, btn, sectionLabel, input, T } from '@/lib/ui';
+import { explorerTx } from '@/lib/explorer';
 
 const C = {
-  green: '#00C48C', red: '#FF3B5C',
+  green: 'var(--ok)', red: 'var(--danger)',
 };
 
 const CATS = ['Sneakers', 'Watches', 'Bags', 'Memorabilia', 'Vintage', 'Electronics', 'Other'];
@@ -30,7 +32,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function MintPage() {
-  const { ready, authenticated, user } = usePrivy();
+  const { ready, authenticated, user, getAccessToken } = usePrivy();
   const { address: walletAddress } = useVisbWallet();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -92,9 +94,10 @@ export default function MintPage() {
     setStatus('minting');
 
     try {
+      const token = await getAccessToken();
       const res = await fetch('/api/mint', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           name,
           serial_number: serial,
@@ -141,7 +144,7 @@ export default function MintPage() {
         <div style={{ ...card(), width: '100%', maxWidth: 400, padding: S[5], marginBottom: S[5] }}>
           <div style={{ ...sectionLabel(), marginBottom: S[1] }}>Mint Address</div>
           <div style={{ ...t('meta'), color: 'var(--text-strong)', wordBreak: 'break-all', marginBottom: S[3] }}>{result.mintAddress}</div>
-          <a href={`https://explorer.solana.com/tx/${result.txHash}?cluster=devnet`} target="_blank" rel="noopener noreferrer"
+          <a href={explorerTx(result.txHash)} target="_blank" rel="noopener noreferrer"
             style={{ ...t('meta'), display: 'flex', alignItems: 'center', gap: S[1], color: 'var(--text-strong)', textDecoration: 'none' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             View on Explorer
@@ -173,6 +176,7 @@ export default function MintPage() {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="1.8" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </Link>
         <div style={{ ...t('title'), color: 'var(--text-strong)' }}>List an Item</div>
+        <div style={{ marginLeft: 'auto' }}><HeaderMenu /></div>
       </div>
 
       <form onSubmit={handleMint} style={{ maxWidth: 600, margin: '0 auto', padding: `${S[5]}px ${S[4]}px 120px` }}>

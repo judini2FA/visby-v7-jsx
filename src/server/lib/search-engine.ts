@@ -49,6 +49,7 @@ async function getIndex(): Promise<any> {
       condition: 'string',
       description: 'string',
       price_usdc: 'number',
+      view_count: 'number',
     },
   });
 
@@ -60,6 +61,7 @@ async function getIndex(): Promise<any> {
     condition: r.condition ?? '',
     description: r.description ?? '',
     price_usdc: r.price_usdc ?? 0,
+    view_count: r.view_count ?? 0,
   }));
   if (docs.length) await insertMultiple(db, docs);
 
@@ -77,7 +79,7 @@ export type SearchParams = {
   condition?: string;
   minPrice?: number;
   maxPrice?: number;
-  sort?: 'newest' | 'price_asc' | 'price_desc';
+  sort?: 'newest' | 'price_asc' | 'price_desc' | 'popular';
   limit?: number;
 };
 
@@ -104,6 +106,10 @@ export async function searchListings(p: SearchParams): Promise<ItemRow[]> {
 
   if (p.sort === 'price_asc')  hits.sort((a, b) => (a.price_usdc ?? 0) - (b.price_usdc ?? 0));
   else if (p.sort === 'price_desc') hits.sort((a, b) => (b.price_usdc ?? 0) - (a.price_usdc ?? 0));
+  else if (p.sort === 'popular') hits.sort((a, b) =>
+    (b.view_count ?? 0) - (a.view_count ?? 0) ||
+    String(b.listed_at ?? '').localeCompare(String(a.listed_at ?? ''))
+  );
   // 'newest' / default with a query → keep Orama's relevance order.
 
   return hits.slice(0, p.limit ?? 40);

@@ -6,12 +6,24 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useVisbWallet } from '@/lib/wallet';
 import CheckoutModal from '@/components/checkout-modal';
-import { S, t, price, card, btn, badge, avatar, sectionLabel, input } from '@/lib/ui';
+import { S, t, price, card, surface, btn, badge, avatar, sectionLabel, input } from '@/lib/ui';
+import { explorerAddress } from '@/lib/explorer';
+import { trpc } from '@/lib/trpc/client';
+import { ReputationBadge } from '@/components/reviews';
+import { LikeButton } from '@/components/like-button';
+import { feeBreakdown } from '@/lib/fees';
+import { AuthBadge } from '@/components/auth-badge';
+import { BrandBadge } from '@/components/brand-badge';
+import { AvatarCircle } from '@/components/owner-stack';
+import { ReportButton } from '@/components/report-button';
+import { isAdminWallet } from '@/lib/admin';
+import { useCurrency } from '@/lib/currency';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
   blue: '#2A8AED', mag: '#BC2DE6', muted: 'var(--text-muted)',
-  green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
+  green: 'var(--ok)', red: 'var(--danger)', border: 'var(--glass-border)',
 };
 const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
 
@@ -36,14 +48,18 @@ interface Item {
   category: string; description?: string; image_url?: string;
   nft_mint_address: string; current_owner_wallet: string;
   is_listed: boolean; price_usdc?: number; created_at: string;
+  weight_oz?: number; ship_service_pref?: string;
+  auth_status?: string;
   ownership_history?: OwnershipRecord[];
+  profiles?: Record<string, { avatar_url: string | null; display_name: string | null }>;
 }
 
 export default function ItemPage() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
-  const { user }   = usePrivy();
+  const { user, getAccessToken } = usePrivy();
   const { address: walletAddress, ready: walletReady } = useVisbWallet();
+  const { format: fmtPrice, currency } = useCurrency();
   const [item, setItem]       = useState<Item | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState('');
@@ -57,6 +73,35 @@ export default function ItemPage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [privateMode, setPrivateMode] = useState(false);
   const [itemOrder, setItemOrder] = useState<{ status: string; shipped_at: string | null; delivered_at: string | null } | null | undefined>(undefined);
+  const [shipEst, setShipEst] = useState<number | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  const isAdmin = isAdminWallet(walletAddress);
+
+  async function handleSetAuth(auth_status: 'authenticated' | 'flagged') {
+    if (!item || !walletAddress || authBusy) return;
+    setAuthBusy(true);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/items/authenticate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ wallet: walletAddress, item_id: item.id, auth_status }),
+      });
+      if (res.ok) {
+        setItem(prev => prev ? { ...prev, auth_status } : prev);
+      }
+    } catch {}
+    finally { setAuthBusy(false); }
+  }
+
+  const { data: sellerRep, isLoading: repLoading } = trpc.reviews.getReputation.useQuery(
+    { wallet: item?.current_owner_wallet ?? '' },
+    { enabled: !!item?.current_owner_wallet },
+  );
   useEffect(() => {
     try { setPrivateMode(localStorage.getItem('visby-private-mode') === '1'); } catch {}
   }, []);
@@ -69,6 +114,20 @@ export default function ItemPage() {
   }, []);
 
   const isOwner = !!(walletAddress && item?.current_owner_wallet === walletAddress);
+
+  useEffect(() => {
+    if (!id) return;
+    const k = 'viewed:' + id;
+    try {
+      if (sessionStorage.getItem(k)) return;
+      sessionStorage.setItem(k, '1');
+    } catch {}
+    fetch('/api/items/view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: id, viewer_wallet: walletAddress ?? undefined }),
+    }).catch(() => {});
+  }, [id, walletAddress]);
 
   useEffect(() => {
     if (!id) return;
@@ -92,6 +151,19 @@ export default function ItemPage() {
       .catch((e: any) => setErr(e.message ?? 'Failed to load'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Estimate shipping for the seller payout breakdown (only meaningful for a listed item with a weight).
+  useEffect(() => {
+    const w = item?.weight_oz;
+    if (!item?.is_listed || !item?.price_usdc || !w) { setShipEst(null); return; }
+    fetch('/api/shipping/estimate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weight_oz: Number(w), service: item.ship_service_pref || '2day' }),
+    })
+      .then(r => r.json())
+      .then(d => { if (typeof d.amount === 'number') setShipEst(d.amount); })
+      .catch(() => {});
+  }, [item]);
 
   async function handleList(e: React.FormEvent) {
     e.preventDefault();
@@ -146,9 +218,13 @@ export default function ItemPage() {
     </div>
   );
 
-  const sellerDisplay = shortAddr(item.current_owner_wallet);
+  const profiles = item.profiles ?? {};
+  const sellerProfile = profiles[item.current_owner_wallet];
+  const sellerDisplay = sellerProfile?.display_name || shortAddr(item.current_owner_wallet);
+  const sellerAvatar  = sellerProfile?.avatar_url ?? null;
   const sellerInitial = (item.current_owner_wallet[0] ?? '?').toUpperCase();
   const history = item.ownership_history ?? [];
+  const ownerCount = new Set(history.map(h => h.owner_wallet)).size || 1;
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
@@ -160,6 +236,7 @@ export default function ItemPage() {
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="1.8" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
           </Link>
           <div style={{ ...t('heading'), flex: 1, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+          <HeaderMenu />
         </div>
       </div>
 
@@ -182,13 +259,16 @@ export default function ItemPage() {
 
         {/* Name + category */}
         <div style={{ paddingTop: S[5], paddingBottom: S[5], borderBottom: `1px solid var(--divider)` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[3] }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[3], flexWrap: 'wrap' }}>
             <span style={{ ...badge('default') }}>{item.category}</span>
+            <BrandBadge status={(item as any).serial_status} brand={(item as any).brand} />
             {isOwner && <span style={{ ...badge('default') }}>You own this</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
-            <h1 style={{ ...t('title'), color: 'var(--text-strong)', margin: 0 }}>{item.name}</h1>
+            <h1 style={{ ...t('title'), color: 'var(--text-strong)', margin: 0, flex: 1 }}>{item.name}</h1>
+            <AuthBadge status={item.auth_status} />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}><title>Name is locked at mint</title><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <LikeButton itemId={item.id} variant="inline" showCount />
           </div>
           <div style={{ ...t('meta'), color: C.muted, marginTop: S[2] }}>
             {isOwner
@@ -212,7 +292,7 @@ export default function ItemPage() {
               /* Listed — show controls */
               <div>
                 <div style={price('lg')}>
-                  ${item.price_usdc.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {fmtPrice(item.price_usdc)}
                 </div>
                 <div style={{ ...sectionLabel(), marginTop: S[2], marginBottom: S[5] }}>Listed for sale</div>
                 <div style={{ display: 'flex', gap: S[3] }}>
@@ -224,6 +304,27 @@ export default function ItemPage() {
                     style={{ ...btn('danger', { full: true, pill: false }), flex: 1, opacity: unlistStatus === 'unlisting' ? 0.6 : 1 }}>
                     {unlistStatus === 'unlisting' ? 'Removing…' : 'Unlist'}
                   </button>
+                </div>
+
+                {/* Seller payout breakdown — Visby cut + shipping deducted from the sale price */}
+                <div style={{ ...surface({ pad: S[4] }), marginTop: S[4], display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={{ ...sectionLabel(), marginBottom: S[1] }}>Your payout</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>List price</span>
+                    <span style={{ ...t('meta'), color: 'var(--text)' }}>${item.price_usdc.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Visby fee (9%)</span>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>−${feeBreakdown(item.price_usdc, 0).platform_fee_usd.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Estimated shipping</span>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{shipEst != null ? `−$${shipEst.toFixed(2)}` : 'set at fulfillment'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: S[1], paddingTop: S[2], borderTop: '1px solid var(--divider)' }}>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>You net</span>
+                    <span style={{ ...t('heading'), color: C.green }}>{shipEst != null ? '' : '~'}${feeBreakdown(item.price_usdc, shipEst ?? 0).seller_net_usd.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -261,9 +362,17 @@ export default function ItemPage() {
             item.is_listed && item.price_usdc ? (
               <>
                 <div style={price('lg')}>
-                  ${item.price_usdc.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {fmtPrice(item.price_usdc)}
                 </div>
-                <div style={{ ...sectionLabel(), marginTop: S[2], marginBottom: S[5] }}>USDC</div>
+                <div style={{ ...sectionLabel(), marginTop: S[2], marginBottom: S[3] }}>
+                  {currency === 'USD' ? 'USDC' : `≈ $${item.price_usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`}
+                </div>
+
+                {/* Universal Visby free shipping — buyer pays only the listed price */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[5] }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                  <span style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>All Visby Orders have universal free shipping</span>
+                </div>
 
                 {walletAddress && buyStatus === 'done' ? (
                   <div style={{ ...badge('success'), display: 'flex', alignItems: 'center', gap: S[2], padding: S[4], borderRadius: 'var(--r)' }}>
@@ -271,9 +380,15 @@ export default function ItemPage() {
                     <span style={{ ...t('heading'), color: C.green }}>Purchase complete!</span>
                   </div>
                 ) : walletAddress ? (
-                  <button onClick={() => setShowCheckout(true)} style={btn('primary', { full: true })}>
-                    Buy Now · ${item.price_usdc.toFixed(2)}
-                  </button>
+                  <>
+                    <button onClick={() => setShowCheckout(true)} style={btn('primary', { full: true })}>
+                      Buy Now · ${item.price_usdc.toFixed(2)}
+                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginTop: S[3] }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Seller is paid only after you confirm delivery.</span>
+                    </div>
+                  </>
                 ) : (
                   <Link href="/login" style={btn('primary', { full: true })}>
                     Sign In to Buy
@@ -305,15 +420,20 @@ export default function ItemPage() {
           <div style={{ ...sectionLabel(), marginBottom: S[3] }}>Seller</div>
           <div style={{ ...card({ pad: S[4] }) }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
-              <div style={{ ...avatar('md'), background: GH }}>
-                {sellerInitial}
+              <div style={{ ...avatar('md'), background: sellerAvatar ? 'var(--surface-bg)' : GH }}>
+                {sellerAvatar ? <img src={sellerAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : sellerInitial}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ ...t('heading'), color: 'var(--text-strong)', display: 'flex', alignItems: 'center', gap: S[1] }}>
+                <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>
                   {sellerDisplay}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
-                <div style={{ ...t('meta'), color: C.muted, marginTop: S[1] }}>Verified seller</div>
+                <div style={{ marginTop: S[1] }}>
+                  {repLoading
+                    ? null
+                    : sellerRep && sellerRep.count > 0
+                      ? <ReputationBadge avg={sellerRep.avg} count={sellerRep.count} />
+                      : <span style={{ ...t('meta'), color: C.muted }}>New seller</span>}
+                </div>
               </div>
             </div>
             {!isOwner && !privateMode && (
@@ -322,6 +442,40 @@ export default function ItemPage() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 Message Seller
               </Link>
+            )}
+            {!isOwner && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: S[2] }}>
+                <ReportButton
+                  targetType="listing"
+                  targetId={item.id}
+                  reporterWallet={walletAddress ?? undefined}
+                  getAccessToken={getAccessToken}
+                  compact
+                />
+              </div>
+            )}
+            {isAdmin && (
+              <div style={{ marginTop: S[4], paddingTop: S[4], borderTop: '1px solid var(--divider)' }}>
+                <div style={{ ...t('micro'), color: 'var(--text-muted)', marginBottom: S[2], letterSpacing: '0.05em', textTransform: 'uppercase' }}>Admin</div>
+                <div style={{ display: 'flex', gap: S[2] }}>
+                  <button
+                    onClick={() => handleSetAuth('authenticated')}
+                    disabled={authBusy || item.auth_status === 'authenticated'}
+                    style={{ ...btn('secondary', { full: true, pill: false }), flex: 1, opacity: (authBusy || item.auth_status === 'authenticated') ? 0.5 : 1, fontSize: 12 }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/><polyline points="9 12 11 14 15 10"/></svg>
+                    Mark Authenticated
+                  </button>
+                  <button
+                    onClick={() => handleSetAuth('flagged')}
+                    disabled={authBusy || item.auth_status === 'flagged'}
+                    style={{ ...btn('danger', { full: true, pill: false }), flex: 1, opacity: (authBusy || item.auth_status === 'flagged') ? 0.5 : 1, fontSize: 12 }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Flag
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -340,143 +494,69 @@ export default function ItemPage() {
           </div>
         )}
 
-        {/* Provenance */}
-        <div style={{ padding: `${S[5]}px 0`, borderBottom: `1px solid var(--divider)` }}>
-          <div style={{ ...sectionLabel(), marginBottom: S[3] }}>Provenance</div>
-          <div style={{ ...card({ pad: S[4] }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
-            <div>
-              <div style={{ ...t('micro'), color: C.muted, marginBottom: S[1] }}>Mint address</div>
-              <div style={{ ...t('meta'), color: 'var(--text-strong)', wordBreak: 'break-all' }}>{item.nft_mint_address || '—'}</div>
+        {/* ── Tally — the provenance NFT, rendered as a tangible glossy object ── */}
+        <div id="history" style={{ padding: `${S[5]}px 0`, scrollMarginTop: 72 }}>
+          <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-xl)', background: 'var(--grad-tally)', color: '#15121C', boxShadow: '0 14px 34px rgba(30,30,45,.20), inset 0 1px 0 rgba(255,255,255,.75)' }}>
+            {/* shine */}
+            <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'linear-gradient(125deg, rgba(255,255,255,0) 38%, rgba(255,255,255,.45) 50%, rgba(255,255,255,0) 62%), radial-gradient(120% 70% at 12% 0%, rgba(255,255,255,.45), rgba(255,255,255,0) 55%)' }} />
+
+            <div style={{ position: 'relative', padding: S[5] }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[1] }}>
+                <span style={{ ...t('title'), color: '#15121C', fontWeight: 800 }}>Tally</span>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.08em', color: 'rgba(21,18,28,.6)', border: '1px solid rgba(21,18,28,.22)', borderRadius: 999, padding: '2px 7px' }}>NFT</span>
+              </div>
+              <div style={{ ...t('meta'), color: 'rgba(21,18,28,.68)', marginBottom: S[5], lineHeight: 1.5 }}>
+                An NFT-powered provenance used to track the history of a product.
+              </div>
+
+              {/* Provenance — mint address */}
+              <div style={{ ...t('micro'), color: 'rgba(21,18,28,.5)', letterSpacing: '.06em', marginBottom: S[1] }}>MINT ADDRESS</div>
+              <div style={{ ...t('meta'), color: '#15121C', fontFamily: 'monospace', wordBreak: 'break-all', marginBottom: S[2] }}>{item.nft_mint_address || '—'}</div>
+              {item.nft_mint_address && (
+                <a href={explorerAddress(item.nft_mint_address)} target="_blank" rel="noopener noreferrer"
+                  style={{ ...t('meta'), display: 'inline-flex', alignItems: 'center', gap: S[1], color: '#15121C', fontWeight: 700, textDecoration: 'none' }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  View on explorer
+                </a>
+              )}
+
+              {/* TallyTracker — the ownership history (newest first), full wallets for transparency */}
+              <div style={{ height: 1, background: 'rgba(21,18,28,.14)', margin: `${S[5]}px 0` }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: S[3] }}>
+                <span style={{ ...t('heading'), color: '#15121C', fontWeight: 800 }}>TallyTracker</span>
+                <span style={{ ...t('meta'), color: 'rgba(21,18,28,.6)' }}>{ownerCount} owner{ownerCount !== 1 ? 's' : ''}</span>
+              </div>
+              {history.length === 0 ? (
+                <div style={{ ...t('body'), color: 'rgba(21,18,28,.6)' }}>No history yet</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {[...history].reverse().map((r, idx, arr) => {
+                    const w    = r.owner_wallet;
+                    const prof = profiles[w];
+                    const date = new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    return (
+                      <Link key={r.id} href={`/p/${w}`}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: S[3], padding: `${S[3]}px 0`,
+                                 borderBottom: idx < arr.length - 1 ? '1px solid rgba(21,18,28,.12)' : 'none', textDecoration: 'none' }}>
+                        <AvatarCircle wallet={w} avatarUrl={prof?.avatar_url} size={40} ring="rgba(255,255,255,.65)" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: S[2], flexWrap: 'wrap' }}>
+                            <span style={{ ...t('body'), color: '#15121C', fontWeight: 700 }}>{prof?.display_name || shortAddr(w)}</span>
+                            {idx === 0 && <span style={{ fontSize: 10, fontWeight: 800, color: '#15121C', background: 'rgba(255,255,255,.6)', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
+                          </div>
+                          <div style={{ fontFamily: 'monospace', fontSize: 11, color: 'rgba(21,18,28,.66)', wordBreak: 'break-all', marginTop: 2 }}>
+                            {w}{r.price_usdc ? ` · $${r.price_usdc.toFixed(2)}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ ...t('meta'), color: 'rgba(21,18,28,.6)', textAlign: 'right', flexShrink: 0 }}>{date}</div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            {item.nft_mint_address && (
-              <a href={`https://explorer.solana.com/address/${item.nft_mint_address}`} target="_blank" rel="noopener noreferrer"
-                style={{ ...t('meta'), display: 'inline-flex', alignItems: 'center', gap: S[1], color: 'var(--text-strong)', textDecoration: 'none' }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                View on explorer
-              </a>
-            )}
           </div>
-        </div>
-
-        {/* Ownership history */}
-        <div style={{ padding: `${S[5]}px 0` }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: S[4] }}>
-            <div style={{ ...sectionLabel() }}>Ownership history</div>
-            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{history.length} event{history.length !== 1 ? 's' : ''}</div>
-          </div>
-          {(item as any).transfer_count > 0 && (
-            <div style={{ ...t('meta'), color: C.muted, marginBottom: S[3], display: 'flex', alignItems: 'center', gap: S[1] }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              Minted as: {item.condition}
-            </div>
-          )}
-          {history.length === 0 ? (
-            <div style={{ ...t('body'), color: 'var(--text-muted)' }}>No history yet</div>
-          ) : (
-            <div style={{ ...card({ pad: S[4] }), display: 'flex', flexDirection: 'column' }}>
-              {history.map((r, i) => {
-                const isMint    = r.event_type === 'mint';
-                const isLatest  = i === history.length - 1;
-                const accentCol = 'var(--text-muted)';
-                const fullDate  = new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                const fullTime  = new Date(r.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                const shortTx   = r.tx_hash ? `${r.tx_hash.slice(0,8)}…${r.tx_hash.slice(-8)}` : '';
-
-                return (
-                  <div key={r.id} style={{ display: 'flex', gap: S[3], paddingBottom: i < history.length - 1 ? S[5] : 0 }}>
-
-                    {/* Timeline spine */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-bg)', border: `1px solid var(--glass-hairline)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
-                        {isMint
-                          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={accentCol} strokeWidth="2.5" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={accentCol} strokeWidth="2.5" strokeLinecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                        }
-                        {isLatest && (
-                          <div style={{ position: 'absolute', top: -4, right: -4, width: 10, height: 10, borderRadius: '50%', background: 'var(--text-muted)', border: '2px solid var(--surface-bg)' }} />
-                        )}
-                      </div>
-                      {i < history.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 20, background: 'var(--divider)', marginTop: S[1] }} />}
-                    </div>
-
-                    {/* Content */}
-                    <div style={{ flex: 1, paddingTop: S[1] }}>
-
-                      {/* Row 1: event label + date */}
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: S[2], gap: S[2] }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: S[2], flexWrap: 'wrap' }}>
-                          <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>
-                            {isMint
-                              ? <><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginRight: 4, verticalAlign: 'middle' }}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Minted</>
-                              : <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ marginRight: 4, verticalAlign: 'middle' }}><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Transferred</>
-                            }
-                          </span>
-                          {r.price_usdc && (
-                            <span style={{ ...t('meta'), color: 'var(--text)' }}>
-                              ${r.price_usdc.toFixed(2)} USDC
-                            </span>
-                          )}
-                          {isLatest && (
-                            <span style={{ ...badge('default') }}>Current</span>
-                          )}
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ ...t('meta'), color: C.muted }}>{timeAgo(r.created_at)}</div>
-                          <div style={{ ...t('micro'), fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--text-muted)', marginTop: 1 }}>{fullDate} {fullTime}</div>
-                        </div>
-                      </div>
-
-                      {/* Row 2: wallet(s) */}
-                      {r.from_wallet ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[2], flexWrap: 'wrap' }}>
-                          <Link href={`/p/${r.from_wallet}`} style={{ display: 'flex', alignItems: 'center', gap: S[1], textDecoration: 'none' }}>
-                            <div style={{ ...avatar('sm'), width: 20, height: 20, fontSize: 8, background: `linear-gradient(135deg,${C.blue},${C.mag})` }}>
-                              {r.from_wallet[0]?.toUpperCase()}
-                            </div>
-                            <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{shortAddr(r.from_wallet)}</span>
-                          </Link>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-                          <Link href={`/p/${r.owner_wallet}`} style={{ display: 'flex', alignItems: 'center', gap: S[1], textDecoration: 'none' }}>
-                            <div style={{ ...avatar('sm'), width: 20, height: 20, fontSize: 8, background: `linear-gradient(135deg,${C.teal},${C.blue})` }}>
-                              {r.owner_wallet[0]?.toUpperCase()}
-                            </div>
-                            <span style={{ ...t('meta'), color: 'var(--text)' }}>{shortAddr(r.owner_wallet)}</span>
-                          </Link>
-                        </div>
-                      ) : (
-                        <div style={{ marginBottom: S[2] }}>
-                          <Link href={`/p/${r.owner_wallet}`} style={{ display: 'inline-flex', alignItems: 'center', gap: S[1], textDecoration: 'none' }}>
-                            <div style={{ ...avatar('sm'), width: 20, height: 20, fontSize: 8, background: `linear-gradient(135deg,${C.teal},${C.blue})` }}>
-                              {r.owner_wallet[0]?.toUpperCase()}
-                            </div>
-                            <span style={{ ...t('meta'), color: 'var(--text)' }}>{shortAddr(r.owner_wallet)}</span>
-                          </Link>
-                        </div>
-                      )}
-
-                      {/* Row 3: TX hash */}
-                      {r.tx_hash && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
-                          <a href={`https://explorer.solana.com/tx/${r.tx_hash}`} target="_blank" rel="noopener noreferrer"
-                            style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: S[1] }}>
-                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                            {shortTx}
-                          </a>
-                          <button onClick={() => copyTx(r.tx_hash)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, display: 'flex', alignItems: 'center', transition: 'opacity .15s', opacity: copiedTx === r.tx_hash ? 1 : 0.4 }}>
-                            {copiedTx === r.tx_hash
-                              ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                              : <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            }
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
 
       </div>

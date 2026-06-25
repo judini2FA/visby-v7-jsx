@@ -46,27 +46,43 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Item already sold' }, { status: 409 });
     }
 
-    const nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
+    // Transfer the provenance NFT, retrying transient RPC failures. The order is recorded regardless of
+    // the transfer outcome so a settled purchase always has a durable record (and the already-sold item
+    // can't false-success on retry); the listing is never rolled back. Provenance is re-transferred
+    // out-of-band if the on-chain transfer failed.
+    let nftTxHash: string | null = null;
+    let transferError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { nftTxHash = await transferFromAuthority(item.nft_mint_address, buyer_wallet); break; }
+      catch (e) { transferError = e; }
+    }
 
-    await supabase.from('ownership_history').insert({
-      item_id,
-      owner_wallet: buyer_wallet,
-      from_wallet:  previousOwner,
-      tx_hash:      nftTxHash,
-      event_type:   'transfer',
-      price_usdc:   pricePaid,
-    });
+    if (nftTxHash) {
+      await supabase.from('ownership_history').insert({
+        item_id,
+        owner_wallet: buyer_wallet,
+        from_wallet:  previousOwner,
+        tx_hash:      nftTxHash,
+        event_type:   'transfer',
+        price_usdc:   pricePaid,
+      });
+    }
 
     await createOrder({
       item_id, buyer_wallet, seller_wallet: previousOwner,
       price_usdc: pricePaid, pay_method: (from_currency ?? 'eth').toLowerCase(), nft_tx: nftTxHash,
     });
 
+    if (!nftTxHash) {
+      console.error('[lifi/swap-pay] order recorded but provenance transfer failed (pending):', transferError);
+    }
+
     return NextResponse.json({
       ok: true,
       simulated: true,
       item_id: item.id,
       nft_tx: nftTxHash,
+      provenance_pending: !nftTxHash || undefined,
       paid_with: from_currency ?? 'ETH',
       paid_amount: from_amount ?? null,
     });

@@ -72,6 +72,7 @@ export function input(): CSSProperties {
     background: 'var(--field-input-bg)',
     border: '1px solid var(--glass-border)',
     borderRadius: 'var(--r-sm)',
+    boxShadow: 'var(--box-shadow-soft)',
     padding: '13px 16px',
     color: 'var(--text)',
     fontSize: 15,
@@ -127,7 +128,7 @@ export function price(size: keyof typeof PRICE_SIZE = 'md'): CSSProperties {
     fontWeight: 800,
     lineHeight: 1.1,
     letterSpacing: '-0.01em',
-    background: 'var(--grad-brand-h)',
+    background: 'var(--grad-brand-text)',
     WebkitBackgroundClip: 'text',
     backgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
@@ -142,6 +143,7 @@ export function surface(o: { radius?: number | string; pad?: number | string; bo
     background: 'var(--surface-bg)',
     border: o.bordered === false ? 'none' : '1px solid var(--glass-hairline)',
     borderRadius: o.radius ?? 'var(--r-sm)',
+    boxShadow: 'var(--box-shadow-soft)',
     ...(o.pad != null ? { padding: o.pad } : null),
   };
 }
@@ -178,7 +180,7 @@ export function btn(variant: BtnVariant = 'primary', o: { full?: boolean; pill?:
     primary:   { background: 'var(--grad-brand)', color: 'var(--text-on-cta)', boxShadow: '0 8px 24px rgba(89,180,245,.22)' },
     secondary: { background: 'var(--glass-bg-strong)', color: 'var(--text-strong)', borderColor: 'var(--glass-border)', backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))' },
     text:      { background: 'transparent', color: 'var(--text-muted)', padding: '8px 12px' },
-    danger:    { background: 'rgba(255,59,92,.10)', color: '#FF3B5C', borderColor: 'rgba(255,59,92,.28)' },
+    danger:    { background: 'var(--danger-soft)', color: 'var(--danger)', borderColor: 'var(--danger-soft)' },
   };
   return { ...base, ...variants[variant] };
 }
@@ -202,9 +204,9 @@ export function badge(variant: BadgeVariant = 'default'): CSSProperties {
   };
   const variants: Record<BadgeVariant, CSSProperties> = {
     default: { background: 'var(--surface-bg)', color: 'var(--text-muted)', border: '1px solid var(--glass-hairline)' },
-    onImage: { background: 'var(--img-scrim)', color: 'rgba(255,255,255,.95)', border: '1px solid rgba(255,255,255,.18)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' },
-    success: { background: 'rgba(0,196,140,.12)', color: '#00C48C', border: '1px solid rgba(0,196,140,.30)' },
-    danger:  { background: 'rgba(255,59,92,.12)', color: '#FF3B5C', border: '1px solid rgba(255,59,92,.30)' },
+    onImage: { background: 'var(--img-scrim)', color: 'rgba(255,255,255,.95)', border: '1px solid rgba(255,255,255,.18)' },
+    success: { background: 'var(--ok-soft)', color: 'var(--ok)', border: '1px solid var(--ok-soft)' },
+    danger:  { background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid var(--danger-soft)' },
   };
   return { ...base, ...variants[variant] };
 }
@@ -239,6 +241,7 @@ export function tabSlider(): { wrap: CSSProperties; item: CSSProperties; itemAct
       background: 'var(--surface-bg)',
       border: '1px solid var(--glass-hairline)',
       borderRadius: 'var(--pill)',
+      boxShadow: 'var(--box-shadow-soft)',
     },
     item: {
       flex: 1,

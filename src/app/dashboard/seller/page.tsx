@@ -1,18 +1,22 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, price, card, surface, btn, badge, sectionLabel, input, tabSlider } from '@/lib/ui';
-import PayoutSettings from '@/components/payout-settings';
+import { explorerTx } from '@/lib/explorer';
+import ShippingEstimator, { SHIP_DEFAULTS, type ShipValues } from '@/components/shipping-estimator';
+import { HeaderMenu } from '@/components/layout/header-menu';
+import { feeBreakdown } from '@/lib/fees';
+import { localShipEstimate } from '@/lib/shipping-estimate';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
   blue: '#2A8AED', mag: '#BC2DE6', muted: 'var(--text-muted)',
-  green: '#00C48C', red: '#FF3B5C', border: 'var(--glass-border)',
+  green: 'var(--ok)', red: 'var(--danger)', border: 'var(--glass-border)',
 };
 
 const CATS  = ['Sneakers','Watches','Bags','Memorabilia','Vintage','Electronics','Other'];
@@ -24,22 +28,24 @@ const CONDS = [
   { key: 'Fair',      desc: 'Heavy wear, flaws noted in description' },
 ];
 
-type Mode = 'mint' | 'resell' | 'payouts';
+type Mode = 'mint' | 'resell';
 type MintStatus = 'idle' | 'uploading' | 'minting' | 'done' | 'error';
 
 // ─────────────────────────────────────────────────────────────
 // MINT NEW form
 // ─────────────────────────────────────────────────────────────
 function MintForm({ wallet }: { wallet: string }) {
+  const { getAccessToken } = usePrivy();
   const fileRef = useRef<HTMLInputElement>(null);
   const [images, setImages]       = useState<{ file: File; preview: string }[]>([]);
   const [name, setName]           = useState('');
   const [serial, setSerial]       = useState('');
   const [category, setCategory]   = useState('');
-  const [condition, setCondition] = useState('');
+  const [condition, setCondition] = useState('New');   // minted items are always New; resales auto-show as Used
   const [description, setDescription] = useState('');
   const [price, setPrice]         = useState('');
   const [listNow, setListNow]     = useState(true);
+  const [ship, setShip]           = useState<ShipValues>(SHIP_DEFAULTS);
   const [status, setStatus]       = useState<MintStatus>('idle');
   const [result, setResult]       = useState<{ txHash: string; mintAddress: string; serial: string; itemId: string } | null>(null);
   const [error, setError]         = useState('');
@@ -63,17 +69,27 @@ function MintForm({ wallet }: { wallet: string }) {
   async function handleMint(e: React.FormEvent) {
     e.preventDefault();
     if (!wallet) { setError('Connect your wallet first'); return; }
-    if (!name || !serial || !category || !condition) { setError('Fill in all required fields'); return; }
+    if (!name || !serial || !category) { setError('Fill in all required fields'); return; }
     if (listNow && !price) { setError('Enter a price to list'); return; }
     setError('');
     setStatus('uploading');
     const imageUrl = images.length > 0 ? await uploadImage(images[0].file) : null;
     setStatus('minting');
     try {
+      const token = await getAccessToken();
       const res  = await fetch('/api/mint', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, serial_number: serial, condition, category, description, owner_wallet: wallet, image_url: imageUrl, price_usdc: listNow && price ? parseFloat(price) : null, is_listed: listNow && !!price }),
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          name, serial_number: serial, condition, category, description, owner_wallet: wallet, image_url: imageUrl,
+          destination_wallet: (() => { try { return localStorage.getItem('visby-tally-wallet') || undefined; } catch { return undefined; } })(),
+          price_usdc: listNow && price ? parseFloat(price) : null, is_listed: listNow && !!price,
+          weight_oz: parseFloat(ship.weight_oz) || null,
+          length_in: parseFloat(ship.length_in) || null,
+          width_in:  parseFloat(ship.width_in)  || null,
+          height_in: parseFloat(ship.height_in) || null,
+          ship_service_pref: ship.service || 'cheapest_2day',
+        }),
       });
       const data = await res.json();
       if (res.status === 402 && data.action === 'fund_wallet') throw new Error(`Mint wallet needs devnet SOL. Visit faucet.solana.com and paste: ${data.mint_authority_address}`);
@@ -89,8 +105,8 @@ function MintForm({ wallet }: { wallet: string }) {
 
   function reset() {
     setStatus('idle'); setResult(null); setImages([]);
-    setName(''); setSerial(''); setCategory(''); setCondition('');
-    setDescription(''); setPrice('');
+    setName(''); setSerial(''); setCategory(''); setCondition('New');
+    setDescription(''); setPrice(''); setShip(SHIP_DEFAULTS);
   }
 
   if (status === 'done' && result) {
@@ -109,7 +125,7 @@ function MintForm({ wallet }: { wallet: string }) {
             <div style={sectionLabel()}>Mint Address</div>
             <div style={{ ...t('meta'), color: 'var(--text-strong)', wordBreak: 'break-all' }}>{result.mintAddress}</div>
           </div>
-          <a href={`https://explorer.solana.com/tx/${result.txHash}`} target="_blank" rel="noopener noreferrer"
+          <a href={explorerTx(result.txHash)} target="_blank" rel="noopener noreferrer"
             style={{ ...t('meta'), color: 'var(--text-strong)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: S[1] }}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             View on Explorer
@@ -128,7 +144,7 @@ function MintForm({ wallet }: { wallet: string }) {
   }
 
   const busy      = status === 'uploading' || status === 'minting';
-  const canSubmit = !!(name && serial && category && condition && (!listNow || price));
+  const canSubmit = !!(name && serial && category && (!listNow || price));
 
   return (
     <form onSubmit={handleMint} style={{ paddingTop: S[5], paddingBottom: S[7], display: 'flex', flexDirection: 'column', gap: S[5] }}>
@@ -188,22 +204,6 @@ function MintForm({ wallet }: { wallet: string }) {
         </div>
       </div>
 
-      {/* Condition */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
-        <div style={sectionLabel()}>Condition</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-          {CONDS.map(c => (
-            <button key={c.key} type="button" onClick={() => setCondition(c.key)}
-              style={{ ...surface({ pad: '12px 16px' }), borderColor: condition === c.key ? 'var(--text-muted)' : 'var(--glass-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3], cursor: 'pointer', textAlign: 'left' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
-                <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>{c.key}</div>
-                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{c.desc}</div>
-              </div>
-              {condition === c.key && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-strong)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="20 6 9 17 4 12"/></svg>}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Description */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
@@ -225,12 +225,15 @@ function MintForm({ wallet }: { wallet: string }) {
           </button>
         </div>
         {listNow && (
-          <div style={{ position: 'relative' }}>
-            <div style={{ position: 'absolute', left: S[4], top: '50%', transform: 'translateY(-50%)', ...t('heading'), color: 'var(--text-muted)' }}>$</div>
-            <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" min="0.01" step="0.01"
-              style={{ ...input(), paddingLeft: S[6] }} />
-            <div style={{ position: 'absolute', right: S[4], top: '50%', transform: 'translateY(-50%)', ...t('meta'), color: 'var(--text-muted)' }}>USDC</div>
-          </div>
+          <>
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: S[4], top: '50%', transform: 'translateY(-50%)', ...t('heading'), color: 'var(--text-muted)' }}>$</div>
+              <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" min="0.01" step="0.01"
+                style={{ ...input(), paddingLeft: S[6] }} />
+              <div style={{ position: 'absolute', right: S[4], top: '50%', transform: 'translateY(-50%)', ...t('meta'), color: 'var(--text-muted)' }}>USDC</div>
+            </div>
+            <ShippingEstimator priceUsd={parseFloat(price) || undefined} value={ship} onChange={setShip} />
+          </>
         )}
       </div>
 
@@ -298,11 +301,11 @@ function RelistPanel({ wallet }: { wallet: string }) {
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><title>Name is locked at mint</title><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
-            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>SN: {item.serial_number} · {item.condition}</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>SN: {item.serial_number} · {(item as any).transfer_count > 0 ? 'Used' : 'New'}</div>
             {(item as any).transfer_count > 0 && (
               <div style={{ ...surface({ pad: '6px 10px' }), display: 'flex', alignItems: 'center', gap: S[1], marginTop: S[1], ...t('meta'), color: 'var(--text-muted)' }}>
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                Will list as Used — condition was set at mint
+                Lists as Used — it&apos;s been owned before
               </div>
             )}
           </div>
@@ -319,6 +322,7 @@ function RelistPanel({ wallet }: { wallet: string }) {
         </div>
 
         {isEditing && (
+          <>
           <div style={{ display: 'flex', gap: S[2], alignItems: 'center', marginTop: S[3] }}>
             <div style={{ flex: 1, position: 'relative' }}>
               <span style={{ position: 'absolute', left: S[3], top: '50%', transform: 'translateY(-50%)', ...t('body'), color: 'var(--text-muted)' }}>$</span>
@@ -334,6 +338,21 @@ function RelistPanel({ wallet }: { wallet: string }) {
             </button>
             <button onClick={() => setEditSerial(null)} style={{ ...btn('text', { pill: false }), fontSize: 20 }}>×</button>
           </div>
+          {editPrice && parseFloat(editPrice) > 0 && (() => {
+            const ship = localShipEstimate(item.weight_oz, item.ship_service_pref);
+            const bd = feeBreakdown(parseFloat(editPrice), ship);
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: S[2], gap: S[2], flexWrap: 'wrap' }}>
+                <span style={{ ...t('micro'), color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>
+                  Visby fee (9%) −${bd.platform_fee_usd.toFixed(2)} · {ship > 0 ? `est. shipping −$${ship.toFixed(2)}` : 'seller is subject to shipping fees'}
+                </span>
+                <span style={{ ...t('meta'), color: 'var(--ok)', fontWeight: 700 }}>
+                  You net ~${bd.seller_net_usd.toFixed(2)}{ship > 0 ? '' : ' minus shipping fees'}
+                </span>
+              </div>
+            );
+          })()}
+          </>
         )}
 
         {!isEditing && (
@@ -389,6 +408,7 @@ function RelistPanel({ wallet }: { wallet: string }) {
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────
 // PAGE
 // ─────────────────────────────────────────────────────────────
@@ -408,11 +428,9 @@ export default function SellerDashboardPage() {
 
       {/* Header */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
-        <div className="visby-page" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center', gap: S[3] }}>
-          <button onClick={() => router.back()} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: S[1], display: 'flex' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="1.8" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <div style={{ flex: 1, ...t('heading'), color: 'var(--text-strong)' }}>Sell</div>
+        <div className="visby-page" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center' }}>
+          <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Sell</div>
+          <div style={{ marginLeft: 'auto' }}><HeaderMenu /></div>
         </div>
       </div>
 
@@ -421,9 +439,8 @@ export default function SellerDashboardPage() {
         {/* Toggle */}
         <div style={tabSlider().wrap}>
           {([
-            { id: 'mint'    as Mode, label: 'Mint New' },
-            { id: 'resell'  as Mode, label: 'Relist'   },
-            { id: 'payouts' as Mode, label: 'Payouts'  },
+            { id: 'mint'   as Mode, label: 'Mint New' },
+            { id: 'resell' as Mode, label: 'Relist'   },
           ]).map(tab => (
             <button key={tab.id} onClick={() => setMode(tab.id)}
               style={{ ...tabSlider().item, ...(mode === tab.id ? tabSlider().itemActive : null) }}>
@@ -432,13 +449,8 @@ export default function SellerDashboardPage() {
           ))}
         </div>
 
-        {mode === 'mint'    && <MintForm    wallet={wallet} />}
-        {mode === 'resell'  && <RelistPanel wallet={wallet} />}
-        {mode === 'payouts' && (
-          <div style={{ ...card({ pad: S[5] }), marginTop: S[5] }}>
-            <PayoutSettings wallet={wallet} />
-          </div>
-        )}
+        {mode === 'mint'   && <MintForm    wallet={wallet} />}
+        {mode === 'resell' && <RelistPanel wallet={wallet} />}
       </div>
 
       <style>{`

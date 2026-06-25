@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { t, S, price, card, btn, badge, avatar } from '@/lib/ui';
+import { useCurrency } from '@/lib/currency';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 const AVATAR_GRADIENTS = [
   'linear-gradient(135deg,#25CDB8,#2A8AED)',
@@ -22,6 +24,7 @@ export default function LikedPage() {
   const { wallets } = useSolanaWallets();
   const wallet = wallets?.[0]?.address ?? '';
   const router = useRouter();
+  const { format: fmtPrice } = useCurrency();
   const { data: items = [], isLoading } = trpc.likes.getLikedByWallet.useQuery(
     { wallet },
     { enabled: !!wallet }
@@ -34,6 +37,7 @@ export default function LikedPage() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Liked Items</div>
+        <div style={{ marginLeft: 'auto' }}><HeaderMenu /></div>
       </div>
 
       <div className="visby-inner" style={{ maxWidth: 600, margin: '0 auto', padding: `${S[4]}px ${S[4]}px 100px` }}>
@@ -64,7 +68,6 @@ export default function LikedPage() {
                     ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
                   }
-                  {item.condition && <span style={{ ...badge('onImage'), position: 'absolute', top: S[3], left: S[3] }}>{item.condition}</span>}
                 </div>
                 <div style={{ padding: S[4], display: 'flex', flexDirection: 'column', gap: S[2], flex: 1 }}>
                   <div style={{ ...t('heading'), color: 'var(--text-strong)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</div>
@@ -72,7 +75,7 @@ export default function LikedPage() {
                     <div style={{ ...avatar('sm'), width: 22, height: 22, fontSize: 10, background: AVATAR_GRADIENTS[i % AVATAR_GRADIENTS.length] }}>{(item.name ?? '?').slice(0, 1).toUpperCase()}</div>
                     <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{shortAddr(item.current_owner_wallet)}</span>
                   </div>
-                  <div style={{ ...price('md'), marginTop: S[1] }}>${(item.price_usdc ?? 0).toLocaleString()}</div>
+                  <div style={{ ...price('md'), marginTop: S[1] }}>{fmtPrice(item.price_usdc ?? 0)}</div>
                 </div>
               </Link>
             ))}

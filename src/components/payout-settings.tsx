@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { t, S, surface, btn, sectionLabel, input } from '@/lib/ui';
 
-const GREEN = '#00C48C';
-const RED   = '#FF3B5C';
+const GREEN = 'var(--ok)';
+const RED   = 'var(--danger)';
 
 export default function PayoutSettings({ wallet }: { wallet: string }) {
   const { getAccessToken } = usePrivy();
@@ -130,7 +130,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
           </div>
         )}
 
-        {errMsg && <div style={{ ...surface({ pad: '10px 14px' }), ...t('body'), color: RED, borderColor: 'rgba(255,59,92,.2)' }}>{errMsg}</div>}
+        {errMsg && <div style={{ ...surface({ pad: '10px 14px' }), ...t('body'), color: RED, borderColor: 'var(--danger-soft)' }}>{errMsg}</div>}
 
         <button type="submit" disabled={status === 'saving'}
           style={{ ...btn(status === 'saved' ? 'secondary' : 'primary', { full: true }), opacity: status === 'saving' ? 0.7 : 1, cursor: status === 'saving' ? 'not-allowed' : 'pointer', color: status === 'saved' ? GREEN : undefined }}>

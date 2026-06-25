@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
+import { useSolanaWallets } from '@privy-io/react-auth';
 import { trpc } from '@/lib/trpc/client';
-import { ThemeToggle, useTheme } from '@/lib/theme';
-import { S, t, price, card, sheet, surface, btn, badge, sectionLabel, avatar, input } from '@/lib/ui';
+import { S, t, price, card, sheet, surface, btn, sectionLabel, avatar, input } from '@/lib/ui';
+import { LikeButton } from '@/components/like-button';
+import { OwnerStack, AvatarCircle } from '@/components/owner-stack';
+import { ListingCard } from '@/components/listing-card';
+import { useCurrency } from '@/lib/currency';
+import { HeaderMenu } from '@/components/layout/header-menu';
 
 const C = {
   navy: 'transparent',
@@ -23,6 +27,24 @@ const AVATAR_GRADS = [
   `linear-gradient(135deg,${C.teal},${C.blue})`,
 ];
 
+const CATS  = ['All', 'Sneakers', 'Watches', 'Bags', 'Memorabilia', 'Vintage', 'Electronics'];
+const COND_OPTS  = ['All', 'New', 'Used'] as const;
+const OWNER_OPTS = [
+  { key: 'any', label: 'Any' },
+  { key: '0',   label: 'None' },
+  { key: '1',   label: '1+' },
+  { key: '2',   label: '2+' },
+  { key: '3',   label: '3+' },
+] as const;
+const SORTS = [
+  { key: 'relevance',  label: 'Relevance' },
+  { key: 'newest',     label: 'Newest first' },
+  { key: 'popular',    label: 'Trending' },
+  { key: 'price_asc',  label: 'Price: low → high' },
+  { key: 'price_desc', label: 'Price: high → low' },
+] as const;
+type Sort = 'relevance' | 'newest' | 'popular' | 'price_asc' | 'price_desc';
+
 function shortAddr(a: string) {
   return a?.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a;
 }
@@ -30,14 +52,14 @@ function shortAddr(a: string) {
 // Brand mark — intentionally unchanged. Keeps its original Quicksand wordmark + colors.
 function VisbyLogo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto', filter: 'brightness(0.5)' }} />
+    <div className="visby-home-logo" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <img src="/visby-logo-mark.png" alt="Visby" style={{ height: 28, width: 'auto' }} />
       <svg width="90" height="28" viewBox="0 0 115 32">
         <defs>
           <linearGradient id="vlg-home" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"   stopColor="#157F6E" />
-            <stop offset="50%"  stopColor="#2B57AC" />
-            <stop offset="100%" stopColor="#8423AE" />
+            <stop offset="0%"   stopColor="#3EFFD8" />
+            <stop offset="50%"  stopColor="#5B9BFF" />
+            <stop offset="100%" stopColor="#C742FF" />
           </linearGradient>
         </defs>
         <text x="0" y="26" fontFamily="'Quicksand',sans-serif" fontSize="30" fontWeight="400" fill="url(#vlg-home)" letterSpacing="-1">Visby</text>
@@ -47,33 +69,87 @@ function VisbyLogo() {
 }
 
 export default function HomePage() {
-  const { ready, authenticated, login, logout } = usePrivy();
   const { wallets: solWallets } = useSolanaWallets();
   const myWallet = solWallets?.[0]?.address ?? '';
-  const { mode } = useTheme();
+  const { format: fmtPrice } = useCurrency();
   const router = useRouter();
   const [q,        setQ]        = useState('');
   const [sf,       setSf]       = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [cat,      setCat]      = useState('All');
+  const [newUsed,  setNewUsed]  = useState<typeof COND_OPTS[number]>('All');
+  const [ownersF,  setOwnersF]  = useState<typeof OWNER_OPTS[number]['key']>('any');
+  const [sort,     setSort]     = useState<Sort>('newest');
+  const [minP,     setMinP]     = useState('');
+  const [maxP,     setMaxP]     = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [browse,   setBrowse]   = useState<'products' | 'sellers' | 'brands'>('products');
+
+  // Debounce the typed query so synonym expansion + DB search don't fire per keystroke.
+  const [debouncedQ, setDebouncedQ] = useState('');
+  useEffect(() => {
+    const tm = setTimeout(() => setDebouncedQ(q.trim()), 400);
+    return () => clearTimeout(tm);
+  }, [q]);
 
   const { data: raw = [], isLoading } = trpc.listings.getListings.useQuery({
+    category:  cat  === 'All' ? undefined : cat,
+    minPrice:  minP ? parseFloat(minP) : undefined,
+    maxPrice:  maxP ? parseFloat(maxP) : undefined,
+    sort: sort === 'relevance' ? 'newest' : sort,
+    search: debouncedQ || undefined,
     limit: 80,
-  });
+  }, { enabled: browse === 'products' });
 
-  const { data: following = [] } = trpc.follows.getFollowing.useQuery(
-    { wallet: myWallet },
-    { enabled: !!myWallet }
+  // Seller (profile) search — the same search bar pulls up profiles when the Sellers filter is on.
+  const { data: suggestedSellers = [] } = trpc.follows.getSuggested.useQuery(
+    { wallet: myWallet || undefined },
+    { enabled: browse === 'sellers' && !debouncedQ },
   );
+  const { data: searchedSellers = [], isLoading: sellersSearching } = trpc.profiles.searchProfiles.useQuery(
+    { query: debouncedQ },
+    { enabled: browse === 'sellers' && !!debouncedQ },
+  );
+  const sellers = debouncedQ ? searchedSellers : suggestedSellers;
 
   const items = useMemo(() => {
-    if (!q) return raw;
-    const lq = q.toLowerCase();
-    return raw.filter(i =>
-      i.name.toLowerCase().includes(lq) ||
-      i.serial_number.toLowerCase().includes(lq) ||
-      i.category.toLowerCase().includes(lq)
-    );
-  }, [raw, q]);
+    let list = raw;
+
+    if (newUsed !== 'All') {
+      list = list.filter(i => {
+        const isNew = (i.condition ?? '').toLowerCase() === 'new';
+        return newUsed === 'New' ? isNew : !isNew;
+      });
+    }
+
+    if (ownersF !== 'any') {
+      const min = parseInt(ownersF, 10);
+      list = list.filter(i => {
+        const o = (i as any).owners;
+        const prev = Array.isArray(o) && o.length ? Math.max(0, o.length - 1) : ((i as any).transfer_count ?? 0);
+        return ownersF === '0' ? prev === 0 : prev >= min;
+      });
+    }
+
+    if (sort === 'relevance' && debouncedQ) {
+      const lq = debouncedQ.toLowerCase();
+      list = [...list].sort((a, b) => {
+        const score = (i: typeof a) => {
+          const nl = i.name.toLowerCase();
+          if (nl.startsWith(lq)) return 100;
+          if (nl.includes(lq)) return 70;
+          if ((i.category ?? '').toLowerCase().includes(lq)) return 40;
+          if ((i.description ?? '').toLowerCase().includes(lq)) return 20;
+          return 0;
+        };
+        return score(b) - score(a);
+      });
+    }
+
+    return list;
+  }, [raw, debouncedQ, sort, newUsed, ownersF]);
+
+  const hasFilters = cat !== 'All' || newUsed !== 'All' || ownersF !== 'any' || !!minP || !!maxP;
+  function clearFilters() { setCat('All'); setNewUsed('All'); setOwnersF('any'); setMinP(''); setMaxP(''); }
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
@@ -83,8 +159,7 @@ export default function HomePage() {
         position: 'sticky', top: 0, zIndex: 100,
         background: 'var(--glass-bg-strong)',
         backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
-        borderBottom: '1px solid var(--divider)',
-        boxShadow: '0 2px 16px rgba(0,0,0,.06)',
+        boxShadow: '0 4px 20px rgba(0,0,0,.08)',
       }}>
         <div className="visby-page" style={{ paddingTop: 10, paddingBottom: 0 }}>
           {/* Row 1: spacer | logo centered | hamburger right */}
@@ -92,19 +167,7 @@ export default function HomePage() {
             <div style={{ flex: 1 }} />
             <VisbyLogo />
             <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setMenuOpen(true)}
-                style={{
-                  background: 'var(--glass-bg)',
-                  backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                  border: '1px solid var(--glass-border)',
-                  borderRadius: 14, padding: '9px 11px',
-                  cursor: 'pointer', flexShrink: 0,
-                  display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                {[0,1,2].map(i => <div key={i} style={{ width: 18, height: 1.5, background: 'var(--text)', borderRadius: 1 }} />)}
-              </button>
+              <HeaderMenu />
             </div>
           </div>
 
@@ -121,7 +184,7 @@ export default function HomePage() {
                 onChange={e => setQ(e.target.value)}
                 onFocus={() => setSf(true)}
                 onBlur={() => setSf(false)}
-                placeholder="Search items, brands, serials…"
+                placeholder={browse === 'sellers' ? 'Search sellers by name or wallet…' : browse === 'brands' ? 'Search brands…' : 'Search items, brands, serials…'}
                 style={{
                   ...input(),
                   paddingLeft: 40,
@@ -137,107 +200,133 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* ── Menu sheet ───────────────────────────────────── */}
-      {menuOpen && (
-        <>
-          <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
-          <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, borderBottom: 'none', padding: `0 ${S[5]}px ${S[7]}px` }}>
-            <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `${S[4]}px auto ${S[5]}px` }} />
-
-            {/* Appearance / theme toggle */}
-            <div style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3], marginBottom: S[2] }}>
-              <div style={{ ...surface({ radius: 'var(--r-sm)' }), width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
-                <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>Appearance</span>
-                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{mode === 'dark' ? 'Night' : 'Day'} mode</span>
-              </div>
-              <div style={{ marginLeft: 'auto' }}><ThemeToggle /></div>
-            </div>
-
-            {([
-              { label: 'Profile',       href: '/profile',           icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
-              { label: 'Add Funds',     href: '/buy-crypto',        icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> },
-              { label: 'Notifications', href: '/dashboard',         icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> },
-              { label: 'Liked Items',   href: '/liked',             icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> },
-              { label: 'Sell an Item',  href: '/dashboard/seller',  icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> },
-              { label: 'Settings',      href: '/settings',          icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
-            ] as const).map(item => (
-              <Link key={item.label} href={item.href} onClick={() => setMenuOpen(false)}
-                style={{ ...surface({ pad: '12px 16px' }), display: 'flex', alignItems: 'center', gap: S[3], marginTop: S[2], textDecoration: 'none' }}>
-                <div style={{ ...surface({ radius: 'var(--r-sm)' }), width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {item.icon}
-                </div>
-                <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>{item.label}</span>
-                <svg style={{ marginLeft: 'auto' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-              </Link>
-            ))}
-            <div style={{ marginTop: S[5] }}>
-              {ready && (authenticated
-                ? <button onClick={() => { logout(); setMenuOpen(false); }} style={btn('danger', { full: true, pill: false })}>Sign Out</button>
-                : <button onClick={() => { login(); setMenuOpen(false); }} style={btn('primary', { full: true, pill: false })}>Sign In</button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
       <div className="visby-page">
 
-        {/* ── Stories ──────────────────────────────────── */}
-        <div style={{ ...surface({ radius: 'var(--r-lg)', pad: '8px 12px' }), marginTop: S[4], marginBottom: S[6] }}>
-          <div style={{ display: 'flex', gap: S[3], overflowX: 'auto', paddingTop: S[1], paddingBottom: S[1], scrollbarWidth: 'none' }}>
-            {/* Empty state: a single + that leads to sellers to follow. Disappears once following anyone. */}
-            {following.length === 0 && (
-              <Link href="/discover" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, textDecoration: 'none' }}>
-                <div style={{ borderRadius: '50%', border: `2px dashed var(--glass-border)` }}>
-                  <div style={{ background: 'var(--bg-0)', borderRadius: '50%' }}>
-                    <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--glass-bg-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>+</div>
-                  </div>
-                </div>
-                <span style={{ ...t('meta'), color: 'var(--text-muted)', maxWidth: 72, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Find sellers</span>
-              </Link>
+        {/* ── Browse row: Products · Sellers · Brands + Filters ── */}
+        <div style={{ marginTop: S[4] }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: S[2], overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: S[3] }}>
+            <button onClick={() => setFiltersOpen(true)}
+              style={{ ...btn('secondary'), padding: '6px 13px', fontSize: 12, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, ...(hasFilters ? { borderColor: 'var(--text-muted)', color: 'var(--text-strong)' } : { color: 'var(--text-muted)' }) }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+              Filters{hasFilters ? ' ·' : ''}
+            </button>
+            {browse !== 'products' && (
+              <button onClick={() => setBrowse('products')}
+                style={{ ...btn('primary'), padding: '6px 13px', fontSize: 12, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {browse === 'sellers' ? 'Sellers' : 'Brands'}
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             )}
-
-            {following.map((f, i) => {
-              const initials = f.display_name
-                ? f.display_name.slice(0, 2).toUpperCase()
-                : f.wallet.slice(0, 2).toUpperCase();
-              const hasNew = !!f.latest_listing_at && !!f.followed_at && f.latest_listing_at > f.followed_at;
-              const grad = AVATAR_GRADS[i % AVATAR_GRADS.length];
-              return (
-                <Link key={f.wallet} href={`/p/${f.wallet}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, textDecoration: 'none' }}>
-                  <div style={{
-                    padding: 2,
-                    background: hasNew ? GD : 'var(--glass-border)',
-                    borderRadius: '50%',
-                    border: hasNew ? '2px solid transparent' : '2px solid var(--glass-border)',
-                    boxShadow: 'none',
-                  }}>
-                    <div style={{ padding: 2.5, background: 'var(--bg-0)', borderRadius: '50%' }}>
-                      <div style={{ width: 52, height: 52, borderRadius: '50%', background: grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff' }}>
-                        {initials}
-                      </div>
-                    </div>
-                  </div>
-                  <span style={{ ...t('meta'), color: 'var(--text-muted)', maxWidth: 56, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {f.display_name ?? shortAddr(f.wallet)}
-                  </span>
-                </Link>
-              );
-            })}
-
           </div>
         </div>
 
-        {/* ── Grid ──────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: S[3] }}>
-          <span style={sectionLabel()}>Recommended</span>
-          <Link href="/marketplace" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: S[1] }}>
-            See all
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </Link>
+        {/* ── Filters popup ────────────────────────────── */}
+        {filtersOpen && (
+          <>
+            <div onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }} />
+            <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, borderBottom: 'none', padding: `0 ${S[5]}px ${S[6]}px`, maxHeight: '88vh', overflowY: 'auto' }}>
+              <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `${S[4]}px auto ${S[5]}px` }} />
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: S[5] }}>
+                <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Filters</div>
+                {hasFilters && (
+                  <button onClick={clearFilters} style={{ background: 'none', border: 'none', cursor: 'pointer', ...t('meta'), color: 'var(--danger)', fontWeight: 700 }}>Clear all</button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: S[5] }}>
+                {/* Browse: toggle what the search bar pulls up — products, sellers, or brands */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={sectionLabel()}>Browse</div>
+                  <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+                    {([
+                      { key: 'products', label: 'Products', icon: <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/> },
+                      { key: 'sellers',  label: 'Sellers',  icon: <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></> },
+                      { key: 'brands',   label: 'Brands',   icon: <><path d="M3 9l1.5-5h15L21 9"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M9 22v-7h6v7"/></> },
+                    ] as { key: 'products' | 'sellers' | 'brands'; label: string; icon: JSX.Element }[]).map(b => (
+                      <button key={b.key} onClick={() => { setBrowse(b.key); setFiltersOpen(false); }}
+                        style={{ ...btn(browse === b.key ? 'primary' : 'secondary'), padding: '6px 14px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(browse === b.key ? {} : { color: 'var(--text-muted)' }) }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">{b.icon}</svg>
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Product */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={sectionLabel()}>Category</div>
+                  <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+                    {CATS.map(c => (
+                      <button key={c} onClick={() => setCat(c)}
+                        style={{ ...btn(cat === c ? 'primary' : 'secondary'), padding: '6px 13px', fontSize: 12 }}>{c}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* New / Used */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={sectionLabel()}>Condition</div>
+                  <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+                    {COND_OPTS.map(c => (
+                      <button key={c} onClick={() => setNewUsed(c)}
+                        style={{ ...btn(newUsed === c ? 'primary' : 'secondary'), padding: '6px 13px', fontSize: 12 }}>{c}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sort / price filtering */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={sectionLabel()}>Sort by</div>
+                  <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+                    {SORTS.filter(s => s.key !== 'relevance').map(s => (
+                      <button key={s.key} onClick={() => setSort(s.key as Sort)}
+                        style={{ ...btn(sort === s.key ? 'primary' : 'secondary'), padding: '6px 13px', fontSize: 12 }}>{s.label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Price range */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={sectionLabel()}>Price range (USDC)</div>
+                  <div style={{ display: 'flex', gap: S[3], alignItems: 'center' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: S[3], top: '50%', transform: 'translateY(-50%)', ...t('body'), color: 'var(--text-muted)' }}>$</span>
+                      <input type="number" inputMode="decimal" value={minP} onChange={e => setMinP(e.target.value)} placeholder="Min"
+                        style={{ ...input(), background: 'var(--surface-bg)', border: '1px solid var(--glass-hairline)', paddingLeft: S[6] }} />
+                    </div>
+                    <span style={{ ...t('body'), color: 'var(--text-muted)' }}>—</span>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: S[3], top: '50%', transform: 'translateY(-50%)', ...t('body'), color: 'var(--text-muted)' }}>$</span>
+                      <input type="number" inputMode="decimal" value={maxP} onChange={e => setMaxP(e.target.value)} placeholder="Max"
+                        style={{ ...input(), background: 'var(--surface-bg)', border: '1px solid var(--glass-hairline)', paddingLeft: S[6] }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Previous owners */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={sectionLabel()}>Previous owners</div>
+                  <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+                    {OWNER_OPTS.map(o => (
+                      <button key={o.key} onClick={() => setOwnersF(o.key)}
+                        style={{ ...btn(ownersF === o.key ? 'primary' : 'secondary'), padding: '6px 13px', fontSize: 12 }}>{o.label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={() => setFiltersOpen(false)} style={{ ...btn('primary', { full: true, pill: false }), marginTop: S[6] }}>
+                Show {items.length} result{items.length !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── Results ──────────────────────────────────── */}
+        {browse === 'products' && (<>
+        <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[3] }}>
+          {isLoading ? 'Searching…' : `${items.length} item${items.length !== 1 ? 's' : ''} for sale`}
         </div>
         <div style={{ paddingBottom: 100 }}>
 
@@ -264,44 +353,51 @@ export default function HomePage() {
           {/* Cards */}
           {!isLoading && items.length > 0 && (
             <div className="visby-grid">
-              {items.map((item, i) => {
-                const sellerInit = (item.current_owner_wallet[0] ?? '?').toUpperCase();
-                return (
-                  <Link key={item.id} href={`/item/${item.id}`}
-                    style={{ ...card({ radius: 'var(--r-lg)' }), display: 'flex', flexDirection: 'column', overflow: 'hidden', textDecoration: 'none' }}>
-
-                    {/* Image */}
-                    <div style={{ position: 'relative', aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {(item as any).image_url
-                        ? <img src={(item as any).image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
-                      }
-                      <span style={{ ...badge('onImage'), position: 'absolute', top: S[3], left: S[3] }}>{item.condition}</span>
-                    </div>
-
-                    {/* Info */}
-                    <div style={{ padding: S[4], display: 'flex', flexDirection: 'column', gap: S[2], flex: 1 }}>
-                      <div style={{ ...t('heading'), color: 'var(--text-strong)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {item.name}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
-                        <div style={{ ...avatar('sm'), width: 22, height: 22, fontSize: 10, background: AVATAR_GRADS[i % AVATAR_GRADS.length] }}>
-                          {sellerInit}
-                        </div>
-                        <span style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {shortAddr(item.current_owner_wallet)}
-                        </span>
-                      </div>
-                      <div style={{ ...price('md'), marginTop: S[1] }}>
-                        ${(item.price_usdc ?? 0).toLocaleString()}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
+              {items.map((item) => (
+                <ListingCard key={item.id} item={item as any} />
+              ))}
             </div>
           )}
         </div>
+        </>)}
+
+        {/* Sellers (profiles) — the same search bar pulls up profiles in this mode */}
+        {browse === 'sellers' && (
+          <div style={{ paddingBottom: 100 }}>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[3] }}>
+              {sellersSearching ? 'Searching…' : debouncedQ ? `${sellers.length} seller${sellers.length !== 1 ? 's' : ''}` : 'Suggested sellers'}
+            </div>
+            {!sellersSearching && sellers.length === 0 && (
+              <div style={{ textAlign: 'center', padding: `${S[7]}px ${S[5]}px`, ...t('meta'), color: 'var(--text-muted)' }}>
+                {debouncedQ ? `No sellers found for "${debouncedQ}"` : 'Search for a seller by name or wallet'}
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+              {sellers.map((p: any) => (
+                <Link key={p.wallet} href={`/p/${p.wallet}`} style={{ ...surface({ pad: S[4] }), display: 'flex', alignItems: 'center', gap: S[3], textDecoration: 'none' }}>
+                  <AvatarCircle wallet={p.wallet} avatarUrl={p.avatar_url} size={48} ring="transparent" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.display_name || shortAddr(p.wallet)}
+                    </div>
+                    <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.listing_count > 0 ? `${p.listing_count} listing${p.listing_count !== 1 ? 's' : ''} · ` : ''}{shortAddr(p.wallet)}
+                    </div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Brands — placeholder until brand profiles exist */}
+        {browse === 'brands' && (
+          <div style={{ textAlign: 'center', padding: `${S[7]}px ${S[5]}px`, paddingBottom: 100 }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[2] }}>Brands are coming soon</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Soon you&apos;ll be able to find and follow your favorite brands here.</div>
+          </div>
+        )}
       </div>
 
       <style>{`
