@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/sdk/redeliver-webhooks",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/sdk/retry-mints",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-settlements",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
