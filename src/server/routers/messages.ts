@@ -1,34 +1,16 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '@/server/trpc';
+import { TRPCError } from '@trpc/server';
+import { createTRPCRouter, protectedProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
 
 export const messagesRouter = createTRPCRouter({
-  send: publicProcedure
-    .input(z.object({
-      from_wallet: z.string(),
-      to_wallet: z.string(),
-      content: z.string().min(1).max(1000),
-      item_id: z.string().optional(),
-    }))
-    .mutation(async ({ input }) => {
-      const supabase = createServiceClient();
-      const { data, error } = await supabase
-        .from('messages')
-        .insert({
-          from_wallet: input.from_wallet,
-          to_wallet: input.to_wallet,
-          content: input.content,
-          item_id: input.item_id ?? null,
-        })
-        .select()
-        .single();
-      if (error) throw new Error(error.message);
-      return data;
-    }),
-
-  getConversations: publicProcedure
+  // NOTE: send + markRead live as authed REST routes (/api/messages/send, /api/messages/read). These
+  // reads are protectedProcedure: the caller must hold a Privy token controlling the wallet whose private
+  // conversations they're reading — otherwise any wallet's DMs would be enumerable (IDOR).
+  getConversations: protectedProcedure
     .input(z.object({ wallet: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      if (!ctx.wallets.includes(input.wallet)) throw new TRPCError({ code: 'FORBIDDEN' });
       if (!input.wallet) return [];
       const supabase = createServiceClient();
       const { data: sent } = await supabase
@@ -47,16 +29,17 @@ export const messagesRouter = createTRPCRouter({
       for (const msg of all) {
         const partner = msg.from_wallet === input.wallet ? msg.to_wallet : msg.from_wallet;
         const existing = convMap[partner];
+        // Update last_message/last_at without resetting the accumulated unread count.
         if (!existing || new Date(msg.created_at) > new Date(existing.last_at)) {
           convMap[partner] = {
             partner_wallet: partner,
             last_message: msg.content,
             last_at: msg.created_at,
-            unread: 0,
+            unread: existing?.unread ?? 0,
           };
         }
         if (msg.to_wallet === input.wallet && !msg.read) {
-          convMap[partner] = { ...convMap[partner], unread: (convMap[partner]?.unread ?? 0) + 1 };
+          convMap[partner].unread += 1;
         }
       }
 
@@ -76,9 +59,12 @@ export const messagesRouter = createTRPCRouter({
       }));
     }),
 
-  getThread: publicProcedure
+  getThread: protectedProcedure
     .input(z.object({ wallet_a: z.string(), wallet_b: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      if (!ctx.wallets.includes(input.wallet_a) && !ctx.wallets.includes(input.wallet_b)) {
+        throw new TRPCError({ code: 'FORBIDDEN' });
+      }
       const supabase = createServiceClient();
       const { data, error } = await supabase
         .from('messages')
@@ -89,18 +75,5 @@ export const messagesRouter = createTRPCRouter({
         .order('created_at', { ascending: true });
       if (error) throw new Error(error.message);
       return data ?? [];
-    }),
-
-  markRead: publicProcedure
-    .input(z.object({ from_wallet: z.string(), to_wallet: z.string() }))
-    .mutation(async ({ input }) => {
-      const supabase = createServiceClient();
-      await supabase
-        .from('messages')
-        .update({ read: true })
-        .eq('from_wallet', input.from_wallet)
-        .eq('to_wallet', input.to_wallet)
-        .eq('read', false);
-      return { ok: true };
     }),
 });
