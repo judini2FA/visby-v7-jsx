@@ -1,0 +1,21 @@
+import Link from 'next/link';
+import { S, t } from '@/lib/ui';
+
+// Global footer with the legal links. Bottom padding clears the fixed BottomNav.
+export function LegalFooter() {
+  return (
+    <footer
+      className="visby-inner"
+      style={{
+        marginTop: S[7], paddingTop: S[6], paddingBottom: 112,
+        borderTop: '1px solid var(--divider)',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: S[3],
+      }}
+    >
+      <Link href="/legal/terms" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none' }}>Terms</Link>
+      <span style={{ ...t('meta'), color: 'var(--divider)' }}>·</span>
+      <Link href="/legal/privacy" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none' }}>Privacy</Link>
+      <span style={{ ...t('micro'), color: 'var(--text-muted)', flexBasis: '100%', textAlign: 'center', marginTop: S[1] }}>© 2026 Visby</span>
+    </footer>
+  );
+}
