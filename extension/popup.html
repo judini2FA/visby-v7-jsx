@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visby Pay</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <div class="header">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M12 2L3 7v10l9 5 9-5V7L12 2z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M12 7l5 3v4l-5 3-5-3v-4l5-3z" fill="white" fill-opacity=".65"/>
+    </svg>
+    <div class="wordmark">
+      Visby
+      <span>Pay with Visby</span>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <p class="explainer">
+      Visby Pay detects checkout pages and lets you pay with your saved Visby payment methods — without re-entering card details.
+    </p>
+
+    <!-- NFT policy — always visible, always honest -->
+    <div class="policy">
+      <svg class="policy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" stroke="#7c3aad" stroke-width="2"/>
+        <path d="M12 8v5M12 15v1" stroke="#7c3aad" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <span>
+        <strong>NFT provenance policy:</strong> Provenance NFTs are issued only on registered Visby partner stores. Paying on any other site with Visby does <em>not</em> create an NFT or any on-chain record.
+      </span>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Auth / methods area -->
+    <div class="auth-area">
+      <div class="auth-label">Your Visby Methods</div>
+
+      <div id="signed-out-view">
+        <p class="signed-out-message">Sign in to see your saved payment methods and wallet balance.</p>
+      </div>
+
+      <!-- Populated by popup.js when signed in -->
+      <div class="methods-list" id="methods-list" aria-live="polite"></div>
+    </div>
+
+    <button class="cta-btn" id="signin-btn">Sign in to Visby</button>
+    <button class="cta-btn secondary" id="open-visby-btn">Open Visby</button>
+
+  </div>
+
+  <div class="footer">Visby Pay &mdash; v0.1.0 scaffold</div>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
