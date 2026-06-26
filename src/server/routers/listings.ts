@@ -6,6 +6,22 @@ import { expandSearchTerms, sanitizeIlikeTerm } from '@/server/lib/synonyms';
 import { searchListings } from '@/server/lib/search-engine';
 import { ownersForItems } from '@/lib/owners';
 
+// Hide listings owned by flagged sellers from public browse. Degrades to "hide nothing" if the
+// is_flagged column isn't migrated yet, so the marketplace never breaks on a missing column.
+async function dropFlaggedOwners(supabase: ReturnType<typeof createServiceClient>, items: any[]): Promise<any[]> {
+  if (!items.length) return items;
+  const wallets = [...new Set(items.map((i) => i.current_owner_wallet).filter(Boolean))];
+  if (!wallets.length) return items;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('wallet')
+    .eq('is_flagged', true)
+    .in('wallet', wallets);
+  if (error) return items;
+  const flagged = new Set((data ?? []).map((r: any) => r.wallet));
+  return flagged.size ? items.filter((i) => !flagged.has(i.current_owner_wallet)) : items;
+}
+
 export const listingsRouter = createTRPCRouter({
   getBySerial: publicProcedure
     .input(z.object({ serial: z.string() }))
@@ -72,9 +88,10 @@ export const listingsRouter = createTRPCRouter({
       const supabase = createServiceClient();
       // Attach the ordered owner chain (avatars) used by the thumbnail's owner stack.
       const withOwners = async (items: any[]) => {
-        const owners = await ownersForItems(supabase, items);
-        for (const it of items) it.owners = owners[it.id] ?? [];
-        return items;
+        const visible = await dropFlaggedOwners(supabase, items);
+        const owners = await ownersForItems(supabase, visible);
+        for (const it of visible) it.owners = owners[it.id] ?? [];
+        return visible;
       };
 
       // Intuitive text search → in-app Orama engine (typo tolerance, BM25 relevance,

@@ -3,13 +3,11 @@
 import { useState } from 'react';
 import { btn, sheet, input, S, t, T } from '@/lib/ui';
 
-const REASONS = [
-  'Counterfeit',
-  'Prohibited item',
-  'Spam or scam',
-  'Inappropriate',
-  'Other',
-] as const;
+const REASONS: Record<'listing' | 'seller' | 'message', readonly string[]> = {
+  listing: ['Counterfeit', 'Prohibited item', 'Not as described', 'Spam or scam', 'Inappropriate', 'Other'],
+  seller:  ['Suspected scam or fraud', 'Sells counterfeits', 'Harassment or abuse', 'Impersonation', 'Inappropriate', 'Other'],
+  message: ['Spam', 'Harassment or abuse', 'Scam attempt', 'Inappropriate', 'Other'],
+};
 
 export function ReportButton({
   targetType,
@@ -26,8 +24,9 @@ export function ReportButton({
   label?: string;
   compact?: boolean;
 }) {
+  const reasons = REASONS[targetType];
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState<string>(REASONS[0]);
+  const [reason, setReason] = useState<string>(reasons[0]);
   const [details, setDetails] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -37,7 +36,7 @@ export function ReportButton({
     if (!reporterWallet) return;
     setDone(false);
     setErr('');
-    setReason(REASONS[0]);
+    setReason(reasons[0]);
     setDetails('');
     setOpen(true);
   }
@@ -137,7 +136,7 @@ export function ReportButton({
                     onChange={(e) => setReason(e.target.value)}
                     style={{ ...input(), appearance: 'none', WebkitAppearance: 'none' }}
                   >
-                    {REASONS.map((r) => (
+                    {reasons.map((r) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>

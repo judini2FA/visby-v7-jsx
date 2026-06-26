@@ -41,6 +41,11 @@ export async function POST(req: Request) {
     });
 
     if (error) {
+      // Already filed an open report on this exact target — the partial-unique dedup index rejects it.
+      // Treat as idempotent success so the reporter isn't told their on-file report "failed".
+      if (error.code === '23505') {
+        return NextResponse.json({ ok: true, duplicate: true });
+      }
       const missing =
         error.message?.includes('does not exist') || error.code === '42P01' || error.code === 'PGRST205';
       if (missing) {

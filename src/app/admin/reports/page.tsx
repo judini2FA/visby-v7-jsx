@@ -140,6 +140,25 @@ function ReportCard({
     }
   }
 
+  async function enforce(action: 'force_delist' | 'flag_user') {
+    setBusy(action);
+    try {
+      const res = await fetch('/api/moderation', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ wallet, report_id: report.id, action, target_id: report.target_id }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        alert((b as any).error ?? 'Action failed');
+        return;
+      }
+      onRefresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // Messages have no public page — a message id linked to /item or /p would 404, so leave it plain text.
   const targetHref =
     report.target_type === 'listing'
@@ -229,6 +248,38 @@ function ReportCard({
           token={token}
           onDone={onRefresh}
         />
+      )}
+
+      {/* enforcement: pull a listing off sale, or flag a seller account */}
+      {(report.target_type === 'listing' || report.target_type === 'seller') && (
+        <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+          {report.target_type === 'listing' && (
+            <button
+              style={{ ...btn('danger'), fontSize: 12, padding: '8px 14px' }}
+              disabled={busy !== null}
+              onClick={() => enforce('force_delist')}
+            >
+              {/* slash-circle */}
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
+              {busy === 'force_delist' ? 'Delisting…' : 'Delist item'}
+            </button>
+          )}
+          {report.target_type === 'seller' && (
+            <button
+              style={{ ...btn('danger'), fontSize: 12, padding: '8px 14px' }}
+              disabled={busy !== null}
+              onClick={() => enforce('flag_user')}
+            >
+              {/* user-x */}
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/>
+              </svg>
+              {busy === 'flag_user' ? 'Flagging…' : 'Flag user'}
+            </button>
+          )}
+        </div>
       )}
 
       {/* moderation actions */}
