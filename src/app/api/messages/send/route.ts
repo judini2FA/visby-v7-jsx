@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    const { from_wallet, to_wallet, item_id, content } = await req.json();
+    const { from_wallet, to_wallet, item_id, content, preset } = await req.json();
 
     if (!from_wallet || !to_wallet) {
       return NextResponse.json({ error: 'Missing from_wallet or to_wallet' }, { status: 400 });
@@ -48,16 +48,33 @@ export async function POST(req: Request) {
       // table absent — treat as no block
     }
 
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        from_wallet,
-        to_wallet,
-        content: content.trim(),
-        item_id: item_id ?? null,
-      })
-      .select()
-      .single();
+    // Keep the structured preset payload small + shape-checked; content is always the human-readable
+    // fallback, so a bad/oversized preset is simply dropped rather than failing the send.
+    const ALLOWED_PRESET_KINDS = ['reply', 'offer', 'ask_condition', 'condition'];
+    const safePreset =
+      preset && typeof preset === 'object' && typeof preset.kind === 'string' &&
+      ALLOWED_PRESET_KINDS.includes(preset.kind) && JSON.stringify(preset).length <= 500
+        ? preset
+        : null;
+
+    const row: Record<string, unknown> = {
+      from_wallet,
+      to_wallet,
+      content: content.trim(),
+      item_id: item_id ?? null,
+    };
+    if (safePreset) row.preset = safePreset;
+
+    let { data, error } = await supabase.from('messages').insert(row).select().single();
+    // Tolerate the preset column not being migrated yet: retry without it (content still carries the text).
+    // PostgREST surfaces an unknown column as PGRST204 ("… in the schema cache"), Postgres as 42703.
+    if (error && safePreset && (
+      error.code === '42703' || error.code === 'PGRST204' ||
+      error.message?.includes('does not exist') || error.message?.includes('schema cache')
+    )) {
+      delete row.preset;
+      ({ data, error } = await supabase.from('messages').insert(row).select().single());
+    }
 
     if (error) throw new Error(error.message);
 

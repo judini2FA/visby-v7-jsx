@@ -8,6 +8,7 @@ import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card, surface, btn, badge, avatar, sectionLabel, tabSlider, input, T } from '@/lib/ui';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { PresetComposer, StructuredBubble, type MessagePreset } from '@/components/preset-composer';
 import { feeBreakdown } from '@/lib/fees';
 import type { ShipRate } from '@/lib/shipping/types';
 
@@ -798,8 +799,8 @@ function SalesTab({ wallet }: { wallet: string }) {
 function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: string }) {
   const { getAccessToken } = usePrivy();
   const [activeConv, setActiveConv] = useState<string | null>(initialConv ?? null);
-  const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [offerMax, setOfferMax] = useState<number | null>(null);
 
   const { data: conversations = [], isLoading, refetch } = trpc.messages.getConversations.useQuery(
     { wallet },
@@ -835,18 +836,17 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialConv, wallet]);
 
-  async function sendMessage() {
-    if (!draft.trim() || !activeConv || sending) return;
+  async function sendMessage(content: string, preset?: MessagePreset) {
+    if (!content.trim() || !activeConv || sending) return;
     setSending(true);
     try {
       const token = await getAccessToken();
       const res = await fetch('/api/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ from_wallet: wallet, to_wallet: activeConv, content: draft.trim() }),
+        body: JSON.stringify({ from_wallet: wallet, to_wallet: activeConv, content: content.trim(), preset: preset ?? undefined }),
       });
       if (res.ok) {
-        setDraft('');
         refetch();
         refetchThread();
       }
@@ -854,6 +854,19 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
       setSending(false);
     }
   }
+
+  // Offer slider tops out at the listing price of the item this thread is about (latest message that
+  // carries an item_id), so a buyer can't "offer" more than asking. No item context → free range.
+  useEffect(() => {
+    const withItem = [...thread].reverse().find((m: any) => m.item_id);
+    if (!withItem?.item_id) { setOfferMax(null); return; }
+    let cancelled = false;
+    fetch(`/api/item/${withItem.item_id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((it) => { if (!cancelled && it?.price_usdc != null) setOfferMax(Number(it.price_usdc)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [thread]);
 
   if (isLoading) return (
     <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[2] }}>
@@ -879,7 +892,7 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
             return (
               <div key={msg.id} style={{ display: 'flex', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
                 <div style={{ maxWidth: '72%', ...(isMine ? { background: T.gradBrand } : surface({ radius: 18 })), borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', padding: '10px 14px' }}>
-                  <div style={{ ...t('body'), color: isMine ? '#fff' : 'var(--text-strong)' }}>{msg.content}</div>
+                  <StructuredBubble content={msg.content} preset={msg.preset} mine={isMine} />
                   <div style={{ ...t('meta'), color: isMine ? 'rgba(255,255,255,.7)' : 'var(--text-muted)', marginTop: S[1] }}>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
               </div>
@@ -887,20 +900,7 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
           })}
           {thread.length === 0 && !threadLoading && <div style={{ textAlign: 'center', ...t('meta'), color: 'var(--text-muted)', paddingTop: S[5] }}>Start the conversation</div>}
         </div>
-        <div style={{ display: 'flex', gap: S[2] }}>
-          <input
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && draft.trim()) { e.preventDefault(); sendMessage(); } }}
-            placeholder="Message…"
-            style={{ ...surface({ radius: 16 }), flex: 1, padding: '10px 14px', color: 'var(--text)', ...t('body'), outline: 'none' }}
-          />
-          <button onClick={sendMessage}
-            disabled={!draft.trim() || sending}
-            style={{ ...btn('primary', { pill: false }), opacity: !draft.trim() ? 0.5 : 1 }}>
-            {sending ? '…' : 'Send'}
-          </button>
-        </div>
+        <PresetComposer onSend={sendMessage} sending={sending} maxOffer={offerMax} />
       </div>
     );
   }
