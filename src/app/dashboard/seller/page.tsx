@@ -10,6 +10,7 @@ import { t, S, price, card, surface, btn, badge, sectionLabel, input, tabSlider 
 import { explorerTx } from '@/lib/explorer';
 import ShippingEstimator, { SHIP_DEFAULTS, type ShipValues } from '@/components/shipping-estimator';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { isCutout } from '@/components/listing-card';
 import { feeBreakdown } from '@/lib/fees';
 import { localShipEstimate } from '@/lib/shipping-estimate';
 
@@ -37,7 +38,7 @@ type MintStatus = 'idle' | 'uploading' | 'minting' | 'done' | 'error';
 function MintForm({ wallet }: { wallet: string }) {
   const { getAccessToken } = usePrivy();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [images, setImages]       = useState<{ file: File; preview: string }[]>([]);
+  const [images, setImages]       = useState<{ id: string; original: File; originalUrl: string; cutFile?: File; cutUrl?: string; useCut: boolean; busy: boolean }[]>([]);
   const [name, setName]           = useState('');
   const [serial, setSerial]       = useState('');
   const [category, setCategory]   = useState('');
@@ -52,13 +53,31 @@ function MintForm({ wallet }: { wallet: string }) {
 
   function pickImages(files: FileList | null) {
     if (!files) return;
-    setImages(prev => [...prev, ...Array.from(files).slice(0, 4 - prev.length).map(f => ({ file: f, preview: URL.createObjectURL(f) }))].slice(0, 4));
+    const adds = Array.from(files).slice(0, 4 - images.length).map(f => ({
+      id: crypto.randomUUID(), original: f, originalUrl: URL.createObjectURL(f), useCut: false, busy: true,
+    }));
+    setImages(prev => [...prev, ...adds].slice(0, 4));
+    adds.forEach(a => runCutout(a.original, a.id));
   }
 
-  async function uploadImage(file: File): Promise<string | null> {
+  // In-browser background removal on add; defaults to the cutout, user can toggle back to the original.
+  async function runCutout(file: File, id: string) {
+    try {
+      const { removeBackground } = await import('@imgly/background-removal');
+      const blob = await removeBackground(file, { output: { format: 'image/png' } });
+      const cf = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
+      const url = URL.createObjectURL(blob);
+      setImages(prev => prev.map(im => im.id === id ? { ...im, cutFile: cf, cutUrl: url, useCut: true, busy: false } : im));
+    } catch {
+      setImages(prev => prev.map(im => im.id === id ? { ...im, busy: false } : im));
+    }
+  }
+
+  async function uploadImage(file: File, cutout: boolean): Promise<string | null> {
     try {
       const fd = new FormData();
       fd.append('file', file);
+      if (cutout) fd.append('cutout', '1');
       const token = await getAccessToken();
       const res = await fetch('/api/upload-image', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
       if (!res.ok) return null;
@@ -74,7 +93,10 @@ function MintForm({ wallet }: { wallet: string }) {
     if (listNow && !price) { setError('Enter a price to list'); return; }
     setError('');
     setStatus('uploading');
-    const imageUrl = images.length > 0 ? await uploadImage(images[0].file) : null;
+    const cover = images[0];
+    const imageUrl = cover
+      ? await uploadImage(cover.useCut && cover.cutFile ? cover.cutFile : cover.original, cover.useCut && !!cover.cutFile)
+      : null;
     setStatus('minting');
     try {
       const token = await getAccessToken();
@@ -158,14 +180,31 @@ function MintForm({ wallet }: { wallet: string }) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
             {images.length === 0 && <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Add Photos</div>}
           </button>
-          {images.map((img, i) => (
-            <div key={i} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-              <img src={img.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-sm)', border: i === 0 ? `2px solid var(--text-muted)` : '2px solid transparent' }} />
+          {images.map((img, i) => {
+            const url = img.useCut && img.cutUrl ? img.cutUrl : img.originalUrl;
+            return (
+            <div key={img.id} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+              <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 'var(--r-sm)', border: i === 0 ? `2px solid var(--text-muted)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined }} />
               {i === 0 && <span style={{ ...badge('onImage'), position: 'absolute', bottom: S[1], left: S[1] }}>COVER</span>}
-              <button type="button" onClick={() => setImages(p => p.filter((_, j) => j !== i))}
+              {img.busy && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--img-scrim)', borderRadius: 'var(--r-sm)' }}>
+                  <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent', animation: 'spin .8s linear infinite' }} />
+                </div>
+              )}
+              {img.cutFile && !img.busy && (
+                <button type="button" title={img.useCut ? 'Show original' : 'Remove background'}
+                  onClick={() => setImages(p => p.map(m => m.id === img.id ? { ...m, useCut: !m.useCut } : m))}
+                  style={{ position: 'absolute', bottom: -6, right: -6, width: 22, height: 22, background: img.useCut ? 'var(--grad-brand)' : 'var(--glass-bg-strong)', border: 'none', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.2)' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={img.useCut ? '#fff' : 'var(--text)'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 3l2 2M19 3l-2 2M3 12h2M19 12h2M12 7a5 5 0 0 0-5 5c0 2 1 3 2 4h6c1-1 2-2 2-4a5 5 0 0 0-5-5z"/>
+                  </svg>
+                </button>
+              )}
+              <button type="button" onClick={() => setImages(p => p.filter(m => m.id !== img.id))}
                 style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, background: C.red, border: 'none', borderRadius: '50%', color: '#fff', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>
-          ))}
+            );
+          })}
         </div>
         <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => pickImages(e.target.files)} />
       </div>
@@ -293,7 +332,7 @@ function RelistPanel({ wallet }: { wallet: string }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: S[3], marginBottom: isEditing ? S[3] : 0 }}>
           <div style={{ ...surface({ radius: 'var(--r-sm)' }), width: 48, height: 48, overflow: 'hidden', flexShrink: 0 }}>
             {item.image_url
-              ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: isCutout(item.image_url) ? 'contain' : 'cover', padding: isCutout(item.image_url) ? 4 : 0 }} />
               : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
             }
           </div>

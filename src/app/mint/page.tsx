@@ -37,7 +37,7 @@ export default function MintPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [images, setImages]         = useState<{ file: File; preview: string }[]>([]);
+  const [images, setImages]         = useState<{ id: string; original: File; originalUrl: string; cutFile?: File; cutUrl?: string; useCut: boolean; busy: boolean }[]>([]);
   const [name, setName]             = useState('');
   const [serial, setSerial]         = useState('');
   const [category, setCategory]     = useState('');
@@ -52,16 +52,35 @@ export default function MintPage() {
 
   function pickImages(files: FileList | null) {
     if (!files) return;
-    const next = Array.from(files).slice(0, 4 - images.length).map(file => ({
-      file,
-      preview: URL.createObjectURL(file),
+    const adds = Array.from(files).slice(0, 4 - images.length).map(file => ({
+      id: crypto.randomUUID(),
+      original: file,
+      originalUrl: URL.createObjectURL(file),
+      useCut: false,
+      busy: true,
     }));
-    setImages(prev => [...prev, ...next].slice(0, 4));
+    setImages(prev => [...prev, ...adds].slice(0, 4));
+    adds.forEach(a => runCutout(a.original, a.id));
   }
 
-  async function uploadImage(file: File): Promise<string> {
+  // In-browser background removal on add. Defaults to the cutout once ready; the user can toggle back to
+  // the original per photo. @imgly is dynamically imported so its WASM only loads when a photo is picked.
+  async function runCutout(file: File, id: string) {
+    try {
+      const { removeBackground } = await import('@imgly/background-removal');
+      const blob = await removeBackground(file, { output: { format: 'image/png' } });
+      const cf = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
+      const url = URL.createObjectURL(blob);
+      setImages(prev => prev.map(im => im.id === id ? { ...im, cutFile: cf, cutUrl: url, useCut: true, busy: false } : im));
+    } catch {
+      setImages(prev => prev.map(im => im.id === id ? { ...im, busy: false } : im));
+    }
+  }
+
+  async function uploadImage(file: File, cutout: boolean): Promise<string> {
     const fd = new FormData();
     fd.append('file', file);
+    if (cutout) fd.append('cutout', '1');
     const token = await getAccessToken();
     const res = await fetch('/api/upload-image', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
     if (!res.ok) {
@@ -84,7 +103,9 @@ export default function MintPage() {
     let imageUrl: string | null = null;
     if (images.length > 0) {
       try {
-        imageUrl = await uploadImage(images[0].file);
+        const cover = images[0];
+        const coverFile = cover.useCut && cover.cutFile ? cover.cutFile : cover.original;
+        imageUrl = await uploadImage(coverFile, cover.useCut && !!cover.cutFile);
       } catch (err: any) {
         setError(err.message);
         setStatus('idle');
@@ -193,14 +214,31 @@ export default function MintPage() {
               {images.length === 0 && <div style={{ ...t('body'), color: 'var(--text-muted)' }}>Add Photos</div>}
             </button>
             {/* Previews */}
-            {images.map((img, i) => (
-              <div key={i} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                <img src={img.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12, border: i === 0 ? `2px solid var(--glass-border)` : '2px solid transparent' }} />
+            {images.map((img, i) => {
+              const url = img.useCut && img.cutUrl ? img.cutUrl : img.originalUrl;
+              return (
+              <div key={img.id} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+                <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 12, border: i === 0 ? `2px solid var(--glass-border)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined }} />
                 {i === 0 && <div style={{ ...t('micro'), position: 'absolute', bottom: S[1], left: S[1], background: 'var(--glass-bg-strong)', borderRadius: 4, color: 'var(--text)', padding: '1px 5px' }}>Cover</div>}
-                <button type="button" onClick={() => setImages(prev => prev.filter((_, j) => j !== i))}
+                {img.busy && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--img-scrim)', borderRadius: 12 }}>
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent', animation: 'spin .8s linear infinite' }} />
+                  </div>
+                )}
+                {img.cutFile && !img.busy && (
+                  <button type="button" title={img.useCut ? 'Show original' : 'Remove background'}
+                    onClick={() => setImages(prev => prev.map(m => m.id === img.id ? { ...m, useCut: !m.useCut } : m))}
+                    style={{ position: 'absolute', bottom: -6, right: -6, width: 22, height: 22, background: img.useCut ? 'var(--grad-brand)' : 'var(--glass-bg-strong)', border: 'none', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.2)' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={img.useCut ? '#fff' : 'var(--text)'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 3l2 2M19 3l-2 2M3 12h2M19 12h2M12 7a5 5 0 0 0-5 5c0 2 1 3 2 4h6c1-1 2-2 2-4a5 5 0 0 0-5-5z"/>
+                    </svg>
+                  </button>
+                )}
+                <button type="button" onClick={() => setImages(prev => prev.filter(m => m.id !== img.id))}
                   style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, background: C.red, border: 'none', borderRadius: '50%', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>×</button>
               </div>
-            ))}
+              );
+            })}
           </div>
           <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => pickImages(e.target.files)} />
         </div>

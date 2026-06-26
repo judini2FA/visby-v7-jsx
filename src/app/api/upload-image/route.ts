@@ -25,13 +25,27 @@ export async function POST(req: NextRequest) {
   if (!ext) return NextResponse.json({ error: 'Only JPEG, PNG, WebP, or GIF images are allowed' }, { status: 415 });
   if (file.size > MAX_BYTES) return NextResponse.json({ error: 'Image too large (max 12MB)' }, { status: 413 });
 
+  let buffer: Uint8Array = Buffer.from(await file.arrayBuffer());
+  let contentType = file.type;
+  let finalExt = ext;
+
+  // Cutout uploads (from PhotoCutoutPicker) are normalized through sharp to a clean, alpha-preserving
+  // PNG so transparency survives intact. Best-effort: any sharp failure keeps the original bytes.
+  if (formData.get('cutout') === '1') {
+    try {
+      const sharp = (await import('sharp')).default;
+      buffer = await sharp(buffer).png().toBuffer();
+      contentType = 'image/png';
+      finalExt = 'png';
+    } catch { /* keep the uploaded bytes as-is */ }
+  }
+
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   // Path uses a server-derived extension (not the user's filename) to avoid path/extension injection.
-  const path = `items/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const path = `items/${Date.now()}-${Math.random().toString(36).slice(2)}.${finalExt}`;
   await supabase.storage.createBucket('item-images', { public: true }).catch(() => {});
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const { error } = await supabase.storage.from('item-images').upload(path, buffer, { contentType: file.type, upsert: false });
+  const { error } = await supabase.storage.from('item-images').upload(path, buffer, { contentType, upsert: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const { data } = supabase.storage.from('item-images').getPublicUrl(path);

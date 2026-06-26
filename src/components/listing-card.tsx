@@ -15,6 +15,10 @@ export interface ListingItem {
   owners?: { wallet: string; avatar_url?: string | null }[];
 }
 
+// Transparent cutouts are stored as .png (PhotoCutoutPicker + sharp); render them `contain` so the
+// item floats instead of being cropped to fill.
+export const isCutout = (url?: string | null): boolean => !!url && /\.png(\?|$)/i.test(url);
+
 // The single canonical listing card — photo + an overlapping white box holding the title, like
 // button, price, and the owner stack. Used everywhere a listing is shown (home, profiles, etc.).
 export function ListingCard({ item }: { item: ListingItem }) {
@@ -24,10 +28,12 @@ export function ListingCard({ item }: { item: ListingItem }) {
     <Link href={`/item/${item.id}`}
       style={{ display: 'block', position: 'relative', alignSelf: 'start', textDecoration: 'none' }}>
 
-      {/* Image */}
+      {/* Image — transparent cutouts (.png) float (contain + padding); photos fill (cover). */}
       <div style={{ position: 'relative', aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
         {item.image_url
-          ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ? <img src={item.image_url} alt={item.name} style={isCutout(item.image_url)
+              ? { width: '100%', height: '100%', objectFit: 'contain', padding: 12 }
+              : { width: '100%', height: '100%', objectFit: 'cover' }} />
           : <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</span>
         }
       </div>

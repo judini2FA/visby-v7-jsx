@@ -29,12 +29,17 @@ const nextConfig = {
     async headers() {
           const csp = [
                   "default-src 'self'",
-                  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://js.privy.io",
+                  // blob: lets onnxruntime-web (via @imgly) dynamically import its WASM backend module
+                  // from a blob: URL; without it the cutout fails with "no available backend found".
+                  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://js.stripe.com https://js.privy.io",
                   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
                   "font-src 'self' https://fonts.gstatic.com",
                   "img-src 'self' data: blob: https://arweave.net https://nftstorage.link https://ipfs.io https://gateway.irys.xyz https://*.supabase.co",
-                  "connect-src 'self' https://*.supabase.co https://api.privy.io https://auth.privy.io https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com https://js.stripe.com https://api.stripe.com https://api.coingecko.com",
+                  "connect-src 'self' blob: data: https://*.supabase.co https://api.privy.io https://auth.privy.io https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com https://js.stripe.com https://api.stripe.com https://api.coingecko.com https://staticimgly.com",
                   "frame-src https://js.stripe.com https://auth.privy.io",
+                  // @imgly / onnxruntime-web run inference in a Web Worker created from a blob: URL; without
+                  // an explicit worker-src this falls back to default-src 'self' and the worker is blocked.
+                  "worker-src 'self' blob:",
                   "object-src 'none'",
                   "base-uri 'self'",
           ].join('; ');
