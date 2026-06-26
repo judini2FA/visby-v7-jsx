@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
+import { callerOwnsWallet } from '@/lib/auth';
 
 export async function POST(req: Request) {
     try {
@@ -7,6 +8,11 @@ export async function POST(req: Request) {
 
           if (!serial || !price_usdc || !seller_wallet) {
                   return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+                }
+          // Auth: only the seller (verified via Privy token) can list their own item — the wallet in the
+          // body is public, so without this anyone could list/relist a victim's item at any price.
+          if (!(await callerOwnsWallet(req, seller_wallet))) {
+                  return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
                 }
 
           const supabase = createServiceClient();
@@ -36,6 +42,7 @@ export async function DELETE(req: Request) {
   try {
     const { serial, seller_wallet } = await req.json();
     if (!serial || !seller_wallet) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    if (!(await callerOwnsWallet(req, seller_wallet))) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
 
     const supabase = createServiceClient();
     const { data: item, error: fetchErr } = await supabase

@@ -49,7 +49,7 @@ export const profilesRouter = createTRPCRouter({
 
       // Columns that may not exist before their migration runs — strip + retry so the core fields
       // always save (migration_profile_avatar.sql, migration_connected_wallets.sql).
-      const OPTIONAL_COLS = ['avatar_url', 'connected_wallets', 'tally_wallet'] as const;
+      const OPTIONAL_COLS = ['avatar_url', 'connected_wallets', 'tally_wallet', 'preferred_currency'] as const;
 
       const { data, error } = await supabase
         .from('profiles')

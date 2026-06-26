@@ -62,7 +62,8 @@ export default function MintPage() {
   async function uploadImage(file: File): Promise<string> {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch('/api/upload-image', { method: 'POST', body: fd });
+    const token = await getAccessToken();
+    const res = await fetch('/api/upload-image', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
     if (!res.ok) {
       const { error } = await res.json().catch(() => ({ error: 'Upload failed' }));
       throw new Error(error ?? 'Photo upload failed');

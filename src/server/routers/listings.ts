@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '@/server/trpc';
+import { TRPCError } from '@trpc/server';
+import { createTRPCRouter, publicProcedure, protectedProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
 import { expandSearchTerms, sanitizeIlikeTerm } from '@/server/lib/synonyms';
 import { searchListings } from '@/server/lib/search-engine';
@@ -20,13 +21,14 @@ export const listingsRouter = createTRPCRouter({
       return data;
     }),
 
-  listForSale: publicProcedure
+  listForSale: protectedProcedure
     .input(z.object({
       serial: z.string(),
       price_usdc: z.number().positive(),
       seller_wallet: z.string(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.wallets.includes(input.seller_wallet)) throw new TRPCError({ code: 'FORBIDDEN' });
       const supabase = createServiceClient();
       const { data, error } = await supabase
         .from('items')
@@ -39,9 +41,10 @@ export const listingsRouter = createTRPCRouter({
       return data;
     }),
 
-  unlist: publicProcedure
+  unlist: protectedProcedure
     .input(z.object({ serial: z.string(), seller_wallet: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.wallets.includes(input.seller_wallet)) throw new TRPCError({ code: 'FORBIDDEN' });
       const supabase = createServiceClient();
       const { data, error } = await supabase
         .from('items')

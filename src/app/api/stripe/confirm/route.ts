@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { createOrder } from '@/lib/orders';
+import { callerOwnsWallet } from '@/lib/auth';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -34,6 +35,14 @@ export async function POST(req: Request) {
     }
 
     if (!item_id || !buyer_wallet) return NextResponse.json({ error: 'Missing metadata' }, { status: 400 });
+
+    // Embedded checkout (payment_intent_id) carries the buyer's Privy token — require it to match the
+    // metadata buyer so a replayed PaymentIntent can't be confirmed by anyone else. Hosted checkout
+    // (session_id) relies on Stripe session integrity + the signed webhook (the canonical settlement),
+    // because the redirect landing may not have a Privy token ready yet.
+    if (payment_intent_id && !(await callerOwnsWallet(req, buyer_wallet))) {
+      return NextResponse.json({ error: 'Not authorized for this purchase' }, { status: 401 });
+    }
 
     const supabase = createServiceClient();
     const { data: item } = await supabase.from('items').select('*').eq('id', item_id).single();

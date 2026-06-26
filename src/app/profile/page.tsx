@@ -2,7 +2,7 @@
 
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
@@ -228,6 +228,7 @@ function PublicViewTab({ wallet, displayName, bio, avatarUrl }: { wallet: string
 // EDIT PROFILE FORM
 // ─────────────────────────────────────────────────────────────
 function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: string; onClose: () => void }) {
+  const { getAccessToken } = usePrivy();
   const { data: existing } = trpc.profiles.getProfile.useQuery({ wallet }, { enabled: !!wallet });
   const utils = trpc.useUtils();
   const upsert = trpc.profiles.upsertProfile.useMutation({ onSuccess: () => utils.profiles.getProfile.invalidate() });
@@ -238,13 +239,17 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
   const [uploadErr, setUploadErr] = useState('');
   const [saved, setSaved] = useState(false);
 
+  // Hydrate the form from the loaded profile EXACTLY ONCE. Re-running on every `existing` change (e.g. the
+  // refetch after save) would clobber the user's in-progress edits — that race is part of the data-wipe bug.
+  const hydrated = useRef(false);
   useEffect(() => {
-    if (existing) {
+    if (existing && !hydrated.current) {
+      hydrated.current = true;
       setName(existing.display_name ?? '');
       setBio(existing.bio ?? '');
       setAvatarUrl(existing.avatar_url ?? '');
     }
-  }, [existing?.display_name, existing?.bio, existing?.avatar_url]);
+  }, [existing]);
 
   const displayName = name || existing?.display_name || '';
 
@@ -257,7 +262,8 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch('/api/upload-image', { method: 'POST', body: fd });
+      const token = await getAccessToken();
+      const res = await fetch('/api/upload-image', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
       const json = await res.json();
       if (res.ok && json.url) setAvatarUrl(json.url);
       else setUploadErr(json.error || 'Upload failed — try again.');
@@ -270,7 +276,9 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    await upsert.mutateAsync({ wallet, display_name: name.trim() || undefined, bio: bio.trim() || undefined, avatar_url: avatarUrl });
+    // avatar_url guarded like the others: an empty value means "not loaded yet / no change" — never send ''
+    // (which upsertProfile would persist as null and wipe the avatar). Uploading a new photo sets a real URL.
+    await upsert.mutateAsync({ wallet, display_name: name.trim() || undefined, bio: bio.trim() || undefined, avatar_url: avatarUrl || undefined });
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 1200);
   }

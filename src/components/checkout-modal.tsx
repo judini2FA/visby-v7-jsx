@@ -53,6 +53,7 @@ function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
   const stripe   = useStripe();
   const elements = useElements();
   const { mode } = useTheme();
+  const { getAccessToken } = usePrivy();
   const [paying, setPaying] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -66,8 +67,9 @@ function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
     });
     if (error) { onError(error.message ?? 'Payment failed'); setPaying(false); return; }
     if (paymentIntent?.status === 'succeeded') {
+      const token = await getAccessToken();
       const res  = await fetch('/api/stripe/confirm', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ payment_intent_id: paymentIntent.id }),
       });
       const data = await res.json();

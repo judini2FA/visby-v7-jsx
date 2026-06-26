@@ -59,7 +59,8 @@ function MintForm({ wallet }: { wallet: string }) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch('/api/upload-image', { method: 'POST', body: fd });
+      const token = await getAccessToken();
+      const res = await fetch('/api/upload-image', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
       if (!res.ok) return null;
       const { url } = await res.json();
       return url ?? null;

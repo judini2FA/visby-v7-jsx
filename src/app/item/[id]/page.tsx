@@ -170,9 +170,10 @@ export default function ItemPage() {
     if (!walletAddress || !item) return;
     setListStatus('listing');
     try {
+      const token = await getAccessToken();
       const res = await fetch('/api/listing', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ serial: item.serial_number, price_usdc: parseFloat(listPrice), seller_wallet: walletAddress }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to list item');
@@ -190,9 +191,10 @@ export default function ItemPage() {
   async function handleUnlist() {
     if (!walletAddress || !item) return;
     setUnlistStatus('unlisting');
+    const token = await getAccessToken();
     const res = await fetch('/api/listing', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ serial: item.serial_number, seller_wallet: walletAddress }),
     });
     if (res.ok) {
