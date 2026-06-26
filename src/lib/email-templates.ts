@@ -75,6 +75,20 @@ export function orderDeliveredSeller(i: { itemId: string; netUsd: number | null;
   };
 }
 
+export function reviewRequestBuyer(i: { itemId: string; productName?: string | null; token: string }): EmailMsg {
+  const name = i.productName ? esc(i.productName) : 'your Tally';
+  const href = url(`/review/${i.token}`);
+  return {
+    subject: 'How was your Visby order?',
+    html: layout({
+      heading: 'Leave a review',
+      lines: [`Your order of <strong>${name}</strong> was delivered.`, 'How did it go? A quick rating helps other buyers shop with confidence — it only takes a moment.'],
+      cta: { label: 'Rate your purchase', href },
+    }),
+    text: text([`Your order of ${i.productName ?? 'your Tally'} was delivered.`, 'Rate your purchase:', href]),
+  };
+}
+
 export function disputeOpenedSeller(i: { itemId: string; kind: string }): EmailMsg {
   return {
     subject: 'A dispute was opened on your sale',

@@ -5,7 +5,8 @@ import { releasePayout } from '@/lib/payout';
 import { feeBreakdown } from '@/lib/fees';
 import { notify } from '@/lib/notifications';
 import { emailWallet } from '@/lib/email';
-import { orderDeliveredSeller } from '@/lib/email-templates';
+import { orderDeliveredSeller, reviewRequestBuyer } from '@/lib/email-templates';
+import { signReviewToken } from '@/lib/review-token';
 
 // Buyer confirms receipt of the physical item. This finalizes the order (status -> delivered) and
 // RELEASES the seller's escrowed payout: net = price - platform fee - shipping. Only the order's
@@ -100,6 +101,22 @@ export async function POST(req: Request) {
       data: { order_id: order.id, net },
     });
     void emailWallet(order.seller_wallet, orderDeliveredSeller({ itemId: order.item_id, netUsd: net, payoutReleased: payout.ok }));
+
+    // Ask the buyer to review now that it's delivered — a stateless HMAC token deep-links them to a
+    // one-click form. No-ops cleanly if REVIEW_TOKEN_SECRET isn't set. Best-effort marker so a resend
+    // path (and audits) can tell the request already went out; never blocks the response.
+    const reviewToken = signReviewToken(order.id, order.buyer_wallet);
+    if (reviewToken) {
+      let productName: string | null = null;
+      try {
+        const { data: it } = await supabase.from('items').select('name').eq('id', order.item_id).single();
+        productName = it?.name ?? null;
+      } catch { /* name is optional */ }
+      void emailWallet(order.buyer_wallet, reviewRequestBuyer({ itemId: order.item_id, productName, token: reviewToken }));
+      // Best-effort marker; the error is ignored because review_request_sent_at may not be migrated
+      // yet and the email has already gone out regardless.
+      await supabase.from('orders').update({ review_request_sent_at: new Date().toISOString() }).eq('id', order.id);
+    }
 
     return NextResponse.json({
       ok: true,
