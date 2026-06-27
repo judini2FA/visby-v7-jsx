@@ -7,6 +7,7 @@ import { ThemeToggle, useTheme } from '@/lib/theme';
 import { CURRENCIES, useCurrency } from '@/lib/currency';
 import { S, t, surface, btn, sectionLabel, T } from '@/lib/ui';
 import ShipToSettings from '@/components/ship-to-settings';
+import SecuritySettings from '@/components/security-settings';
 import { HeaderMenu } from '@/components/layout/header-menu';
 
 const C = {
@@ -180,6 +181,11 @@ export default function SettingsPage() {
               }
             />
           ))}
+        </Section>
+
+        {/* Security */}
+        <Section title="Security">
+          <SecuritySettings />
         </Section>
 
         {/* Privacy */}

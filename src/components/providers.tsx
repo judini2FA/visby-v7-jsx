@@ -18,6 +18,29 @@ function TrpcAuthBridge() {
   return null;
 }
 
+// Registers this device/session once per sign-in so it shows up under Settings → Security → active
+// sessions, and triggers a "new device" audit + email on a first-seen device. Fire-and-forget.
+function SecurityBootstrap() {
+  const { ready, authenticated, getAccessToken } = usePrivy();
+  const done = useRef(false);
+  useEffect(() => {
+    if (!ready || !authenticated || done.current) return;
+    done.current = true;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        await fetch('/api/security/register-device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ platform: navigator.platform, ua: navigator.userAgent }),
+        });
+      } catch { /* best-effort */ }
+    })();
+  }, [ready, authenticated, getAccessToken]);
+  return null;
+}
+
 // Auto-creates a Solana embedded wallet for users who only have an Ethereum wallet
 function EnsureSolanaWallet({ children }: { children: React.ReactNode }) {
   const { authenticated, ready } = usePrivy();
@@ -51,6 +74,9 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
         },
+        // When a user has enrolled MFA, Privy raises its own step-up challenge before any embedded-wallet
+        // signing op (sendTransaction/signMessage) — giving "step-up before you move crypto" for free.
+        mfa: { noPromptOnMfaRequired: false },
         solanaClusters: [
           { name: 'devnet', rpcUrl: process.env.NEXT_PUBLIC_HELIUS_RPC_URL ?? 'https://api.devnet.solana.com' },
         ],
@@ -58,6 +84,7 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
     >
       <EnsureSolanaWallet>
         <TrpcAuthBridge />
+        <SecurityBootstrap />
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
             {children}

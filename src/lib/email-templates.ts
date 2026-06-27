@@ -89,6 +89,23 @@ export function reviewRequestBuyer(i: { itemId: string; productName?: string | n
   };
 }
 
+export function newDeviceEmail(i: { platform?: string | null; userAgent?: string | null; ip?: string | null }): EmailMsg {
+  const where = [i.platform, i.ip].filter(Boolean).map((s) => esc(String(s))).join(' · ') || 'a new device';
+  return {
+    subject: 'New sign-in to your Visby account',
+    html: layout({
+      heading: 'New device signed in',
+      lines: [
+        `Your Visby account was just signed in on <strong>${where}</strong>.`,
+        'If this was you, you can ignore this email. If not, open Settings → Security and use “Log out other devices,” then review your two-factor settings.',
+      ],
+      cta: { label: 'Review security', href: url('/settings') },
+      note: i.userAgent ? `Device: ${esc(String(i.userAgent)).slice(0, 160)}` : undefined,
+    }),
+    text: text([`New sign-in to your Visby account on ${i.platform ?? 'a new device'}${i.ip ? ` (${i.ip})` : ''}.`, 'If this was not you: Settings → Security → Log out other devices.', `Review: ${url('/settings')}`]),
+  };
+}
+
 export function disputeOpenedSeller(i: { itemId: string; kind: string }): EmailMsg {
   return {
     subject: 'A dispute was opened on your sale',
