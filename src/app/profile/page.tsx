@@ -3,6 +3,7 @@
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
+import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-client';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
@@ -34,6 +35,7 @@ type ConnWallet = { id: string; chain: 'solana' | 'ethereum' | 'bitcoin'; addres
 
 function MyItemsTab({ wallet }: { wallet: string }) {
   const { getAccessToken } = usePrivy();
+  const { wallets: solSigners } = useSolanaWallets();
   const [connected, setConnected] = useState<ConnWallet[]>([]);
   const [transferItem, setTransferItem] = useState<any | null>(null);
   const [destAddr, setDestAddr] = useState('');
@@ -81,9 +83,18 @@ function MyItemsTab({ wallet }: { wallet: string }) {
     setXfer('sending'); setXferErr('');
     try {
       const token = await getAccessToken();
+      // Step-up (when enforcement is on): sign an action-bound challenge — which prompts MFA — before
+      // the Tally leaves this wallet. Dormant until NEXT_PUBLIC_STEP_UP_ENFORCED=1.
+      let stepUpHeaders: Record<string, string> = {};
+      if (STEP_UP_ON) {
+        const signer = solSigners.find((w: any) => w.address === transferItem.current_owner_wallet);
+        if (!signer?.signMessage) throw new Error('This wallet can’t authorize the transfer on this device.');
+        const proof = await createStepUpProof({ action: `transfer_tally:${transferItem.id}`, signMessage: (m) => signer.signMessage(m) });
+        stepUpHeaders = stepUpHeader(proof);
+      }
       const res = await fetch('/api/tally/transfer', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...stepUpHeaders },
         body: JSON.stringify({ item_id: transferItem.id, from_wallet: transferItem.current_owner_wallet, to_wallet: destAddr }),
       });
       const d = await res.json();

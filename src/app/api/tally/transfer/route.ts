@@ -5,6 +5,7 @@ import { callerOwnsWallet } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
+import { requireStepUp } from '@/lib/step-up';
 
 const isSolAddr = (a: unknown): a is string =>
   typeof a === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
@@ -37,6 +38,11 @@ export async function POST(req: NextRequest) {
   if (!(await callerOwnsWallet(req, from_wallet))) {
     return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
   }
+
+  // Step-up: a fresh MFA-gated wallet signature, bound to THIS transfer, before the asset leaves for
+  // another wallet. No-op until STEP_UP_ENFORCED=1 (rollout-safe); verifies a proof if one is supplied.
+  const stepUp = await requireStepUp(req, from_wallet, `transfer_tally:${item_id}`);
+  if (stepUp) return stepUp;
 
   const supabase = createServiceClient();
   const { data: item } = await supabase
