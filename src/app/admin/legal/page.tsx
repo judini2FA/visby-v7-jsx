@@ -6,7 +6,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { isAdminWallet } from '@/lib/admin';
 import { HeaderMenu } from '@/components/layout/header-menu';
-import { t, S, surface, btn, T } from '@/lib/ui';
+import { t, S, surface, btn, glass, T } from '@/lib/ui';
 
 type Docs = { terms: string | null; privacy: string | null };
 
@@ -42,7 +42,7 @@ function UploadRow({ kind, label, current, wallet, token, onDone }: {
       <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>{label}</div>
       <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[4] }}>
         {current
-          ? <>Current: <a href={current} target="_blank" rel="noopener noreferrer" style={{ color: '#2A8AED', textDecoration: 'underline' }}>view PDF</a></>
+          ? <>Current: <a href={current} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>view PDF</a></>
           : 'No document uploaded yet — the public page shows a "being finalized" state.'}
       </div>
 
@@ -93,7 +93,7 @@ export default function AdminLegalPage() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
+      <div style={{ ...glass({ strong: true, radius: 0 }), position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid var(--divider)' }}>
         <div className="visby-inner" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center', gap: S[3] }}>
           <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Legal Documents</div>
           <div style={{ marginLeft: 'auto' }}><HeaderMenu /></div>
@@ -103,8 +103,8 @@ export default function AdminLegalPage() {
       <div className="visby-inner" style={{ paddingTop: S[5], paddingBottom: 120 }}>
         <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5], lineHeight: 1.6 }}>
           Upload the finalized Terms of Service and Privacy Policy as PDFs. They publish immediately to{' '}
-          <Link href="/legal/terms" style={{ color: '#2A8AED', textDecoration: 'underline' }}>/legal/terms</Link> and{' '}
-          <Link href="/legal/privacy" style={{ color: '#2A8AED', textDecoration: 'underline' }}>/legal/privacy</Link>.
+          <Link href="/legal/terms" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/terms</Link> and{' '}
+          <Link href="/legal/privacy" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/privacy</Link>.
         </div>
         <UploadRow kind="terms" label="Terms of Service" current={docs.terms} wallet={wallet} token={token} onDone={refetch} />
         <UploadRow kind="privacy" label="Privacy Policy" current={docs.privacy} wallet={wallet} token={token} onDone={refetch} />

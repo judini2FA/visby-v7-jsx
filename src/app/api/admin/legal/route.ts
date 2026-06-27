@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { callerOwnsWallet } from '@/lib/auth';
 import { isAdminRole } from '@/lib/admin';
+import { logSecurityEvent } from '@/lib/security-audit';
+import { clientIp } from '@/lib/rate-limit';
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -44,6 +46,8 @@ export async function POST(req: NextRequest) {
     // File is stored; only the pointer failed (e.g. table not migrated yet). Surface both so admin knows.
     return NextResponse.json({ error: 'Uploaded the file but could not save it (run migration_legal_documents.sql): ' + dbErr.message, url: pub.publicUrl }, { status: 500 });
   }
+
+  void logSecurityEvent({ wallet, event: 'legal_doc_uploaded', detail: { doc_type: kind, filename: path }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
 
   return NextResponse.json({ ok: true, kind, url: pub.publicUrl });
 }

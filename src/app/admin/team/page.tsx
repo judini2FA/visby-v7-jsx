@@ -85,6 +85,7 @@ export default function AdminTeamPage() {
         <h1 style={{ ...t('title'), color: T.textStrong, margin: 0 }}>Admin team</h1>
         <div style={{ display: 'flex', gap: S[2], marginLeft: 'auto', alignItems: 'center' }}>
           <Link href="/admin/reports" style={{ ...btn('text'), fontSize: 13 }}>Reports</Link>
+          <Link href="/admin/audit" style={{ ...btn('text'), fontSize: 13 }}>Audit log</Link>
           <HeaderMenu />
         </div>
       </div>

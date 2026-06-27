@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callerOwnsWallet } from '@/lib/auth';
 import { isAdminRole } from '@/lib/admin';
 import { createServiceClient } from '@/lib/supabase/service';
+import { logSecurityEvent } from '@/lib/security-audit';
+import { clientIp } from '@/lib/rate-limit';
 
 // Admin-only management of the brand serial-number registry (brands, their serial rules, and per-serial
 // flags). Gated exactly like the other admin routes: callerOwnsWallet (proves the Privy token owns the
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest) {
   const denied = await gate(req, body.wallet);
   if (denied) return denied;
 
+  const wallet = body.wallet as string;
   const action = body.action;
   const supabase = createServiceClient();
 
@@ -76,6 +79,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : error.message },
         { status: badSchema(error) ? 503 : 500 });
     }
+    void logSecurityEvent({ wallet, event: 'brand_registry_updated', detail: { action: 'add_brand', slug, display_name, brand_id: data?.id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
     return NextResponse.json({ ok: true, brand_id: data?.id });
   }
 
@@ -100,6 +104,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : error.message },
         { status: badSchema(error) ? 503 : 500 });
     }
+    void logSecurityEvent({ wallet, event: 'brand_registry_updated', detail: { action: 'add_rule', brand_id, rule_id: data?.id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
     return NextResponse.json({ ok: true, rule_id: data?.id });
   }
 
@@ -120,6 +125,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : error.message },
         { status: badSchema(error) ? 503 : 500 });
     }
+    void logSecurityEvent({ wallet, event: 'brand_serial_flagged', detail: { serial: serial_number, brand: brand_id, flag }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
     return NextResponse.json({ ok: true });
   }
 

@@ -5,6 +5,8 @@ import { callerOwnsWallet } from '@/lib/auth';
 import { isAdminRole } from '@/lib/admin';
 import { createServiceClient } from '@/lib/supabase/service';
 import { notify } from '@/lib/notifications';
+import { logSecurityEvent } from '@/lib/security-audit';
+import { clientIp } from '@/lib/rate-limit';
 
 const VALID_STATUSES = ['unverified', 'authenticated', 'flagged'] as const;
 type AuthStatus = (typeof VALID_STATUSES)[number];
@@ -70,6 +72,8 @@ export async function POST(req: NextRequest) {
       { status: missing ? 503 : 500 },
     );
   }
+
+  void logSecurityEvent({ wallet, event: 'item_authenticated', detail: { item_id, auth_status }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
 
   if (auth_status === 'authenticated' || auth_status === 'flagged') {
     const { data: item } = await supabase

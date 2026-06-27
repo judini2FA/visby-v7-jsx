@@ -18,7 +18,16 @@ export type SecurityEvent =
   | 'payment_method_changed'
   | 'admin_granted'
   | 'admin_revoked'
-  | 'kyc_override';
+  | 'kyc_override'
+  | 'listing_delisted'
+  | 'user_flagged'
+  | 'report_resolved'
+  | 'item_authenticated'
+  | 'dispute_resolved'
+  | 'brand_serial_flagged'
+  | 'brand_registry_updated'
+  | 'legal_doc_uploaded'
+  | 'payout_retried';
 
 export type SecurityAuditInput = {
   wallet: string;

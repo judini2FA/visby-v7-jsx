@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
 import { isAdminRole } from '@/lib/admin';
+import { logSecurityEvent } from '@/lib/security-audit';
+import { clientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,6 +111,11 @@ export async function PATCH(req: Request) {
       if (repErr && !isMissing(repErr)) {
         console.error('[moderation/PATCH action->report] error:', repErr);
       }
+      if (action === 'force_delist') {
+        void logSecurityEvent({ wallet, event: 'listing_delisted', detail: { report_id, target_item_or_serial: target_id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
+      } else {
+        void logSecurityEvent({ wallet, event: 'user_flagged', detail: { report_id, target_wallet: target_id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -135,6 +142,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Could not update report' }, { status: 500 });
     }
 
+    void logSecurityEvent({ wallet, event: 'report_resolved', detail: { report_id, status }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[moderation/PATCH] error:', err);

@@ -4,6 +4,8 @@ import { callerOwnsWallet } from '@/lib/auth';
 import { isAdminRole } from '@/lib/admin';
 import { releasePayout } from '@/lib/payout';
 import { feeBreakdown } from '@/lib/fees';
+import { logSecurityEvent } from '@/lib/security-audit';
+import { clientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +87,8 @@ export async function POST(req: Request) {
       .from('orders')
       .update({ seller_net_usd: net, payout_tx: payout.payout_tx })
       .eq('id', order_id);
+
+    void logSecurityEvent({ wallet, event: 'payout_retried', detail: { order_id, amount: net, result_or_status: 'paid' }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
 
     return NextResponse.json({ ok: true, payout, net });
   } catch (err) {

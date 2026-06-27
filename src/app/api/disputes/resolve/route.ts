@@ -6,6 +6,8 @@ import { refundOrder } from '@/lib/refund';
 import { notify } from '@/lib/notifications';
 import { emailWallet } from '@/lib/email';
 import { disputeResolvedBuyer, refundIssuedBuyer } from '@/lib/email-templates';
+import { logSecurityEvent } from '@/lib/security-audit';
+import { clientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +139,7 @@ export async function PATCH(req: Request) {
         });
         void emailWallet(dispute.buyer_wallet, disputeResolvedBuyer({ itemId: dispute.order_id }));
       }
+      void logSecurityEvent({ wallet, event: 'dispute_resolved', detail: { dispute_id, order_id: dispute.order_id, action }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
       return NextResponse.json({ ok: true });
     }
 
@@ -236,6 +239,7 @@ export async function PATCH(req: Request) {
     });
     void emailWallet(lockedOrder.buyer_wallet, refundIssuedBuyer({ itemId: lockedOrder.item_id, priceUsd: lockedOrder.price_usdc }));
 
+    void logSecurityEvent({ wallet, event: 'dispute_resolved', detail: { dispute_id, order_id: lockedOrder.id, action, amount: lockedOrder.price_usdc }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
     return NextResponse.json({ ok: true, refund });
   } catch (err) {
     console.error('[disputes/resolve/PATCH] error:', err);
