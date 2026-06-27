@@ -1,16 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { trpc } from '@/lib/trpc/client';
 import { sendSol } from '@/lib/transfer-client';
 import { useCurrency } from '@/lib/currency';
+import { biometricConfirm, biometricAvailable } from '@/lib/app-lock';
 import { t, S, surface, btn, badge, avatar } from '@/lib/ui';
 
 type Mode = 'pay' | 'request';
 type Step = 'idle' | 'preparing' | 'signing' | 'confirming' | 'done' | 'error';
+
+type FixedRecipient = { wallet: string; display_name?: string | null; avatar_url?: string | null };
 
 function shortWallet(w: string) {
   return w && w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : (w || '');
@@ -20,11 +23,23 @@ function Spinner() {
   return <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid currentColor', borderTopColor: 'transparent', opacity: .7, animation: 'spin .8s linear infinite', flexShrink: 0 }} />;
 }
 
+function ScanIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <path d="M9 10h.01" /><path d="M15 10h.01" /><path d="M9 15c.83.67 1.94 1 3 1s2.17-.33 3-1" />
+    </svg>
+  );
+}
+
 function initial(name?: string | null, fallback = 'V') {
   return (name || fallback).slice(0, 1).toUpperCase();
 }
 
-export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?: () => void }) {
+type SelectedRecipient = { wallet: string; display_name?: string | null; handle?: string | null; avatar_url?: string | null };
+
+export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet: string; onDone?: () => void; fixedRecipient?: FixedRecipient }) {
   const { getAccessToken } = usePrivy();
   const { wallets } = useSolanaWallets();
   const { symbol, toUsdc } = useCurrency();
@@ -32,6 +47,8 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
   const [mode, setMode] = useState<Mode>('pay');
   const [recipientInput, setRecipientInput] = useState('');
   const [debounced, setDebounced] = useState('');
+  const [selected, setSelected] = useState<SelectedRecipient | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [step, setStep] = useState<Step>('idle');
@@ -45,12 +62,7 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
   const fulfilling = useRef<{ id: string; wallet: string } | null>(null);
   const amountRef = useRef<HTMLInputElement | null>(null);
 
-  const requestsQ = trpc.transfers.requests.useQuery({ wallet }, { enabled: !!wallet });
-  const connectionsQ = trpc.follows.getConnections.useQuery(
-    { wallet, type: 'following', viewer_wallet: wallet },
-    { enabled: !!wallet },
-  );
-  const suggestedQ = trpc.follows.getSuggested.useQuery({ wallet }, { enabled: !!wallet });
+  const requestsQ = trpc.transfers.requests.useQuery({ wallet }, { enabled: !!wallet && !fixedRecipient });
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(recipientInput.trim()), 400);
@@ -76,14 +88,7 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
     idemRef.current = null;
     setStep(s => (s === 'error' ? 'idle' : s));
     setErrMsg('');
-  }, [debounced, amount]);
-
-  const resolveQ = trpc.transfers.resolve.useQuery(
-    { to: debounced },
-    { enabled: debounced.length > 1, retry: false },
-  );
-  const recipient = debounced.length > 1 ? resolveQ.data ?? null : null;
-  const resolving = debounced.length > 1 && resolveQ.isFetching;
+  }, [selected, amount]);
 
   const fiatNum = Number(amount);
   const priced = solUsd != null && solUsd > 0;
@@ -93,6 +98,11 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
   const solDisplay = Number.isFinite(solAmount) ? Number(solAmount.toFixed(4)) : 0;
   const amountSymbol = priced ? symbol : '';
 
+  const recipient: SelectedRecipient | null = fixedRecipient
+    ? { wallet: fixedRecipient.wallet, display_name: fixedRecipient.display_name ?? null, avatar_url: fixedRecipient.avatar_url ?? null }
+    : selected;
+  const toWalletValue = recipient?.wallet ?? '';
+
   const inFlight = step === 'preparing' || step === 'signing' || step === 'confirming';
   const hasRecipient = !!recipient;
   const canSubmit = hasRecipient && amountValid && !inFlight;
@@ -101,19 +111,20 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
     ? (recipient.display_name || recipient.handle || shortWallet(recipient.wallet))
     : '';
 
-  function selectWallet(w: string) {
-    setRecipientInput(w);
-    setDebounced(w.trim());
+  function clearSelection() {
+    setSelected(null);
+    setRecipientInput('');
+    setDebounced('');
   }
 
   function resetForm() {
-    setRecipientInput('');
-    setDebounced('');
+    clearSelection();
     setAmount('');
     setNote('');
     setStep('idle');
     setErrMsg('');
     setConfirmOpen(false);
+    setPickerOpen(false);
     idemRef.current = null;
     fulfilling.current = null;
   }
@@ -133,7 +144,7 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
       const res = await fetch('/api/transfer/prepare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ from_wallet: wallet, to: recipientInput.trim(), token: 'SOL', amount: solAmount, idempotency_key: idem }),
+        body: JSON.stringify({ from_wallet: wallet, to: toWalletValue, token: 'SOL', amount: solAmount, idempotency_key: idem }),
       });
       prep = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -215,7 +226,7 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
       const res = await fetch('/api/transfer/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ requester_wallet: wallet, to: recipientInput.trim(), token: 'SOL', amount: solAmount, note: note.trim() || null }),
+        body: JSON.stringify({ requester_wallet: wallet, to: toWalletValue, token: 'SOL', amount: solAmount, note: note.trim() || null }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -245,16 +256,26 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
     setConfirmOpen(true);
   }
 
-  function runConfirmed() {
+  async function runConfirmed() {
     if (!canSubmit) return;
-    if (mode === 'pay') doPay();
-    else doRequest();
+    setErrMsg('');
+    const passed = await biometricConfirm();
+    if (!passed) {
+      setErrMsg('Scan cancelled — not sent.');
+      return;
+    }
+    if (mode === 'pay') await doPay();
+    else await doRequest();
   }
 
   function prefillFromIncoming(r: RequestRow) {
     fulfilling.current = { id: r.id, wallet: r.requester_wallet };
     setMode('pay');
-    selectWallet(r.requester_wallet);
+    setSelected({
+      wallet: r.requester_wallet,
+      display_name: r.other?.display_name ?? null,
+      avatar_url: r.other?.avatar_url ?? null,
+    });
     // The request's amount is in SOL, but the field is in the preferred currency — set the fiat value that
     // converts back to that SOL (1/toUsdc(1) is the active fiat-per-USDC rate). Offline, enter SOL directly.
     const sol = Number(r.amount);
@@ -283,17 +304,16 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
     requestsQ.refetch();
   }
 
+  const scanReady = biometricAvailable();
   const actionLabel = mode === 'pay' ? 'Pay' : 'Request';
   const buttonLabel =
     step === 'preparing' ? 'Checking…'
       : step === 'signing' ? 'Approve in your wallet…'
         : step === 'confirming' ? 'Confirming…'
           : actionLabel;
-
-  const following = (connectionsQ.data ?? []) as Array<{ wallet: string; display_name: string | null }>;
-  const suggested = (suggestedQ.data ?? []) as Array<{ wallet: string; display_name: string | null }>;
-  const people = following.length > 0 ? following : suggested;
-  const peopleLabel = following.length > 0 ? 'People you follow' : 'Suggested';
+  const confirmLabel = mode === 'pay'
+    ? (scanReady ? 'Scan to send' : 'Send')
+    : (scanReady ? 'Scan to request' : 'Request');
 
   const incoming = (requestsQ.data?.incoming ?? []) as RequestRow[];
   const outgoing = (requestsQ.data?.outgoing ?? []) as RequestRow[];
@@ -301,6 +321,21 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: S[5] }}>
       <div style={surface({ pad: S[5], radius: 'var(--r-lg)' })}>
+        {/* Fixed recipient header (messages view) */}
+        {fixedRecipient && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: S[2], marginBottom: S[5] }}>
+            <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>To</span>
+            {fixedRecipient.avatar_url ? (
+              <img src={fixedRecipient.avatar_url} alt="" style={{ ...avatar('sm'), objectFit: 'cover' }} />
+            ) : (
+              <div style={{ ...avatar('sm'), background: 'var(--grad-brand)' }}>{initial(fixedRecipient.display_name || fixedRecipient.wallet, 'S')}</div>
+            )}
+            <span style={{ ...t('body'), color: 'var(--text-strong)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {fixedRecipient.display_name || shortWallet(fixedRecipient.wallet)}
+            </span>
+          </div>
+        )}
+
         {/* Pay | Request segmented control */}
         <div
           style={{
@@ -335,9 +370,9 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
           ))}
         </div>
 
-        {/* Amount (preferred currency) */}
+        {/* Amount (preferred currency) — centered as a unit */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[1], marginBottom: S[5] }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 2, maxWidth: 260 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'baseline', justifyContent: 'center', gap: 2, maxWidth: '100%' }}>
             {amountSymbol && (
               <span
                 style={{
@@ -364,9 +399,10 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
               placeholder="0"
               disabled={inFlight}
               style={{
-                width: amountSymbol ? 'auto' : '100%', maxWidth: 220, minWidth: 60, textAlign: amountSymbol ? 'left' : 'center', border: 'none',
+                width: `${Math.max(1, (amount.length || 1))}ch`,
+                textAlign: amountSymbol ? 'left' : 'center', border: 'none',
                 outline: 'none', fontFamily: "'Manrope',sans-serif", fontSize: 48, fontWeight: 800, lineHeight: 1.1,
-                letterSpacing: '-0.02em',
+                letterSpacing: '-0.02em', padding: 0,
                 background: amount ? 'var(--grad-brand-text)' : 'transparent',
                 WebkitBackgroundClip: amount ? 'text' : undefined,
                 backgroundClip: amount ? 'text' : undefined,
@@ -380,113 +416,91 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
           </div>
           <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>
             {amountValid && priced
-              ? `≈ ${solDisplay} SOL · from ${shortWallet(wallet)}`
-              : `from ${shortWallet(wallet)}`}
+              ? `≈ ${solDisplay} SOL · from primary wallet`
+              : 'from primary wallet'}
           </div>
         </div>
 
-        {/* Recommended people */}
-        {people.length > 0 && (
-          <div style={{ marginBottom: S[4] }}>
-            <div style={{ ...t('micro'), color: 'var(--text-muted)', marginBottom: S[2] }}>{peopleLabel}</div>
-            <div style={{ display: 'flex', gap: S[3], overflowX: 'auto', padding: '6px 4px', margin: '-6px -4px', WebkitOverflowScrolling: 'touch' }}>
-              {people.slice(0, 8).map(p => {
-                const selected = recipient?.wallet === p.wallet || debounced === p.wallet;
-                return (
-                  <button
-                    key={p.wallet}
-                    onClick={() => selectWallet(p.wallet)}
-                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[1], width: 60, flexShrink: 0 }}
-                  >
-                    <div style={{ ...avatar('md'), background: 'var(--grad-brand)', boxShadow: selected ? '0 0 0 2px var(--text-strong)' : 'none' }}>
-                      {initial(p.display_name)}
-                    </div>
-                    <span style={{ ...t('meta'), color: 'var(--text-muted)', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
-                      {p.display_name || shortWallet(p.wallet)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* Recipient — picker button / chip (hidden when fixedRecipient) */}
+        {!fixedRecipient && (
+          selected ? (
+            <button
+              onClick={() => setPickerOpen(true)}
+              disabled={inFlight}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: S[3],
+                background: 'var(--surface-bg)', border: '1px solid var(--glass-border)',
+                borderRadius: 'var(--r-sm)', padding: '12px 14px', cursor: inFlight ? 'default' : 'pointer',
+                textAlign: 'left', marginBottom: S[3],
+              }}
+            >
+              {selected.avatar_url ? (
+                <img src={selected.avatar_url} alt="" style={{ ...avatar('sm'), objectFit: 'cover' }} />
+              ) : (
+                <div style={{ ...avatar('sm'), background: 'var(--grad-brand)' }}>{initial(selected.display_name || selected.handle, 'S')}</div>
+              )}
+              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0, flex: 1 }}>
+                <span style={{ ...t('body'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recipientLabel}</span>
+                <span style={{ ...t('micro'), color: 'var(--text-muted)', fontFamily: 'monospace', textTransform: 'none', letterSpacing: 0 }}>{shortWallet(selected.wallet)}</span>
+              </span>
+              <span
+                role="button"
+                aria-label="Change recipient"
+                onClick={(e) => { e.stopPropagation(); if (!inFlight) clearSelection(); }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: '50%', flexShrink: 0, color: 'var(--text-muted)' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setPickerOpen(true)}
+              disabled={inFlight}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2],
+                background: 'var(--surface-bg)', border: '1px solid var(--glass-border)',
+                borderRadius: 'var(--r-sm)', padding: '14px 16px', cursor: inFlight ? 'default' : 'pointer',
+                color: 'var(--text-muted)', fontFamily: "'Manrope',sans-serif", fontSize: 15, textAlign: 'left', marginBottom: S[3],
+              }}
+            >
+              <span>{mode === 'pay' ? 'Pay to — handle or wallet' : 'Request from — handle or wallet'}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+          )
+        )}
+
+        {/* Note */}
+        <input
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="What's it for?"
+          disabled={inFlight}
+          style={{
+            width: '100%', background: 'var(--field-input-bg)', border: '1px solid var(--glass-border)',
+            borderRadius: 'var(--r-sm)', padding: '13px 16px', color: 'var(--text)', fontSize: 15,
+            fontFamily: "'Manrope',sans-serif", outline: 'none', marginBottom: S[3],
+          }}
+        />
+
+        {successMsg && (
+          <div style={{ background: 'var(--ok-soft)', borderRadius: 'var(--r-sm)', padding: '10px 14px', ...t('body'), color: 'var(--ok)', marginBottom: S[3] }}>
+            {successMsg}
           </div>
         )}
 
-        {/* Recipient search */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
-          <div>
-            <input
-              value={recipientInput}
-              onChange={e => setRecipientInput(e.target.value)}
-              placeholder={mode === 'pay' ? 'Pay to — handle or wallet' : 'Request from — handle or wallet'}
-              disabled={inFlight}
-              style={{
-                width: '100%', background: 'var(--field-input-bg)', border: '1px solid var(--glass-border)',
-                borderRadius: 'var(--r-sm)', padding: '13px 16px', color: 'var(--text)', fontSize: 15,
-                fontFamily: "'Manrope',sans-serif", outline: 'none',
-              }}
-            />
-            {debounced.length > 1 && (
-              <div style={{ marginTop: S[2] }}>
-                {resolving ? (
-                  <div style={{ ...t('meta'), color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: S[2] }}>
-                    <Spinner /> Looking up…
-                  </div>
-                ) : recipient ? (
-                  <div style={{ ...surface({ pad: '8px 12px', radius: 'var(--pill)' }), display: 'inline-flex', alignItems: 'center', gap: S[2] }}>
-                    {recipient.avatar_url ? (
-                      <img src={recipient.avatar_url} alt="" style={{ ...avatar('sm'), objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ ...avatar('sm'), background: 'var(--grad-brand)' }}>
-                        {initial(recipient.display_name || recipient.handle, 'S')}
-                      </div>
-                    )}
-                    <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                      <span style={{ ...t('body'), color: 'var(--text-strong)' }}>{recipientLabel}</span>
-                      <span style={{ ...t('micro'), color: 'var(--text-muted)', fontFamily: 'monospace', textTransform: 'none', letterSpacing: 0 }}>{shortWallet(recipient.wallet)}</span>
-                    </span>
-                  </div>
-                ) : (
-                  <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                    No Visby user found — paste a Solana wallet address.
-                  </div>
-                )}
-              </div>
-            )}
+        {errMsg && (
+          <div style={{ background: 'var(--danger-soft)', borderRadius: 'var(--r-sm)', padding: '10px 14px', ...t('body'), color: 'var(--danger)', marginBottom: S[3] }}>
+            {errMsg}
           </div>
+        )}
 
-          {/* Note */}
-          <input
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="What's it for?"
-            disabled={inFlight}
-            style={{
-              width: '100%', background: 'var(--field-input-bg)', border: '1px solid var(--glass-border)',
-              borderRadius: 'var(--r-sm)', padding: '13px 16px', color: 'var(--text)', fontSize: 15,
-              fontFamily: "'Manrope',sans-serif", outline: 'none',
-            }}
-          />
-
-          {successMsg && (
-            <div style={{ background: 'var(--ok-soft)', borderRadius: 'var(--r-sm)', padding: '10px 14px', ...t('body'), color: 'var(--ok)' }}>
-              {successMsg}
-            </div>
-          )}
-
-          {errMsg && (
-            <div style={{ background: 'var(--danger-soft)', borderRadius: 'var(--r-sm)', padding: '10px 14px', ...t('body'), color: 'var(--danger)' }}>
-              {errMsg}
-            </div>
-          )}
-
-          <button onClick={submit} disabled={!canSubmit} style={{ ...btn('primary', { full: true }), opacity: canSubmit ? 1 : .55, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-            {inFlight ? <><Spinner /> {buttonLabel}</> : buttonLabel}
-          </button>
-        </div>
+        <button onClick={submit} disabled={!canSubmit} style={{ ...btn('primary', { full: true }), opacity: canSubmit ? 1 : .55, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+          {inFlight ? <><Spinner /> {buttonLabel}</> : buttonLabel}
+        </button>
       </div>
 
       {/* Incoming requests — for you to pay */}
-      {incoming.length > 0 && (
+      {!fixedRecipient && incoming.length > 0 && (
         <div style={surface({ pad: S[5], radius: 'var(--r-lg)' })}>
           <div style={{ ...t('micro'), color: 'var(--text-muted)', marginBottom: S[4] }}>Requests for you</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
@@ -515,7 +529,7 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
       )}
 
       {/* Outgoing requests — you sent */}
-      {outgoing.length > 0 && (
+      {!fixedRecipient && outgoing.length > 0 && (
         <div style={surface({ pad: S[5], radius: 'var(--r-lg)' })}>
           <div style={{ ...t('micro'), color: 'var(--text-muted)', marginBottom: S[4] }}>You requested</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
@@ -544,6 +558,16 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
             })}
           </div>
         </div>
+      )}
+
+      {/* Recipient picker bottom-sheet */}
+      {pickerOpen && !fixedRecipient && (
+        <RecipientPicker
+          wallet={wallet}
+          mode={mode}
+          onClose={() => setPickerOpen(false)}
+          onPick={(p) => { setSelected(p); setRecipientInput(p.wallet); setDebounced(p.wallet); setPickerOpen(false); }}
+        />
       )}
 
       {confirmOpen && recipient && typeof document !== 'undefined' && createPortal(
@@ -590,10 +614,17 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
                 </div>
               </div>
 
-              <div style={{ ...t('meta'), color: 'var(--text-muted)', borderTop: '1px solid var(--divider)', paddingTop: S[3] }}>
-                {mode === 'pay'
-                  ? `From: ${shortWallet(wallet)}`
-                  : `To: ${recipientLabel} · Requesting: ${solDisplay} SOL`}
+              <div style={{ borderTop: '1px solid var(--divider)', paddingTop: S[3] }}>
+                {mode === 'pay' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>From</span>
+                    <span style={{ ...t('micro'), color: 'var(--text)', fontFamily: 'monospace', textTransform: 'none', letterSpacing: 0, wordBreak: 'break-all' }}>{wallet}</span>
+                  </div>
+                ) : (
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                    {`To: ${recipientLabel} · Requesting: ${solDisplay} SOL`}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -615,7 +646,7 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
                 disabled={!canSubmit}
                 style={{ ...btn('primary', { full: true }), opacity: canSubmit ? 1 : .55, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
               >
-                {inFlight ? <><Spinner /> {buttonLabel}</> : (mode === 'pay' ? 'Send' : 'Request')}
+                {inFlight ? <><Spinner /> {buttonLabel}</> : (scanReady ? <><ScanIcon /> {confirmLabel}</> : confirmLabel)}
               </button>
               <button
                 onClick={() => setConfirmOpen(false)}
@@ -632,6 +663,132 @@ export default function PayRequest({ wallet, onDone }: { wallet: string; onDone?
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+  );
+}
+
+function RecipientPicker({ wallet, mode, onClose, onPick }: {
+  wallet: string;
+  mode: Mode;
+  onClose: () => void;
+  onPick: (p: SelectedRecipient) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(search.trim()), 400);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  const resolveQ = trpc.transfers.resolve.useQuery({ to: debounced }, { enabled: debounced.length > 1, retry: false });
+  const resolving = debounced.length > 1 && resolveQ.isFetching;
+  const resolved = debounced.length > 1 ? resolveQ.data ?? null : null;
+
+  const recentsQ = trpc.transfers.recents.useQuery({ wallet }, { enabled: !!wallet });
+  const followingQ = trpc.follows.getConnections.useQuery({ wallet, type: 'following', viewer_wallet: wallet }, { enabled: !!wallet });
+  const followersQ = trpc.follows.getConnections.useQuery({ wallet, type: 'followers', viewer_wallet: wallet }, { enabled: !!wallet });
+
+  const recents = (recentsQ.data ?? []) as Array<{ wallet: string; display_name: string | null; avatar_url: string | null }>;
+  const following = (followingQ.data ?? []) as Array<{ wallet: string; display_name: string | null }>;
+  const followers = (followersQ.data ?? []) as Array<{ wallet: string; display_name: string | null }>;
+
+  const empty = useMemo(
+    () => !resolved && !resolving && recents.length === 0 && following.length === 0 && followers.length === 0,
+    [resolved, resolving, recents.length, following.length, followers.length],
+  );
+
+  if (typeof document === 'undefined') return null;
+
+  function Row({ p }: { p: SelectedRecipient }) {
+    return (
+      <button
+        onClick={() => onPick(p)}
+        style={{ ...surface({ pad: '10px 12px' }), display: 'flex', alignItems: 'center', gap: S[3], cursor: 'pointer', textAlign: 'left', width: '100%', marginTop: S[2] }}
+      >
+        {p.avatar_url ? (
+          <img src={p.avatar_url} alt="" style={{ ...avatar('sm'), objectFit: 'cover' }} />
+        ) : (
+          <div style={{ ...avatar('sm'), background: 'var(--grad-brand)' }}>{initial(p.display_name || p.handle, 'S')}</div>
+        )}
+        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0, flex: 1 }}>
+          <span style={{ ...t('body'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {p.display_name || p.handle || shortWallet(p.wallet)}
+          </span>
+          <span style={{ ...t('micro'), color: 'var(--text-muted)', fontFamily: 'monospace', textTransform: 'none', letterSpacing: 0 }}>{shortWallet(p.wallet)}</span>
+        </span>
+      </button>
+    );
+  }
+
+  function Section({ label, people }: { label: string; people: SelectedRecipient[] }) {
+    if (people.length === 0) return null;
+    return (
+      <div style={{ marginTop: S[4] }}>
+        <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>{label}</div>
+        {people.map(p => <Row key={`${label}-${p.wallet}`} p={p} />)}
+      </div>
+    );
+  }
+
+  return createPortal(
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 210, background: 'rgba(0,0,0,.5)' }} />
+      <div
+        style={{
+          ...surface({ pad: S[5], radius: 'var(--r-xl)' }),
+          position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+          width: '100%', maxWidth: 480, zIndex: 211, borderBottomLeftRadius: 0, borderBottomRightRadius: 0,
+          display: 'flex', flexDirection: 'column', maxHeight: '88vh', overflowY: 'auto',
+        }}
+      >
+        <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `0 auto ${S[4]}px` }} />
+        <div style={{ ...t('heading'), color: 'var(--text-strong)', textAlign: 'center', marginBottom: S[4] }}>
+          {mode === 'pay' ? 'Pay to' : 'Request from'}
+        </div>
+
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          autoFocus
+          placeholder="Handle or wallet address"
+          style={{
+            width: '100%', background: 'var(--field-input-bg)', border: '1px solid var(--glass-border)',
+            borderRadius: 'var(--r-sm)', padding: '13px 16px', color: 'var(--text)', fontSize: 15,
+            fontFamily: "'Manrope',sans-serif", outline: 'none',
+          }}
+        />
+
+        {debounced.length > 1 && (
+          <div style={{ marginTop: S[3] }}>
+            {resolving ? (
+              <div style={{ ...t('meta'), color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: S[2] }}>
+                <Spinner /> Looking up…
+              </div>
+            ) : resolved ? (
+              <Row p={resolved} />
+            ) : (
+              <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>No Visby user found — paste a Solana wallet address.</div>
+            )}
+          </div>
+        )}
+
+        <Section label="Recents" people={recents} />
+        <Section label="People you follow" people={following} />
+        <Section label="People who follow you" people={followers} />
+
+        {empty && (
+          <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center', padding: `${S[6]}px 0` }}>
+            Search for a handle or paste a wallet.
+          </div>
+        )}
+
+        <button onClick={onClose} style={{ ...btn('secondary', { full: true }), color: 'var(--text-muted)', marginTop: S[5] }}>
+          Cancel
+        </button>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </>,
+    document.body,
   );
 }
 

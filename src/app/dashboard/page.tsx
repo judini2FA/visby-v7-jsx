@@ -6,8 +6,10 @@ import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
-import { t, S, card, surface, btn, badge, avatar, sectionLabel, tabSlider, input, T } from '@/lib/ui';
+import { t, S, card, surface, sheet, btn, badge, avatar, sectionLabel, tabSlider, input, T } from '@/lib/ui';
+import { createPortal } from 'react-dom';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import PayRequest from '@/components/pay-request';
 import { PresetComposer, StructuredBubble, type MessagePreset } from '@/components/preset-composer';
 import { feeBreakdown } from '@/lib/fees';
 import type { ShipRate } from '@/lib/shipping/types';
@@ -801,6 +803,7 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
   const [activeConv, setActiveConv] = useState<string | null>(initialConv ?? null);
   const [sending, setSending] = useState(false);
   const [offerMax, setOfferMax] = useState<number | null>(null);
+  const [showPaySheet, setShowPaySheet] = useState(false);
 
   const { data: conversations = [], isLoading, refetch } = trpc.messages.getConversations.useQuery(
     { wallet },
@@ -883,8 +886,17 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
           Back to conversations
         </button>
-        <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[3] }}>
-          {displayName}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], marginBottom: S[3] }}>
+          <div style={{ ...t('heading'), color: 'var(--text-strong)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displayName}
+          </div>
+          <button
+            onClick={() => setShowPaySheet(true)}
+            style={{ ...btn('secondary'), gap: S[2], padding: '8px 14px', flexShrink: 0 }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            Pay / Request
+          </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: S[2], marginBottom: S[3] }}>
           {thread.map((msg: any) => {
@@ -901,6 +913,22 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
           {thread.length === 0 && !threadLoading && <div style={{ textAlign: 'center', ...t('meta'), color: 'var(--text-muted)', paddingTop: S[5] }}>Start the conversation</div>}
         </div>
         <PresetComposer onSend={sendMessage} sending={sending} maxOffer={offerMax} />
+
+        {showPaySheet && typeof document !== 'undefined' && createPortal(
+          <>
+            <div onClick={() => setShowPaySheet(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }} />
+            <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, borderBottom: 'none', padding: `0 ${S[5]}px ${S[7]}px`, maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: `${S[4]}px 0 ${S[4]}px` }}>
+                <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2 }} />
+                <button onClick={() => setShowPaySheet(false)} aria-label="Close" style={{ position: 'absolute', right: 0, top: S[3], background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <PayRequest wallet={wallet} fixedRecipient={{ wallet: activeConv, display_name: displayName }} onDone={() => setShowPaySheet(false)} />
+            </div>
+          </>,
+          document.body,
+        )}
       </div>
     );
   }

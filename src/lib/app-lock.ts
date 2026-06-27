@@ -122,3 +122,34 @@ export async function unlockAppLock(): Promise<boolean> {
     return false;
   }
 }
+
+// One-off biometric/passkey check for a sensitive action ("scan your face to send"). Reuses the app-lock
+// platform credential when the user has set one up (App Lock in Settings) — then a cancel BLOCKS the
+// action. When no credential exists there's nothing to scan, so it FAILS OPEN (returns true) rather than
+// blocking a user who never enrolled biometrics. WebAuthn-unsupported also passes.
+export async function biometricConfirm(): Promise<boolean> {
+  if (!webauthnSupported()) return true;
+  let credId: string | null = null;
+  try { credId = localStorage.getItem(LS_CRED); } catch { credId = null; }
+  if (!credId) return true;
+  try {
+    await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ type: 'public-key', id: b64urlDecode(credId) }],
+        userVerification: 'required',
+        timeout: 60000,
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Whether a face/fingerprint credential is set up — lets the UI label the action "Scan to send" only when
+// the scan will actually happen.
+export function biometricAvailable(): boolean {
+  if (!webauthnSupported()) return false;
+  try { return !!localStorage.getItem(LS_CRED); } catch { return false; }
+}

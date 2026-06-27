@@ -52,4 +52,29 @@ export const transfersRouter = createTRPCRouter({
         outgoing: outgoing.map((r: any) => ({ ...r, other: profileMap[r.payer_wallet] ?? null })),
       };
     }),
+
+  // Distinct people the caller has recently sent to / received from — the "Recents" row in the picker.
+  recents: protectedProcedure
+    .input(z.object({ wallet: z.string(), limit: z.number().max(20).default(8) }))
+    .query(async ({ input, ctx }) => {
+      if (!ctx.wallets.includes(input.wallet)) throw new TRPCError({ code: 'FORBIDDEN' });
+      const supabase = createServiceClient();
+      const { data } = await supabase
+        .from('transfers')
+        .select('from_wallet, to_wallet, created_at')
+        .or(`from_wallet.eq.${input.wallet},to_wallet.eq.${input.wallet}`)
+        .order('created_at', { ascending: false })
+        .limit(60);
+      const seen = new Set<string>();
+      const others: string[] = [];
+      for (const r of data ?? []) {
+        const other = (r as any).from_wallet === input.wallet ? (r as any).to_wallet : (r as any).from_wallet;
+        if (other && other !== input.wallet && !seen.has(other)) { seen.add(other); others.push(other); }
+        if (others.length >= input.limit) break;
+      }
+      if (!others.length) return [] as Array<{ wallet: string; display_name: string | null; avatar_url: string | null }>;
+      const { data: profs } = await supabase.from('profiles').select('wallet, display_name, avatar_url').in('wallet', others);
+      const pm: Record<string, any> = Object.fromEntries((profs ?? []).map((p: any) => [p.wallet, p]));
+      return others.map((w) => ({ wallet: w, display_name: pm[w]?.display_name ?? null, avatar_url: pm[w]?.avatar_url ?? null }));
+    }),
 });

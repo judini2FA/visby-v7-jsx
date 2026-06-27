@@ -31,7 +31,7 @@ function Icon({ id, active }: { id: string; active: boolean }) {
 
 const TABS = [
   { id: 'home',     label: 'Home',    href: '/' },
-  { id: 'messages', label: 'Inbox',   href: '/dashboard' },
+  { id: 'messages', label: 'Inbox',   href: '/dashboard?tab=messages' },
   { id: 'sell',     label: 'Sell',    href: '/dashboard/seller' },
   { id: 'wallet',   label: 'Wallet',  href: '/wallet' },
   { id: 'profile',  label: 'Profile', href: '/profile' },
@@ -73,12 +73,13 @@ export function BottomNav() {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
         {TABS.map(t => {
+          const hrefPath = t.href.split('?')[0];
           const active =
-            t.href === '/'
+            hrefPath === '/'
               ? pathname === '/'
-              : t.href === '/dashboard'
+              : hrefPath === '/dashboard'
                 ? pathname.startsWith('/dashboard') && !pathname.startsWith('/dashboard/seller')
-                : pathname.startsWith(t.href);
+                : pathname.startsWith(hrefPath);
 
           return (
             <Link
