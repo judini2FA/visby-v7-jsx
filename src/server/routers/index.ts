@@ -7,6 +7,7 @@ import { messagesRouter } from './messages';
 import { reviewsRouter } from './reviews';
 import { blocksRouter } from './blocks';
 import { notificationsRouter } from './notifications';
+import { transfersRouter } from './transfers';
 
 export const appRouter = createTRPCRouter({
   listings: listingsRouter,
@@ -17,6 +18,7 @@ export const appRouter = createTRPCRouter({
   reviews: reviewsRouter,
   blocks: blocksRouter,
   notifications: notificationsRouter,
+  transfers: transfersRouter,
 });
 
 export type AppRouter = typeof appRouter;
