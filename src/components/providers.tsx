@@ -8,6 +8,7 @@ import { registerTrpcToken } from '@/lib/trpc/token-bridge';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 import { NativeBootstrap } from '@/components/native-bootstrap';
 import { AppLock } from '@/components/app-lock';
+import { CurrencySync } from '@/components/currency-sync';
 
 // Hands the tRPC client a way to fetch a fresh Privy token so protectedProcedures can authenticate.
 function TrpcAuthBridge() {
@@ -88,6 +89,7 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
         <SecurityBootstrap />
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
+            <CurrencySync />
             <AppLock>{children}</AppLock>
           </QueryClientProvider>
         </trpc.Provider>

@@ -18,6 +18,22 @@ const CHAINS: Record<Chain, { label: string; abbr: string; grad: string }> = {
 
 function short(a: string) { return a && a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-5)}` : a; }
 
+// Reject addresses that aren't valid for the chosen chain, so a typo / fake address can't be saved as a
+// destination. Format-only (we can't prove an address is "owned") — but it stops obviously-invalid input.
+function validateAddress(chain: Chain, addr: string): string | null {
+  const a = addr.trim();
+  if (!a) return 'Enter a wallet address.';
+  if (chain === 'solana') {
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) ? null : 'That isn’t a valid Solana address.';
+  }
+  if (chain === 'ethereum') {
+    return /^0x[a-fA-F0-9]{40}$/.test(a) ? null : 'That isn’t a valid Ethereum address.';
+  }
+  // bitcoin: legacy base58 (1/3…) or bech32 (bc1…)
+  if (/^[13][1-9A-HJ-NP-Za-km-z]{25,39}$/.test(a) || /^bc1[0-9ac-hj-np-z]{11,71}$/.test(a)) return null;
+  return 'That isn’t a valid Bitcoin address.';
+}
+
 function ChainBadge({ chain, size = 34 }: { chain: Chain; size?: number }) {
   const c = CHAINS[chain];
   return (
@@ -42,6 +58,7 @@ export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
   const [addAddr, setAddAddr] = useState('');
   const [addLabel, setAddLabel] = useState('');
   const [adding, setAdding] = useState(false);
+  const [addErr, setAddErr] = useState('');
   const [openMenu, setOpenMenu] = useState('');
 
   const upsert = trpc.profiles.upsertProfile.useMutation();
@@ -87,7 +104,10 @@ export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
 
   function add() {
     const a = addAddr.trim();
-    if (!a) return;
+    const err = validateAddress(addChain, a);
+    if (err) { setAddErr(err); return; }
+    if (wallets.some(w => w.address === a) || a === visbyWallet) { setAddErr('That wallet is already added.'); return; }
+    setAddErr('');
     persist([...wallets, { id: a + '-' + wallets.length, chain: addChain, address: a, label: addLabel.trim() || undefined }]);
     setAddAddr(''); setAddLabel(''); setAdding(false);
   }
@@ -151,13 +171,14 @@ export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
         <div style={{ ...surface({ pad: S[4] }), marginTop: S[3], display: 'flex', flexDirection: 'column', gap: S[3] }}>
           <div style={{ display: 'flex', gap: S[2] }}>
             {(Object.keys(CHAINS) as Chain[]).map(c => (
-              <button key={c} onClick={() => setAddChain(c)}
+              <button key={c} onClick={() => { setAddChain(c); setAddErr(''); }}
                 style={{ ...btn(addChain === c ? 'primary' : 'secondary'), padding: '7px 12px', fontSize: 12, flex: 1, ...(addChain === c ? {} : { color: 'var(--text-muted)' }) }}>
                 {CHAINS[c].label}
               </button>
             ))}
           </div>
-          <input value={addAddr} onChange={e => setAddAddr(e.target.value)} placeholder={`${CHAINS[addChain].label} wallet address`} style={input()} />
+          <input value={addAddr} onChange={e => { setAddAddr(e.target.value); if (addErr) setAddErr(''); }} placeholder={`${CHAINS[addChain].label} wallet address`} style={input()} />
+          {addErr && <div style={{ ...t('micro'), color: 'var(--danger)' }}>{addErr}</div>}
           <input value={addLabel} onChange={e => setAddLabel(e.target.value)} placeholder="Label (optional)" style={input()} />
           <div style={{ display: 'flex', gap: S[2] }}>
             <button onClick={add} disabled={!addAddr.trim()} style={{ ...btn('primary', { full: true, pill: false }), flex: 1, opacity: addAddr.trim() ? 1 : 0.5 }}>Add wallet</button>
