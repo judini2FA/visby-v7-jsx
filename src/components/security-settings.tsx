@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { S, t, T, surface, btn } from '@/lib/ui';
+import { isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
 
 type Session = {
   session_id: string;
@@ -44,10 +45,14 @@ export default function SecuritySettings() {
   const passkeyCount = ((user?.linkedAccounts ?? []) as any[]).filter((a) => a.type === 'passkey').length;
 
   const [appLock, setAppLock] = useState(false);
-  useEffect(() => { try { setAppLock(localStorage.getItem('visby-app-lock') === '1'); } catch {} }, []);
-  function toggleAppLock() {
-    const n = !appLock; setAppLock(n);
-    try { localStorage.setItem('visby-app-lock', n ? '1' : '0'); } catch {}
+  const [appLockMsg, setAppLockMsg] = useState('');
+  useEffect(() => { setAppLock(isAppLockEnabled()); }, []);
+  async function toggleAppLock() {
+    setAppLockMsg('');
+    if (appLock) { disableAppLock(); setAppLock(false); return; }
+    const r = await enableAppLock(user?.email?.address || 'Visby');
+    if (r.ok) setAppLock(true);
+    else setAppLockMsg(r.reason === 'unsupported' ? 'This device can’t do Face ID / passkey lock.' : 'Couldn’t turn on app lock — try again.');
   }
 
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -115,6 +120,7 @@ export default function SecuritySettings() {
         sublabel="Require Face ID / passkey each time you open Visby"
         right={<Toggle on={appLock} onToggle={toggleAppLock} />}
       />
+      {appLockMsg && <div style={{ ...t('micro'), color: 'var(--danger)', padding: `0 ${S[4]}px ${S[3]}px ${S[7]}px` }}>{appLockMsg}</div>}
       <SecRow
         border={false}
         icon={<svg width="16" height="16" viewBox="0 0 24 24" {...stroke}><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>}
