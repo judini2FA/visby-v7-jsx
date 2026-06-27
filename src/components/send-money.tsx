@@ -200,7 +200,10 @@ export default function SendMoney({ onSent }: { onSent?: () => void }) {
                       {(recipient.display_name || recipient.handle || 'S').slice(0, 1).toUpperCase()}
                     </div>
                   )}
-                  <span style={{ ...t('body'), color: 'var(--text-strong)' }}>{recipientLabel}</span>
+                  <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                    <span style={{ ...t('body'), color: 'var(--text-strong)' }}>{recipientLabel}</span>
+                    <span style={{ ...t('micro'), color: 'var(--text-muted)', fontFamily: 'monospace' }}>{shortWallet(recipient.wallet)}</span>
+                  </span>
                 </div>
               ) : (
                 <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
