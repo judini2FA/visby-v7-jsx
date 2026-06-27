@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { callerOwnsWallet } from '@/lib/auth';
-import { isAdminWallet } from '@/lib/admin';
+import { isAdminRole } from '@/lib/admin';
 import { createServiceClient } from '@/lib/supabase/service';
 
 // Admin-only management of the brand serial-number registry (brands, their serial rules, and per-serial
@@ -21,7 +21,7 @@ async function gate(req: NextRequest, wallet: unknown): Promise<NextResponse | n
     return NextResponse.json({ error: 'wallet is required' }, { status: 400 });
   }
   if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!isAdminWallet(wallet)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!(await isAdminRole(wallet, 'authenticator'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return null;
 }
 

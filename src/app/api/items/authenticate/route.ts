@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { callerOwnsWallet } from '@/lib/auth';
-import { isAdminWallet } from '@/lib/admin';
+import { isAdminRole } from '@/lib/admin';
 import { createServiceClient } from '@/lib/supabase/service';
 import { notify } from '@/lib/notifications';
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!isAdminWallet(wallet)) {
+  if (!(await isAdminRole(wallet, 'authenticator'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

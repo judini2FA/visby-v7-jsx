@@ -404,6 +404,9 @@ export default function AdminReportsPage() {
             <Link href="/admin/disputes" style={{ ...btn('text'), fontSize: 13 }}>
               Disputes
             </Link>
+            <Link href="/admin/team" style={{ ...btn('text'), fontSize: 13 }}>
+              Team
+            </Link>
             <HeaderMenu />
           </div>
         </div>

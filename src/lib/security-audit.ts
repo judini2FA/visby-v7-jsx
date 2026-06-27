@@ -15,7 +15,9 @@ export type SecurityEvent =
   | 'session_revoked'
   | 'sessions_revoked_others'
   | 'payout_destination_changed'
-  | 'payment_method_changed';
+  | 'payment_method_changed'
+  | 'admin_granted'
+  | 'admin_revoked';
 
 export type SecurityAuditInput = {
   wallet: string;

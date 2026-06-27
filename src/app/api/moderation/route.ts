@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
-import { isAdminWallet } from '@/lib/admin';
+import { isAdminRole } from '@/lib/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ type ReportStatus = typeof VALID_STATUSES[number];
 
 async function requireAdmin(req: Request, wallet: string | undefined | null): Promise<boolean> {
   if (!wallet) return false;
-  if (!isAdminWallet(wallet)) return false;
+  if (!(await isAdminRole(wallet, 'moderator'))) return false;
   return callerOwnsWallet(req, wallet);
 }
 

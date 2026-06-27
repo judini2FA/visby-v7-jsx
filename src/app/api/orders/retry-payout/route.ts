@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
-import { isAdminWallet } from '@/lib/admin';
+import { isAdminRole } from '@/lib/admin';
 import { releasePayout } from '@/lib/payout';
 import { feeBreakdown } from '@/lib/fees';
 
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     if (orderErr || !order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
     // Only the order's seller or an admin may retry the payout.
-    if (order.seller_wallet !== wallet && !isAdminWallet(wallet)) {
+    if (order.seller_wallet !== wallet && !(await isAdminRole(wallet, 'finance'))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { callerOwnsWallet } from '@/lib/auth';
-import { isAdminWallet } from '@/lib/admin';
+import { isAdminRole } from '@/lib/admin';
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const wallet = form.get('wallet');
   if (typeof wallet !== 'string' || !wallet) return NextResponse.json({ error: 'wallet is required' }, { status: 400 });
   if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!isAdminWallet(wallet)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!(await isAdminRole(wallet, 'super_admin'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const kind = form.get('kind');
   if (kind !== 'terms' && kind !== 'privacy') return NextResponse.json({ error: 'kind must be terms or privacy' }, { status: 400 });

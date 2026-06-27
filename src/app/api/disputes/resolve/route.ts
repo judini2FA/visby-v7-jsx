@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
-import { isAdminWallet } from '@/lib/admin';
+import { isAdminRole } from '@/lib/admin';
 import { refundOrder } from '@/lib/refund';
 import { notify } from '@/lib/notifications';
 import { emailWallet } from '@/lib/email';
@@ -25,7 +25,7 @@ async function gateAdmin(req: Request, wallet: string | undefined | null): Promi
   if (!(await callerOwnsWallet(req, wallet))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  if (!isAdminWallet(wallet)) {
+  if (!(await isAdminRole(wallet, 'finance'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   return null;
