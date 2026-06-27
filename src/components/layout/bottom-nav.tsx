@@ -16,7 +16,7 @@ function Icon({ id, active }: { id: string; active: boolean }) {
     if (id === 'home')     return <svg {...f}><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>;
     if (id === 'messages') return <svg {...f}><g transform="translate(2 0)"><path d="M5 7 H11.5 A5.5 5.5 0 0 0 17 12.5 V19 A2 2 0 0 1 15 21 H5 A2 2 0 0 1 3 19 V9 A2 2 0 0 1 5 7 Z" /><circle cx="17" cy="7" r="2.4" /></g></svg>;
     if (id === 'sell')     return <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.8} strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
-    if (id === 'wallet')   return <svg {...f} fillRule="evenodd"><path d="M5.7 5.5 H16.3 A3.2 3.2 0 0 1 19.5 8.7 V11.4 H21.3 A1.45 1.45 0 0 1 22.75 12.85 V14.15 A1.45 1.45 0 0 1 21.3 15.6 H19.5 V16.3 A3.2 3.2 0 0 1 16.3 19.5 H5.7 A3.2 3.2 0 0 1 2.5 16.3 V8.7 A3.2 3.2 0 0 1 5.7 5.5 Z M4.5 9.1 H16.5 A0.42 0.42 0 0 1 16.5 9.95 H4.5 A0.42 0.42 0 0 1 4.5 9.1 Z M20 13.5 a0.95 0.55 0 1 0 1.9 0 a0.95 0.55 0 1 0 -1.9 0 Z" /></svg>;
+    if (id === 'wallet')   return <svg {...f} fillRule="evenodd"><path d="M4 4.4 H20 A2.6 2.6 0 0 1 22.6 7 V17 A2.6 2.6 0 0 1 20 19.6 H4 A2.6 2.6 0 0 1 1.4 17 V7 A2.6 2.6 0 0 1 4 4.4 Z M3 9.4 H21 V10.7 H3 Z" /></svg>;
     return <svg {...f}><circle cx="12" cy="8" r="4" /><path d="M12 14c-4.4 0-8 2.6-8 5.8 0 .7.6 1.2 1.3 1.2h13.4c.7 0 1.3-.5 1.3-1.2 0-3.2-3.6-5.8-8-5.8z" /></svg>;
   }
 
@@ -25,7 +25,7 @@ function Icon({ id, active }: { id: string; active: boolean }) {
   if (id === 'home')     return <svg {...s}><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>;
   if (id === 'messages') return <svg {...s}><g transform="translate(2 0)"><path d="M5 7 H11.5 A5.5 5.5 0 0 0 17 12.5 V19 A2 2 0 0 1 15 21 H5 A2 2 0 0 1 3 19 V9 A2 2 0 0 1 5 7 Z" /><circle cx="17" cy="7" r="2.2" /></g></svg>;
   if (id === 'sell')     return <svg {...{ ...s, strokeWidth: 2 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
-  if (id === 'wallet')   return <svg {...s}><path d="M5.7 5.5 H16.3 A3.2 3.2 0 0 1 19.5 8.7 V11.4 H21.3 A1.45 1.45 0 0 1 22.75 12.85 V14.15 A1.45 1.45 0 0 1 21.3 15.6 H19.5 V16.3 A3.2 3.2 0 0 1 16.3 19.5 H5.7 A3.2 3.2 0 0 1 2.5 16.3 V8.7 A3.2 3.2 0 0 1 5.7 5.5 Z" /><path d="M4.3 9.5 H17" /><ellipse cx="20.95" cy="13.5" rx="0.95" ry="0.5" fill={color} stroke="none" /></svg>;
+  if (id === 'wallet')   return <svg {...s}><rect x="1.5" y="4.5" width="21" height="15" rx="2.6" /><line x1="1.5" y1="10" x2="22.5" y2="10" /></svg>;
   return <svg {...s}><circle cx="12" cy="8" r="4" /><path d="M12 14c-4.4 0-8 2.6-8 5.8 0 .7.6 1.2 1.3 1.2h13.4c.7 0 1.3-.5 1.3-1.2 0-3.2-3.6-5.8-8-5.8z" /></svg>;
 }
 
