@@ -40,6 +40,11 @@ export function formatCurrency(usdcAmount: number, c: Currency = current): strin
   return `${SYMBOLS[c]}${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Inverse of the display rate: a fiat amount the user typed → its USDC (≈ USD) value.
+export function toUsdc(fiatAmount: number, c: Currency = current): number {
+  return fiatAmount / RATES[c];
+}
+
 export function useCurrency() {
   const currency = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
@@ -68,6 +73,7 @@ export function useCurrency() {
     currency,
     setCurrency,
     format: (usdcAmount: number) => formatCurrency(usdcAmount, currency),
+    toUsdc: (fiatAmount: number) => toUsdc(fiatAmount, currency),
     symbol: SYMBOLS[currency],
   };
 }
