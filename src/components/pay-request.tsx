@@ -183,15 +183,18 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
     }
 
     setStep('confirming');
+    let confirmedSent = false;
     try {
       const token = await getAccessToken();
-      await fetch('/api/transfer/confirm', {
+      const cres = await fetch('/api/transfer/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ transfer_id: transferId, from_wallet: wallet, tx_hash: signature }),
       });
+      const cj = await cres.json().catch(() => ({}));
+      confirmedSent = cj?.status === 'sent';
     } catch {
-      // The on-chain tx already landed; a failed confirm only delays the ledger update.
+      // The on-chain tx is already broadcast; a failed confirm only delays the ledger update.
     }
 
     // Close the request out ONLY if the money actually went to that request's requester.
@@ -209,7 +212,9 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
       }
     }
 
-    setSuccessMsg(`Sent ${solDisplay} SOL to ${recipientLabel}.`);
+    setSuccessMsg(confirmedSent
+      ? `Sent ${solDisplay} SOL to ${recipientLabel}.`
+      : `Sent ${solDisplay} SOL to ${recipientLabel} — confirming on the network, it'll appear shortly.`);
     setStep('done');
     resetForm();
     requestsQ.refetch();
