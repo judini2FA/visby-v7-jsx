@@ -1,5 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { createServiceClient } from '@/lib/supabase/service';
+import { notify } from '@/lib/notifications';
 
 export type TransferToken = 'SOL' | 'USDC';
 
@@ -100,7 +101,7 @@ export async function recordPrepared(row: {
 // its accounts — enough to stop a bogus tx_hash from being written into history without a heavy full parse.
 export async function confirmTransfer(args: { id: string; from_wallet: string; tx_hash: string }): Promise<{ ok: boolean; status: 'sent' | 'pending' }> {
   const supabase = createServiceClient();
-  const { data: row } = await supabase.from('transfers').select('id, from_wallet, to_wallet, status').eq('id', args.id).maybeSingle();
+  const { data: row } = await supabase.from('transfers').select('id, from_wallet, to_wallet, status, amount, token, kind').eq('id', args.id).maybeSingle();
   if (!row || row.from_wallet !== args.from_wallet) return { ok: false, status: 'pending' };
   if (row.status === 'sent') return { ok: true, status: 'sent' };
 
@@ -119,5 +120,19 @@ export async function confirmTransfer(args: { id: string; from_wallet: string; t
     return { ok: false, status: 'pending' };
   }
   await supabase.from('transfers').update({ status: 'sent', tx_hash: args.tx_hash, confirmed_at: new Date().toISOString() }).eq('id', args.id);
+
+  // Notify the recipient that money landed (fire-and-forget; skip transfers between the user's own wallets).
+  if (row.kind !== 'self' && row.to_wallet && row.to_wallet !== row.from_wallet) {
+    const { data: sender } = await supabase.from('profiles').select('display_name').eq('wallet', row.from_wallet).maybeSingle();
+    const who = sender?.display_name || `${row.from_wallet.slice(0, 4)}…${row.from_wallet.slice(-4)}`;
+    void notify({
+      recipient_wallet: row.to_wallet,
+      type: 'transfer_received',
+      title: `${who} sent you ${row.amount} ${row.token}`,
+      link: '/wallet',
+      data: { transfer_id: row.id, from_wallet: row.from_wallet, amount: row.amount, token: row.token },
+    });
+  }
+
   return { ok: true, status: 'sent' };
 }
