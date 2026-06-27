@@ -18,6 +18,32 @@ function bearer(req: Request): string | null {
   return t || null;
 }
 
+// Authoritative server-side read of the user's enrolled MFA methods. PrivyClient.getUser() drops
+// `mfa_methods` from its typed result, so we hit the same REST endpoint the SDK uses (Basic app auth)
+// and read the field directly. Returns the list (possibly empty []), or null when it can't be
+// determined (server auth not configured, or a Privy error) — the step-up gate treats null/empty as
+// "not enrolled" and fails closed, so a stolen-session attacker can't transfer from a non-MFA account.
+export async function getUserMfaMethods(userId: string): Promise<string[] | null> {
+  if (!APP_ID || !APP_SECRET || !userId) return null;
+  try {
+    const res = await fetch(`https://auth.privy.io/api/v1/users/${encodeURIComponent(userId)}`, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${APP_ID}:${APP_SECRET}`).toString('base64')}`,
+        'privy-app-id': APP_ID,
+      },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const m = data?.mfa_methods;
+    if (!Array.isArray(m)) return [];
+    // The field is an array of method strings ("totp" | "passkey" | "sms") or {type} objects.
+    return m.map((x: any) => (typeof x === 'string' ? x : x?.type)).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
 export type AuthedContext = { wallets: string[]; userId: string; sessionId: string };
 
 // Full verified auth context: the Privy user's linked wallets PLUS userId + sessionId (which the

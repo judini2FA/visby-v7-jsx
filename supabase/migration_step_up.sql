@@ -2,9 +2,14 @@
 -- The nonce is the PK, so a re-submitted signature collides (23505) and is rejected. Service-role-only
 -- (RLS, no policies). Idempotent. Run in the Supabase SQL editor.
 --
--- After running this + deploying the client step-up flow, set env STEP_UP_ENFORCED=1 to make the
--- money-moving routes REQUIRE a step-up signature (until then they accept one if present but don't
--- require it, so nothing breaks during rollout).
+-- ROLLOUT (order matters — verifyStepUp now FAILS CLOSED if this table is missing):
+--   1. Run THIS migration first. The replay store must exist before any step-up is enforced.
+--   2. Then set ONE env var to turn step-up on: NEXT_PUBLIC_STEP_UP_ENFORCED=1. Both the client (signs +
+--      attaches a proof) and the server (requires + verifies it, and requires the owner to have MFA
+--      enrolled) read this same var, so they flip together. Because NEXT_PUBLIC_* is build-time-inlined
+--      into the client bundle, flipping it REQUIRES a redeploy — which also updates the server runtime,
+--      so the "server-on / client-off" (or inverse) outage is impossible.
+--   Until the var is set, routes behave exactly as before (no signature prompt, no requirement).
 
 create table if not exists public.step_up_used (
   nonce    text primary key,

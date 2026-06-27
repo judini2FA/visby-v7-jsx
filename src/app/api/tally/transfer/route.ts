@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { callerOwnsWallet } from '@/lib/auth';
+import { getAuthedContext } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
@@ -35,13 +35,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Auth: the caller must prove (via their Privy token) that they control the source wallet.
-  if (!(await callerOwnsWallet(req, from_wallet))) {
+  const ctx = await getAuthedContext(req);
+  if (!ctx || !ctx.wallets.includes(from_wallet)) {
     return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
   }
 
   // Step-up: a fresh MFA-gated wallet signature, bound to THIS transfer, before the asset leaves for
-  // another wallet. No-op until STEP_UP_ENFORCED=1 (rollout-safe); verifies a proof if one is supplied.
-  const stepUp = await requireStepUp(req, from_wallet, `transfer_tally:${item_id}`);
+  // another wallet. No-op until NEXT_PUBLIC_STEP_UP_ENFORCED=1 (rollout-safe); when enforced it also
+  // requires the owner to have MFA enrolled. Reuse ctx.userId so there's no second Privy round-trip.
+  const stepUp = await requireStepUp(req, from_wallet, `transfer_tally:${item_id}`, ctx.userId);
   if (stepUp) return stepUp;
 
   const supabase = createServiceClient();
