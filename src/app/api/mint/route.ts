@@ -17,6 +17,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { checkSerial } from '@/lib/serial-registry';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { callerOwnsWallet } from '@/lib/auth';
+import { requireKycForSale } from '@/lib/kyc';
 import { captureError } from '@/lib/monitoring';
 
 export async function POST(req: Request) {
@@ -49,6 +50,10 @@ export async function POST(req: Request) {
     if (!(await callerOwnsWallet(req, owner_wallet))) {
       return NextResponse.json({ error: 'Not authorized for that wallet — please sign in.' }, { status: 401 });
     }
+
+    // Gate creating sellable inventory behind ID verification (no-op until NEXT_PUBLIC_KYC_REQUIRED=1).
+    const kyc = await requireKycForSale(owner_wallet);
+    if (!kyc.ok) return NextResponse.json({ error: 'kyc_required', kyc_status: kyc.status }, { status: 403 });
 
     // Tally Destination: mint into the seller's chosen Solana wallet when set + valid, else their wallet.
     const tallyOwner = (typeof destination_wallet === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(destination_wallet))

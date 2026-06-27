@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { expandSearchTerms, sanitizeIlikeTerm } from '@/server/lib/synonyms';
 import { searchListings } from '@/server/lib/search-engine';
 import { ownersForItems } from '@/lib/owners';
+import { requireKycForSale } from '@/lib/kyc';
 
 // Hide listings owned by flagged sellers from public browse. Degrades to "hide nothing" if the
 // is_flagged column isn't migrated yet, so the marketplace never breaks on a missing column.
@@ -45,6 +46,9 @@ export const listingsRouter = createTRPCRouter({
     }))
     .mutation(async ({ input, ctx }) => {
       if (!ctx.wallets.includes(input.seller_wallet)) throw new TRPCError({ code: 'FORBIDDEN' });
+      // Gate listing behind ID verification (no-op until NEXT_PUBLIC_KYC_REQUIRED=1).
+      const kyc = await requireKycForSale(input.seller_wallet);
+      if (!kyc.ok) throw new TRPCError({ code: 'FORBIDDEN', message: 'kyc_required' });
       const supabase = createServiceClient();
       const { data, error } = await supabase
         .from('items')

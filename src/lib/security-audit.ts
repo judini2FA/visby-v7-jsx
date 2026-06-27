@@ -17,7 +17,8 @@ export type SecurityEvent =
   | 'payout_destination_changed'
   | 'payment_method_changed'
   | 'admin_granted'
-  | 'admin_revoked';
+  | 'admin_revoked'
+  | 'kyc_override';
 
 export type SecurityAuditInput = {
   wallet: string;
