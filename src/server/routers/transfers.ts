@@ -27,4 +27,29 @@ export const transfersRouter = createTRPCRouter({
       if (error) return [];
       return (data ?? []).map((r: any) => ({ ...r, direction: r.from_wallet === input.wallet ? 'out' : 'in' }));
     }),
+
+  // Payment requests for the "Pay" tab: `incoming` = requests waiting for the caller to pay (pending),
+  // `outgoing` = requests the caller has sent. Each is enriched with the other party's profile.
+  requests: protectedProcedure
+    .input(z.object({ wallet: z.string() }))
+    .query(async ({ input, ctx }) => {
+      if (!ctx.wallets.includes(input.wallet)) throw new TRPCError({ code: 'FORBIDDEN' });
+      const supabase = createServiceClient();
+      const [incomingRes, outgoingRes] = await Promise.all([
+        supabase.from('payment_requests').select('*').eq('payer_wallet', input.wallet).eq('status', 'pending').order('created_at', { ascending: false }).limit(40),
+        supabase.from('payment_requests').select('*').eq('requester_wallet', input.wallet).order('created_at', { ascending: false }).limit(40),
+      ]);
+      const incoming = incomingRes.data ?? [];
+      const outgoing = outgoingRes.data ?? [];
+      const others = [...new Set([...incoming.map((r: any) => r.requester_wallet), ...outgoing.map((r: any) => r.payer_wallet)])];
+      const profileMap: Record<string, { display_name: string | null; avatar_url: string | null }> = {};
+      if (others.length) {
+        const { data: profs } = await supabase.from('profiles').select('wallet, display_name, avatar_url').in('wallet', others);
+        for (const p of profs ?? []) profileMap[(p as any).wallet] = { display_name: (p as any).display_name ?? null, avatar_url: (p as any).avatar_url ?? null };
+      }
+      return {
+        incoming: incoming.map((r: any) => ({ ...r, other: profileMap[r.requester_wallet] ?? null })),
+        outgoing: outgoing.map((r: any) => ({ ...r, other: profileMap[r.payer_wallet] ?? null })),
+      };
+    }),
 });

@@ -7,7 +7,7 @@ import { useVisbWallet } from '@/lib/wallet';
 import { t, S, btn, surface, sectionLabel, tabSlider, badge } from '@/lib/ui';
 import { useCurrency, CURRENCIES } from '@/lib/currency';
 import { trpc } from '@/lib/trpc/client';
-import SendMoney from '@/components/send-money';
+import PayRequest from '@/components/pay-request';
 import PaymentMethodsManager from '@/components/payment-methods-manager';
 import PayoutSettings from '@/components/payout-settings';
 import ShipFromSettings from '@/components/ship-from-settings';
@@ -16,7 +16,7 @@ import { SellerAnalytics } from '@/components/seller-analytics';
 import { TallyWallets } from '@/components/tally-wallets';
 import { HeaderMenu } from '@/components/layout/header-menu';
 
-type WTab = 'wallets' | 'payouts';
+type WTab = 'wallets' | 'pay' | 'payouts';
 
 export default function WalletPage() {
   const { ready, authenticated, exportWallet } = usePrivy();
@@ -24,12 +24,11 @@ export default function WalletPage() {
   const router = useRouter();
   const { currency, setCurrency } = useCurrency();
   const [tab, setTab] = useState<WTab>('wallets');
-  const [sendOpen, setSendOpen] = useState(false);
   const historyQ = trpc.transfers.history.useQuery({ wallet }, { enabled: !!wallet });
 
   useEffect(() => {
     const tp = new URLSearchParams(window.location.search).get('tab');
-    if (tp === 'payouts' || tp === 'wallets') setTab(tp as WTab);
+    if (tp === 'payouts' || tp === 'wallets' || tp === 'pay') setTab(tp as WTab);
   }, []);
 
   useEffect(() => {
@@ -47,6 +46,7 @@ export default function WalletPage() {
 
   const TABS: { id: WTab; label: string }[] = [
     { id: 'wallets', label: 'Wallets' },
+    { id: 'pay', label: 'Pay' },
     { id: 'payouts', label: 'Details' },
   ];
 
@@ -73,20 +73,14 @@ export default function WalletPage() {
 
         {tab === 'wallets' && (
           <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[5] }}>
-            {sendOpen ? (
-              <SendMoney onSent={() => historyQ.refetch()} />
-            ) : (
-              <button onClick={() => setSendOpen(true)} style={{ ...btn('primary', { full: true }) }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
-                </svg>
-                Send money
-              </button>
-            )}
-
-            <TransferHistory wallet={wallet} query={historyQ} />
-
             <PaymentMethodsManager wallet={wallet} onExportWallet={exportWallet} />
+          </div>
+        )}
+
+        {tab === 'pay' && (
+          <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[5] }}>
+            <PayRequest wallet={wallet} onDone={() => historyQ.refetch()} />
+            <TransferHistory wallet={wallet} query={historyQ} />
           </div>
         )}
 
