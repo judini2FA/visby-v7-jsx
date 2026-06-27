@@ -374,7 +374,7 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
 // PAGE
 // ─────────────────────────────────────────────────────────────
 export default function ProfilePage() {
-  const { ready, authenticated, user, logout, exportWallet } = usePrivy();
+  const { ready, authenticated, user, logout, exportWallet, getAccessToken } = usePrivy();
   const { address: walletAddress, ready: walletReady } = useVisbWallet();
   const router = useRouter();
   const [tab, setTab]         = useState<Tab>('public');
@@ -393,6 +393,23 @@ export default function ProfilePage() {
   const initial     = (displayName[0] ?? '?').toUpperCase();
   const listedCount = ownedItems.filter((i: any) => i.is_listed).length;
   const email       = user?.email?.address;
+
+  const [kycApproved, setKycApproved] = useState(false);
+  useEffect(() => {
+    if (!walletAddress) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const res = await fetch('/api/kyc/status', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const j = await res.json();
+        if (!cancelled) setKycApproved(j.kyc_status === 'approved');
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [walletAddress, getAccessToken]);
 
   useEffect(() => {
     if (ready && !authenticated) router.push('/login');
@@ -440,9 +457,15 @@ export default function ProfilePage() {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[1] }}>
-                  <div style={{ ...t('title'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{displayName}</div>
+                  <div style={{ ...t('title'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{displayName}</div>
+                  {kycApproved && (
+                    <span style={{ ...badge('success'), gap: 4, flexShrink: 0 }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#00C48C" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                      ID Verified
+                    </span>
+                  )}
                   <button onClick={() => setEditOpen(o => !o)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: S[1] }}>
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: S[1], marginLeft: 'auto' }}>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={editOpen ? 'var(--text-strong)' : 'var(--text-muted)'} strokeWidth="2" strokeLinecap="round">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>

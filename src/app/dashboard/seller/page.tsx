@@ -13,6 +13,7 @@ import { HeaderMenu } from '@/components/layout/header-menu';
 import { isCutout } from '@/components/listing-card';
 import { feeBreakdown } from '@/lib/fees';
 import { localShipEstimate } from '@/lib/shipping-estimate';
+import KycVerify from '@/components/kyc-verify';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -475,6 +476,10 @@ export default function SellerDashboardPage() {
       </div>
 
       <div className="visby-page" style={{ paddingTop: S[5], paddingBottom: 100 }}>
+
+        <div style={{ marginBottom: S[5] }}>
+          <KycVerify />
+        </div>
 
         {/* Toggle */}
         <div style={tabSlider().wrap}>
