@@ -4,8 +4,10 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useVisbWallet } from '@/lib/wallet';
-import { t, S, btn, surface, sectionLabel, tabSlider } from '@/lib/ui';
+import { t, S, btn, surface, sectionLabel, tabSlider, badge } from '@/lib/ui';
 import { useCurrency, CURRENCIES } from '@/lib/currency';
+import { trpc } from '@/lib/trpc/client';
+import SendMoney from '@/components/send-money';
 import PaymentMethodsManager from '@/components/payment-methods-manager';
 import PayoutSettings from '@/components/payout-settings';
 import ShipFromSettings from '@/components/ship-from-settings';
@@ -22,6 +24,8 @@ export default function WalletPage() {
   const router = useRouter();
   const { currency, setCurrency } = useCurrency();
   const [tab, setTab] = useState<WTab>('wallets');
+  const [sendOpen, setSendOpen] = useState(false);
+  const historyQ = trpc.transfers.history.useQuery({ wallet }, { enabled: !!wallet });
 
   useEffect(() => {
     const tp = new URLSearchParams(window.location.search).get('tab');
@@ -68,7 +72,20 @@ export default function WalletPage() {
         </div>
 
         {tab === 'wallets' && (
-          <div style={{ paddingTop: S[5] }}>
+          <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[5] }}>
+            {sendOpen ? (
+              <SendMoney onSent={() => historyQ.refetch()} />
+            ) : (
+              <button onClick={() => setSendOpen(true)} style={{ ...btn('primary', { full: true }) }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
+                </svg>
+                Send money
+              </button>
+            )}
+
+            <TransferHistory wallet={wallet} query={historyQ} />
+
             <PaymentMethodsManager wallet={wallet} onExportWallet={exportWallet} />
           </div>
         )}
@@ -117,6 +134,78 @@ export default function WalletPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function shortWallet(w: string) {
+  return w && w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : (w || '');
+}
+
+type TransferRow = {
+  direction: 'in' | 'out';
+  from_wallet: string;
+  to_wallet: string;
+  to_handle: string | null;
+  token: string;
+  amount: number;
+  status: string;
+  created_at: string;
+};
+
+function statusBadge(status: string) {
+  if (status === 'sent') return { style: badge('success'), label: 'Sent' };
+  if (status === 'failed') return { style: badge('danger'), label: 'Failed' };
+  return { style: badge('default'), label: 'Pending' };
+}
+
+function DirectionArrow({ direction }: { direction: 'in' | 'out' }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      {direction === 'out'
+        ? <><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></>
+        : <><line x1="17" y1="7" x2="7" y2="17" /><polyline points="17 17 7 17 7 7" /></>}
+    </svg>
+  );
+}
+
+function TransferHistory({ wallet, query }: { wallet: string; query: { data?: TransferRow[] | unknown } }) {
+  const rows = (Array.isArray(query.data) ? query.data : []) as TransferRow[];
+
+  return (
+    <div style={surface({ pad: S[5], radius: 'var(--r-lg)' })}>
+      <div style={{ ...sectionLabel(), marginBottom: S[4] }}>Recent transfers</div>
+      {rows.length === 0 ? (
+        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>No transfers yet.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          {rows.map((r, i) => {
+            const out = r.direction === 'out';
+            const counterparty = out ? (r.to_handle || shortWallet(r.to_wallet)) : shortWallet(r.from_wallet);
+            const sb = statusBadge(r.status);
+            const date = new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: S[3], paddingTop: i ? S[2] : 0, ...(i ? { borderTop: '1px solid var(--divider)' } : null) }}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-bg)', border: '1px solid var(--glass-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: out ? 'var(--text-muted)' : 'var(--ok)', flexShrink: 0 }}>
+                  <DirectionArrow direction={r.direction} />
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ ...t('body'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {out ? 'To ' : 'From '}{counterparty}
+                  </div>
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{date}</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                  <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>
+                    {out ? '-' : '+'}{r.amount} {r.token}
+                  </div>
+                  <span style={sb.style}>{sb.label}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
