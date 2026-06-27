@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { t, S, surface, btn, sectionLabel, input } from '@/lib/ui';
+import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-client';
 
 const GREEN = 'var(--ok)';
 const RED   = 'var(--danger)';
 
 export default function PayoutSettings({ wallet }: { wallet: string }) {
   const { getAccessToken } = usePrivy();
+  const { wallets: solSigners } = useSolanaWallets();
   const [payoutType, setPayoutType] = useState<'bank' | 'crypto'>('crypto');
   const [stripeAccountId, setStripeAccountId] = useState('');
   const [cryptoWallet,    setCryptoWallet]    = useState(wallet);
@@ -47,8 +49,17 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
     setStatus('saving'); setErrMsg('');
     try {
       const token = await getAccessToken();
+      // Step-up: when enforced, sign a fresh MFA-gated challenge before redirecting payouts. Dormant
+      // (no signing prompt) until NEXT_PUBLIC_STEP_UP_ENFORCED=1.
+      let stepUp: Record<string, string> = {};
+      if (STEP_UP_ON) {
+        const signer = solSigners.find(w => w.address === wallet);
+        if (!signer?.signMessage) throw new Error('This wallet can’t authorize the change on this device.');
+        const proof = await createStepUpProof({ action: 'payout_destination', signMessage: signer.signMessage });
+        stepUp = stepUpHeader(proof);
+      }
       const res = await fetch('/api/payout', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...stepUp },
         body: JSON.stringify({
           seller_wallet: wallet,
           payout_type: payoutType,
