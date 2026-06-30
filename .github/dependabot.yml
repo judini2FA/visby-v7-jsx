@@ -1,0 +1,17 @@
+# Dependabot keeps dependencies patched and flags vulnerable packages as PRs. Enable Dependabot +
+# security updates under the repo's Settings → Code security once this is pushed. Minor/patch bumps are
+# grouped into one PR to cut noise; majors come individually so they get reviewed deliberately.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
