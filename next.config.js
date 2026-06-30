@@ -15,7 +15,7 @@ const nextConfig = {
                   'gateway.irys.xyz',
                 ],
     },
-    webpack: (config) => {
+    webpack: (config, { isServer }) => {
           config.resolve.fallback = {
                   ...config.resolve.fallback,
                   fs: false,
@@ -24,6 +24,20 @@ const nextConfig = {
                   'utf-8-validate': false,
                   bufferutil: false,
           };
+          // onnxruntime-web (pulled in by @imgly/background-removal) ships ESM .mjs that uses
+          // import.meta + top-level import/export. Webpack's prod build defaults .mjs to
+          // strict "fullySpecified" ESM resolution and chokes ("'import.meta' cannot be used
+          // outside of module code"). Relax it so these modules resolve as auto-detected ESM.
+          config.module.rules.push({
+                  test: /\.m?js$/,
+                  type: 'javascript/auto',
+                  resolve: { fullySpecified: false },
+          });
+          // The cutout runs only in the browser. Keep onnxruntime-web out of the server bundle so
+          // SSR/route compilation never parses its WebGPU/WASM backend.
+          if (isServer) {
+                  config.externals = [...(config.externals || []), 'onnxruntime-web'];
+          }
           return config;
     },
     async headers() {
