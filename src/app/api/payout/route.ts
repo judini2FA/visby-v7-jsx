@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
 import { requireStepUp } from '@/lib/step-up';
+import { payoutAction } from '@/lib/step-up-shared';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     // Step-up: changing where money is paid out is the classic account-takeover cash-out vector, so a
     // stolen session can't redirect future earnings without a fresh MFA-gated wallet signature. Dormant
     // until NEXT_PUBLIC_STEP_UP_ENFORCED=1 (then it also requires the owner to have MFA enrolled).
-    const stepUp = await requireStepUp(req, seller_wallet, 'payout_destination', ctx.userId);
+    const stepUp = await requireStepUp(req, seller_wallet, payoutAction(payout_type, payout_type === 'bank' ? stripe_account_id : crypto_wallet), ctx.userId);
     if (stepUp) return stepUp;
 
     const supabase = createServiceClient();

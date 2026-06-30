@@ -42,7 +42,7 @@ type SelectedRecipient = { wallet: string; display_name?: string | null; handle?
 export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet: string; onDone?: () => void; fixedRecipient?: FixedRecipient }) {
   const { getAccessToken } = usePrivy();
   const { wallets } = useSolanaWallets();
-  const { symbol, toUsdc } = useCurrency();
+  const { symbol, toUsdc, currency } = useCurrency();
 
   const [mode, setMode] = useState<Mode>('pay');
   const [recipientInput, setRecipientInput] = useState('');
@@ -50,6 +50,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
   const [selected, setSelected] = useState<SelectedRecipient | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [amount, setAmount] = useState('');
+  const [lockedSol, setLockedSol] = useState<number | null>(null); // exact SOL when fulfilling a request
   const [note, setNote] = useState('');
   const [step, setStep] = useState<Step>('idle');
   const [errMsg, setErrMsg] = useState('');
@@ -92,11 +93,20 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
 
   const fiatNum = Number(amount);
   const priced = solUsd != null && solUsd > 0;
-  // With a live SOL price the big input is fiat; offline we fall back to entering SOL directly.
-  const solAmount = priced ? toUsdc(fiatNum) / (solUsd as number) : fiatNum;
+  // lockedSol = the EXACT SOL of a request being fulfilled (no fiat round-trip → no rounding/drift). For
+  // normal entry: when the chosen currency IS SOL, the field is SOL directly (a single rate, no drift);
+  // any other currency converts via USD; offline, the field is treated as SOL.
+  const solAmount = lockedSol != null
+    ? lockedSol
+    : currency === 'SOL'
+      ? fiatNum
+      : priced
+        ? toUsdc(fiatNum) / (solUsd as number)
+        : fiatNum;
   const amountValid = Number.isFinite(solAmount) && solAmount > 0;
   const solDisplay = Number.isFinite(solAmount) ? Number(solAmount.toFixed(4)) : 0;
-  const amountSymbol = priced ? symbol : '';
+  // When fulfilling a request the field shows the SOL amount itself (labelled SOL), not the fiat symbol.
+  const amountSymbol = lockedSol != null ? '' : (priced && currency !== 'SOL' ? symbol : '');
 
   const recipient: SelectedRecipient | null = fixedRecipient
     ? { wallet: fixedRecipient.wallet, display_name: fixedRecipient.display_name ?? null, avatar_url: fixedRecipient.avatar_url ?? null }
@@ -120,6 +130,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
   function resetForm() {
     clearSelection();
     setAmount('');
+    setLockedSol(null);
     setNote('');
     setStep('idle');
     setErrMsg('');
@@ -281,15 +292,11 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
       display_name: r.other?.display_name ?? null,
       avatar_url: r.other?.avatar_url ?? null,
     });
-    // The request's amount is in SOL, but the field is in the preferred currency — set the fiat value that
-    // converts back to that SOL (1/toUsdc(1) is the active fiat-per-USDC rate). Offline, enter SOL directly.
+    // Requests are SOL-denominated — pay EXACTLY that SOL (lockedSol drives the send), shown in the field
+    // as SOL. Editing the field clears the lock and reverts to normal currency entry.
     const sol = Number(r.amount);
-    if (priced && solUsd) {
-      const fiatPerUsdc = 1 / toUsdc(1);
-      setAmount(String(Number((sol * (solUsd as number) * fiatPerUsdc).toFixed(2))));
-    } else {
-      setAmount(String(sol));
-    }
+    setLockedSol(sol);
+    setAmount(String(sol));
     setSuccessMsg('');
     setStep('idle');
     requestAnimationFrame(() => amountRef.current?.focus());
@@ -396,6 +403,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
               ref={amountRef}
               value={amount}
               onChange={e => {
+                if (lockedSol != null) setLockedSol(null); // manual edit → normal currency entry
                 const raw = e.target.value.replace(/[^0-9.]/g, '');
                 const parts = raw.split('.');
                 setAmount(parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : raw);

@@ -6,6 +6,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { requireStepUp } from '@/lib/step-up';
+import { tallyTransferAction } from '@/lib/step-up-shared';
 
 const isSolAddr = (a: unknown): a is string =>
   typeof a === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   // Step-up: a fresh MFA-gated wallet signature, bound to THIS transfer, before the asset leaves for
   // another wallet. No-op until NEXT_PUBLIC_STEP_UP_ENFORCED=1 (rollout-safe); when enforced it also
   // requires the owner to have MFA enrolled. Reuse ctx.userId so there's no second Privy round-trip.
-  const stepUp = await requireStepUp(req, from_wallet, `transfer_tally:${item_id}`, ctx.userId);
+  const stepUp = await requireStepUp(req, from_wallet, tallyTransferAction(item_id, to_wallet), ctx.userId);
   if (stepUp) return stepUp;
 
   const supabase = createServiceClient();

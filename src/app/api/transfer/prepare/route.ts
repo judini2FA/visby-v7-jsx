@@ -27,6 +27,8 @@ export async function POST(req: Request) {
   if (!from_wallet || !to || !idempotency_key) return NextResponse.json({ error: 'from_wallet, to, idempotency_key are required' }, { status: 400 });
   if (!TOKENS.includes(token)) return NextResponse.json({ error: 'token must be SOL or USDC' }, { status: 400 });
   if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
+  // Reject sub-dust: SOL amounts that round to 0 lamports would record a "sent" transfer that moved nothing.
+  if (token === 'SOL' && Math.round(amount * 1e9) < 1) return NextResponse.json({ error: 'amount is too small' }, { status: 400 });
   if (!ctx.wallets.includes(from_wallet)) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
 
   const recipient = await resolveRecipient(to);

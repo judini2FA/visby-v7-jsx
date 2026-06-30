@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { t, S, surface, btn, sectionLabel, input } from '@/lib/ui';
 import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-client';
+import { payoutAction } from '@/lib/step-up-shared';
 
 const GREEN = 'var(--ok)';
 const RED   = 'var(--danger)';
@@ -55,7 +56,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       if (STEP_UP_ON) {
         const signer = solSigners.find(w => w.address === wallet);
         if (!signer?.signMessage) throw new Error('This wallet can’t authorize the change on this device.');
-        const proof = await createStepUpProof({ action: 'payout_destination', signMessage: signer.signMessage });
+        const proof = await createStepUpProof({ action: payoutAction(payoutType, payoutType === 'bank' ? stripeAccountId : cryptoWallet), signMessage: signer.signMessage });
         stepUp = stepUpHeader(proof);
       }
       const res = await fetch('/api/payout', {

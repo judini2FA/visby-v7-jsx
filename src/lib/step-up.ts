@@ -80,6 +80,12 @@ export async function requireStepUp(req: Request, wallet: string, action: string
 
   let proof: StepUpProof;
   try { proof = JSON.parse(header); } catch { return NextResponse.json({ error: 'bad_step_up' }, { status: 400 }); }
+
+  // Defense-in-depth (don't depend on call-site ordering): the signing wallet MUST belong to the
+  // authenticated caller. Resolve the context once and reuse its userId for the MFA check below.
+  const ctx = await getAuthedContext(req);
+  if (!ctx || !ctx.wallets.includes(wallet)) return NextResponse.json({ error: 'step_up_wallet' }, { status: 403 });
+
   const r = await verifyStepUp({ wallet, action, proof });
   if (!r.ok) return NextResponse.json({ error: 'step_up_failed', reason: r.error }, { status: 403 });
 
@@ -87,8 +93,7 @@ export async function requireStepUp(req: Request, wallet: string, action: string
   // require enrollment (authoritative Privy read) so a stolen session can't move money from a non-MFA
   // account by simply signing. Fails closed: unknown enrollment (null) is treated as not enrolled.
   if (enforced) {
-    const uid = userId ?? (await getAuthedContext(req))?.userId;
-    const mfa = uid ? await getUserMfaMethods(uid) : null;
+    const mfa = await getUserMfaMethods(userId ?? ctx.userId);
     if (!mfa || mfa.length === 0) return NextResponse.json({ error: 'mfa_required', action }, { status: 403 });
   }
   return null;

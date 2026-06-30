@@ -4,6 +4,7 @@ import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-client';
+import { tallyTransferAction } from '@/lib/step-up-shared';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
@@ -89,7 +90,7 @@ function MyItemsTab({ wallet }: { wallet: string }) {
       if (STEP_UP_ON) {
         const signer = solSigners.find((w: any) => w.address === transferItem.current_owner_wallet);
         if (!signer?.signMessage) throw new Error('This wallet can’t authorize the transfer on this device.');
-        const proof = await createStepUpProof({ action: `transfer_tally:${transferItem.id}`, signMessage: (m) => signer.signMessage(m) });
+        const proof = await createStepUpProof({ action: tallyTransferAction(transferItem.id, destAddr), signMessage: (m) => signer.signMessage(m) });
         stepUpHeaders = stepUpHeader(proof);
       }
       const res = await fetch('/api/tally/transfer', {

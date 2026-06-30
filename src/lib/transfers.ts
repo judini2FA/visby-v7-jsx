@@ -1,4 +1,4 @@
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createServiceClient } from '@/lib/supabase/service';
 import { notify } from '@/lib/notifications';
 
@@ -45,31 +45,42 @@ export async function resolveRecipient(to: string): Promise<ResolvedRecipient | 
     return { wallet: q, handle: null, display_name: data?.display_name ?? null, avatar_url: data?.avatar_url ?? null };
   }
 
-  const safe = q.slice(0, 60).replace(/[%,()*\\]/g, ' ').trim();
+  // Strip LIKE metacharacters (incl. `_`, the single-char wildcard) so the handle matches LITERALLY, not as
+  // a pattern. ilike with no `%` is then a case-insensitive exact match.
+  const safe = q.slice(0, 60).replace(/[%_,()*\\]/g, ' ').trim();
   if (!safe) return null;
+  // display_name is NOT unique. Fetch up to 2 and REFUSE to guess a money destination when it's ambiguous
+  // (>1 match) — the user must use a wallet address or pick from their wallet-keyed Recents/Following list.
   const { data } = await supabase
     .from('profiles')
     .select('wallet, display_name, avatar_url')
     .ilike('display_name', safe)
-    .limit(1)
-    .maybeSingle();
-  if (!data?.wallet || !isSolAddr(data.wallet)) return null;
-  return { wallet: data.wallet, handle: q, display_name: data.display_name ?? null, avatar_url: data.avatar_url ?? null };
+    .limit(2);
+  const matches = (data ?? []).filter((r: any) => isSolAddr(r.wallet));
+  if (matches.length !== 1) return null;
+  const only = matches[0] as any;
+  return { wallet: only.wallet, handle: q, display_name: only.display_name ?? null, avatar_url: only.avatar_url ?? null };
 }
 
-// Sum of today's (UTC) outgoing amounts for a wallet in one token — pending + sent both count so a burst
-// of prepares can't slip past the daily cap before any confirms.
+// Sum of today's (UTC) outgoing amounts for a wallet in one token. All 'sent' count; a 'pending' counts
+// only while recent — an abandoned/timed-out prepare ages out after PENDING_TTL_MS so it can't permanently
+// eat the user's daily headroom. (Pending still counts briefly so a burst of prepares can't slip the cap.)
+const PENDING_TTL_MS = 15 * 60 * 1000;
 async function dailyUsed(fromWallet: string, token: TransferToken): Promise<number> {
   const since = new Date(); since.setUTCHours(0, 0, 0, 0);
+  const cutoff = new Date(Date.now() - PENDING_TTL_MS).toISOString();
   const supabase = createServiceClient();
   const { data } = await supabase
     .from('transfers')
-    .select('amount')
+    .select('amount, status, created_at')
     .eq('from_wallet', fromWallet)
     .eq('token', token)
     .in('status', ['pending', 'sent'])
     .gte('created_at', since.toISOString());
-  return (data ?? []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+  return (data ?? []).reduce((s: number, r: any) => {
+    if (r.status === 'sent') return s + Number(r.amount || 0);
+    return r.created_at >= cutoff ? s + Number(r.amount || 0) : s;
+  }, 0);
 }
 
 export async function checkLimits(fromWallet: string, token: TransferToken, amount: number): Promise<{ ok: boolean; reason?: string }> {
@@ -97,8 +108,10 @@ export async function recordPrepared(row: {
   return null;
 }
 
-// Confirm an on-chain transfer. Light verification: the tx exists, succeeded, and both wallets are among
-// its accounts — enough to stop a bogus tx_hash from being written into history without a heavy full parse.
+// Confirm an on-chain transfer. Verifies the tx succeeded AND actually moved the recorded amount from
+// from_wallet to to_wallet (via the lamport balance deltas) — so a dust/unrelated tx can't mark a large
+// row 'sent', and a recorded amount can't diverge from what really landed. A single signature confirms at
+// most one row (replay guard). Leaves the row 'pending' (retryable) on any RPC/verification miss.
 export async function confirmTransfer(args: { id: string; from_wallet: string; tx_hash: string }): Promise<{ ok: boolean; status: 'sent' | 'pending' }> {
   const supabase = createServiceClient();
   const { data: row } = await supabase.from('transfers').select('id, from_wallet, to_wallet, status, amount, token, kind').eq('id', args.id).maybeSingle();
@@ -109,9 +122,23 @@ export async function confirmTransfer(args: { id: string; from_wallet: string; t
   try {
     const conn = new Connection(rpcUrl(), 'confirmed');
     const tx = await conn.getTransaction(args.tx_hash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-    if (tx && !tx.meta?.err) {
+    const meta = tx?.meta;
+    if (tx && meta && !meta.err && meta.preBalances && meta.postBalances) {
       const keys = tx.transaction.message.getAccountKeys().staticAccountKeys.map((k: PublicKey) => k.toBase58());
-      verified = keys.includes(row.from_wallet) && keys.includes(row.to_wallet);
+      const fromIdx = keys.indexOf(row.from_wallet);
+      const toIdx = keys.indexOf(row.to_wallet);
+      if (fromIdx >= 0 && toIdx >= 0) {
+        if (row.token === 'SOL') {
+          const received = (meta.postBalances[toIdx] ?? 0) - (meta.preBalances[toIdx] ?? 0);
+          const fromDelta = (meta.postBalances[fromIdx] ?? 0) - (meta.preBalances[fromIdx] ?? 0);
+          const expected = Math.round(Number(row.amount) * LAMPORTS_PER_SOL);
+          // Recipient must have received at least the recorded amount, and the sender's balance must drop.
+          verified = expected > 0 && received >= expected && fromDelta < 0;
+        } else {
+          // No client path mints non-SOL transfers yet — fall back to presence until USDC verification lands.
+          verified = true;
+        }
+      }
     }
   } catch { /* RPC hiccup — leave pending, the client can retry confirm */ }
 
@@ -119,6 +146,15 @@ export async function confirmTransfer(args: { id: string; from_wallet: string; t
     await supabase.from('transfers').update({ tx_hash: args.tx_hash }).eq('id', args.id);
     return { ok: false, status: 'pending' };
   }
+
+  // One signature can confirm at most one row. Best-effort here; the partial-unique index in
+  // migration_transfers_txhash.sql is the durable backstop against the read/write race.
+  const { data: dup } = await supabase.from('transfers').select('id').eq('tx_hash', args.tx_hash).eq('status', 'sent').neq('id', row.id).limit(1).maybeSingle();
+  if (dup) {
+    await supabase.from('transfers').update({ tx_hash: args.tx_hash }).eq('id', args.id);
+    return { ok: false, status: 'pending' };
+  }
+
   await supabase.from('transfers').update({ status: 'sent', tx_hash: args.tx_hash, confirmed_at: new Date().toISOString() }).eq('id', args.id);
 
   // Notify the recipient that money landed (fire-and-forget; skip transfers between the user's own wallets).

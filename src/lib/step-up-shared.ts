@@ -10,3 +10,12 @@ export type StepUpProof = { message: string; signature: string }; // signature =
 export function buildStepUpMessage(action: string, nonce: string, ts: number): string {
   return `${STEP_UP_PREFIX}\naction: ${action}\nts: ${ts}\nnonce: ${nonce}`;
 }
+
+// Action strings BIND THE DESTINATION, so a step-up proof authorizes the exact target the user reviewed —
+// not just the action class. Server + client both build the action from these so the strings can't drift.
+export function payoutAction(payoutType: string, destination: string): string {
+  return `payout_destination:${payoutType}:${destination || ''}`;
+}
+export function tallyTransferAction(itemId: string, toWallet: string): string {
+  return `transfer_tally:${itemId}:${toWallet}`;
+}

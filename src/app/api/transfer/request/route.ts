@@ -71,7 +71,7 @@ export async function PATCH(req: Request) {
 
   const supabase = createServiceClient();
   const { data: pr } = await supabase.from('payment_requests')
-    .select('id, requester_wallet, payer_wallet, status')
+    .select('id, requester_wallet, payer_wallet, status, token, amount')
     .eq('id', request_id)
     .maybeSingle();
   if (!pr) return NextResponse.json({ error: 'Request not found' }, { status: 404 });
@@ -83,6 +83,23 @@ export async function PATCH(req: Request) {
     (action === 'cancel' && isRequester) ||
     ((action === 'decline' || action === 'mark_paid') && isPayer);
   if (!allowed) return NextResponse.json({ error: 'Not authorized for this request' }, { status: 403 });
+
+  // mark_paid must be backed by a REAL confirmed transfer that actually moved >= the requested amount from
+  // the payer to the requester in the right token — otherwise a payer could flip a request to "Paid" for free.
+  if (action === 'mark_paid') {
+    if (!transfer_id) return NextResponse.json({ error: 'transfer_id is required' }, { status: 400 });
+    const { data: tr } = await supabase.from('transfers')
+      .select('from_wallet, to_wallet, token, amount, status')
+      .eq('id', transfer_id)
+      .maybeSingle();
+    const valid = !!tr
+      && tr.status === 'sent'
+      && ctx.wallets.includes(tr.from_wallet)
+      && tr.to_wallet === pr.requester_wallet
+      && tr.token === pr.token
+      && Number(tr.amount) >= Number(pr.amount);
+    if (!valid) return NextResponse.json({ error: 'no matching confirmed payment for this request' }, { status: 409 });
+  }
 
   const status = action === 'mark_paid' ? 'paid' : action === 'decline' ? 'declined' : 'cancelled';
   await supabase.from('payment_requests')
