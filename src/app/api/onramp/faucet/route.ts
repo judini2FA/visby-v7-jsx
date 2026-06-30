@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { sendSolFromAuthority, getSolBalance } from '@/lib/solana-fund';
+import { sendSolFromAuthority, getSolBalance, sendUsdcFromAuthority, getUsdcBalance } from '@/lib/solana-fund';
 import { getRpcUrl } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 
 const FAUCET_LAMPORTS = 200_000_000; // 0.2 SOL
 const FAUCET_SOL = FAUCET_LAMPORTS / LAMPORTS_PER_SOL;
+const FAUCET_USDC = 10;
 
 export async function POST(req: Request) {
   try {
@@ -24,7 +25,8 @@ export async function POST(req: Request) {
     const ipRl = await rateLimit(`faucet:ip:${clientIp(req)}`, { limit: 5, windowSec: 60 });
     if (!ipRl.allowed) return tooManyRequests(ipRl.retryAfterSec);
 
-    const { wallet } = await req.json();
+    const { wallet, asset: assetRaw } = await req.json();
+    const asset = assetRaw === 'USDC' ? 'USDC' : 'SOL';
     if (!wallet || typeof wallet !== 'string') {
       return NextResponse.json({ error: 'Missing wallet' }, { status: 400 });
     }
@@ -45,6 +47,12 @@ export async function POST(req: Request) {
     const walletRl = await rateLimit(`faucet:wallet:${wallet}`, { limit: 3, windowSec: 3600 });
     if (!walletRl.allowed) return tooManyRequests(walletRl.retryAfterSec);
 
+    if (asset === 'USDC') {
+      const tx = await sendUsdcFromAuthority(wallet, FAUCET_USDC);
+      const new_balance = await getUsdcBalance(wallet);
+      return NextResponse.json({ ok: true, tx, asset: 'USDC', token_amount: FAUCET_USDC, new_balance });
+    }
+
     const tx = await sendSolFromAuthority(wallet, FAUCET_LAMPORTS);
     const new_balance = await getSolBalance(wallet);
 
@@ -53,6 +61,7 @@ export async function POST(req: Request) {
       tx,
       asset: 'SOL',
       sol_amount: FAUCET_SOL,
+      token_amount: FAUCET_SOL,
       lamports: FAUCET_LAMPORTS,
       new_balance,
     });

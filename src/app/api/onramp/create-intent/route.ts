@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { getAuthorityUsdcBalance } from '@/lib/solana-fund';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,7 +9,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(req: Request) {
   try {
-    const { wallet, usd } = await req.json();
+    const { wallet, usd, asset: assetRaw } = await req.json();
+    const asset = assetRaw === 'USDC' ? 'USDC' : 'SOL';
 
     if (typeof usd !== 'number' || usd < 1 || usd > 1000) {
       return NextResponse.json(
@@ -26,6 +28,17 @@ export async function POST(req: Request) {
       );
     }
 
+    // Don't charge a card for USDC the treasury can't deliver. USDC is 1:1, so usd == USDC owed.
+    if (asset === 'USDC') {
+      const treasury = await getAuthorityUsdcBalance().catch(() => 0);
+      if (treasury < usd) {
+        return NextResponse.json(
+          { error: 'USDC funding is being set up — try SOL for now, or use the devnet USDC faucet.' },
+          { status: 503 }
+        );
+      }
+    }
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(usd * 100),
       currency: 'usd',
@@ -33,7 +46,7 @@ export async function POST(req: Request) {
       metadata: {
         wallet,
         usd: String(usd),
-        asset: 'SOL',
+        asset,
       },
     });
 

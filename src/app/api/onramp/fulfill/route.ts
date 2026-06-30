@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { sendSolFromAuthority, getSolBalance } from '@/lib/solana-fund';
+import { sendSolFromAuthority, getSolBalance, sendUsdcFromAuthority, getUsdcBalance } from '@/lib/solana-fund';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,21 +38,37 @@ export async function POST(req: Request) {
       );
     }
 
-    const { wallet, usd, fulfilled } = pi.metadata as {
+    const { wallet, usd, fulfilled, asset: assetRaw } = pi.metadata as {
       wallet: string;
       usd: string;
       fulfilled?: string;
+      asset?: string;
     };
+    const asset = assetRaw === 'USDC' ? 'USDC' : 'SOL';
 
     if (fulfilled === 'true') {
-      const new_balance = await getSolBalance(wallet);
+      const new_balance = asset === 'USDC' ? await getUsdcBalance(wallet) : await getSolBalance(wallet);
       return NextResponse.json({
         ok: true,
         already_fulfilled: true,
-        asset: 'SOL',
+        asset,
+        token_amount: parseFloat(pi.metadata.token_amount ?? pi.metadata.sol_amount ?? '0'),
         sol_amount: parseFloat(pi.metadata.sol_amount ?? '0'),
         new_balance,
       });
+    }
+
+    const usdNum = parseFloat(usd);
+
+    if (asset === 'USDC') {
+      // USDC is 1:1 with USD — disburse exactly what was paid.
+      const token_amount = usdNum;
+      const tx = await sendUsdcFromAuthority(wallet, token_amount);
+      await stripe.paymentIntents.update(payment_intent_id, {
+        metadata: { ...pi.metadata, fulfilled: 'true', token_amount: String(token_amount) },
+      });
+      const new_balance = await getUsdcBalance(wallet);
+      return NextResponse.json({ ok: true, tx, asset: 'USDC', token_amount, new_balance });
     }
 
     const sol_price = await getSolPrice();
@@ -63,14 +79,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const usdNum = parseFloat(usd);
     const sol_amount = usdNum / sol_price;
     const lamports = Math.round(sol_amount * 1e9);
 
     const tx = await sendSolFromAuthority(wallet, lamports);
 
     await stripe.paymentIntents.update(payment_intent_id, {
-      metadata: { ...pi.metadata, fulfilled: 'true', sol_amount: String(sol_amount) },
+      metadata: { ...pi.metadata, fulfilled: 'true', sol_amount: String(sol_amount), token_amount: String(sol_amount) },
     });
 
     const new_balance = await getSolBalance(wallet);
@@ -80,6 +95,7 @@ export async function POST(req: Request) {
       tx,
       asset: 'SOL',
       sol_amount,
+      token_amount: sol_amount,
       new_balance,
     });
   } catch (err: any) {

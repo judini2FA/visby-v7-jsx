@@ -5,10 +5,16 @@ import { useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
 import { useVisbWallet } from '@/lib/wallet';
 import { useTheme } from '@/lib/theme';
+import { useCurrency } from '@/lib/currency';
+import { USDC_MINT, USDC_DECIMALS } from '@/lib/usdc';
 import { t, S, price, card, surface, btn, badge, sectionLabel, input } from '@/lib/ui';
 import { HeaderMenu } from '@/components/layout/header-menu';
+
+type Asset = 'SOL' | 'USDC';
 
 const C = {
   navy: 'transparent',
@@ -29,10 +35,11 @@ type AmountChip = 10 | 25 | 50 | 'custom';
 
 interface Quote {
   usd: number;
-  asset: 'SOL';
-  sol_price: number;
-  sol_amount: number;
-  sol_display: string;
+  asset: Asset;
+  unit_price: number;
+  token_amount: number;
+  token_display: string;
+  sol_price?: number;
   lamports: number;
 }
 
@@ -84,16 +91,29 @@ async function fetchSolBalance(addr: string): Promise<number | null> {
   }
 }
 
+async function fetchUsdcBalance(addr: string): Promise<number | null> {
+  try {
+    const connection = new Connection(RPC, 'confirmed');
+    const ata = await getAssociatedTokenAddress(new PublicKey(USDC_MINT), new PublicKey(addr));
+    const acc = await getAccount(connection, ata);
+    return Number(acc.amount) / 10 ** USDC_DECIMALS;
+  } catch {
+    return 0;
+  }
+}
+
 // ── Card payment form — inside <Elements> context ──────────────
 function CardPayForm({
   usd,
+  asset,
   wallet,
   onSuccess,
   onError,
 }: {
   usd: number;
+  asset: Asset;
   wallet: string;
-  onSuccess: (sol_amount: number) => void;
+  onSuccess: (token_amount: number) => void;
   onError: (msg: string) => void;
 }) {
   const stripe = useStripe();
@@ -112,7 +132,7 @@ function CardPayForm({
       const intentRes = await fetch('/api/onramp/create-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet, usd }),
+        body: JSON.stringify({ wallet, usd, asset }),
       });
       const intentData = await intentRes.json();
       if (!intentRes.ok || !intentData.client_secret) {
@@ -140,9 +160,9 @@ function CardPayForm({
         });
         const fulfillData = await fulfillRes.json();
         if (fulfillData.ok) {
-          onSuccess(fulfillData.sol_amount);
+          onSuccess(fulfillData.token_amount);
         } else {
-          onError(fulfillData.error ?? 'SOL transfer failed');
+          onError(fulfillData.error ?? `${asset} transfer failed`);
           setPaying(false);
         }
       } else {
@@ -194,7 +214,7 @@ function CardPayForm({
             <Spinner /> Processing…
           </>
         ) : (
-          `Pay $${usd.toFixed(2)}`
+          `Buy ${asset}`
         )}
       </button>
     </form>
@@ -204,11 +224,13 @@ function CardPayForm({
 // ── Page ───────────────────────────────────────────────────────
 export default function BuyCryptoPage() {
   const router = useRouter();
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, getAccessToken } = usePrivy();
   const { address: wallet } = useVisbWallet();
+  const { symbol, currency, toUsdc } = useCurrency();
 
+  const [asset, setAsset] = useState<Asset>('SOL');
   const [chip, setChip] = useState<AmountChip>(25);
-  const [customUsd, setCustomUsd] = useState('');
+  const [customAmount, setCustomAmount] = useState('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteErr, setQuoteErr] = useState('');
@@ -222,17 +244,19 @@ export default function BuyCryptoPage() {
 
   type Phase = 'idle' | 'card_success' | 'faucet_success';
   const [phase, setPhase] = useState<Phase>('idle');
-  const [addedSol, setAddedSol] = useState(0);
+  const [addedAmount, setAddedAmount] = useState(0);
 
-  const usd = chip === 'custom' ? parseFloat(customUsd) || 0 : (chip as number);
+  const amountCur = chip === 'custom' ? parseFloat(customAmount) || 0 : (chip as number);
+  const usd = Number(toUsdc(amountCur).toFixed(2));
+  const usdOutOfRange = usd > 0 && (usd < 1 || usd > 1000);
 
   const refreshBalance = useCallback(async () => {
     if (!wallet) return;
     setBalanceLoading(true);
-    const b = await fetchSolBalance(wallet);
+    const b = asset === 'USDC' ? await fetchUsdcBalance(wallet) : await fetchSolBalance(wallet);
     setBalance(b);
     setBalanceLoading(false);
-  }, [wallet]);
+  }, [wallet, asset]);
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -245,14 +269,14 @@ export default function BuyCryptoPage() {
   }, [wallet, refreshBalance]);
 
   useEffect(() => {
-    if (!usd || usd < 1) {
+    if (!usd || usd < 1 || usd > 1000) {
       setQuote(null);
       return;
     }
     let cancelled = false;
     setQuoteLoading(true);
     setQuoteErr('');
-    fetch(`/api/onramp/quote?usd=${usd}&asset=SOL`)
+    fetch(`/api/onramp/quote?usd=${usd}&asset=${asset}`)
       .then(r => r.json())
       .then(d => {
         if (cancelled) return;
@@ -271,21 +295,22 @@ export default function BuyCryptoPage() {
         }
       });
     return () => { cancelled = true; };
-  }, [usd]);
+  }, [usd, asset]);
 
   async function handleFaucet() {
     if (!wallet) return;
     setFaucetLoading(true);
     setFaucetErr('');
     try {
+      const authToken = await getAccessToken();
       const res = await fetch('/api/onramp/faucet', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet }),
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({ wallet, asset }),
       });
       const data = await res.json();
       if (data.ok) {
-        setAddedSol(data.sol_amount);
+        setAddedAmount(data.token_amount);
         setPhase('faucet_success');
         await refreshBalance();
       } else {
@@ -298,8 +323,8 @@ export default function BuyCryptoPage() {
     }
   }
 
-  function handleCardSuccess(sol_amount: number) {
-    setAddedSol(sol_amount);
+  function handleCardSuccess(token_amount: number) {
+    setAddedAmount(token_amount);
     setPhase('card_success');
     setCardErr('');
     refreshBalance();
@@ -308,7 +333,9 @@ export default function BuyCryptoPage() {
   if (!ready) return null;
   if (ready && !authenticated) return null;
 
-  const balanceDisplay = balanceLoading ? '…' : balance != null ? balance.toFixed(4) : '0.0000';
+  const balanceDp = asset === 'USDC' ? 2 : 4;
+  const balanceDisplay = balanceLoading ? '…' : balance != null ? balance.toFixed(balanceDp) : (0).toFixed(balanceDp);
+  const addedDisplay = addedAmount.toFixed(balanceDp);
 
   return (
     <div style={{ background: C.navy, minHeight: '100vh', fontFamily: "'Manrope', sans-serif" }}>
@@ -384,9 +411,9 @@ export default function BuyCryptoPage() {
             </div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Balance</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{asset} balance</div>
             <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>
-              {balanceDisplay} SOL
+              {balanceDisplay} {asset}
             </div>
           </div>
         </div>
@@ -424,14 +451,14 @@ export default function BuyCryptoPage() {
             </div>
             <div>
               <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>
-                {phase === 'faucet_success' ? 'Test SOL received' : 'Funds added'}
+                {phase === 'faucet_success' ? `Test ${asset} received` : 'Funds added'}
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: S[1], justifyContent: 'center' }}>
-                <span style={{ ...price('md') }}>{addedSol.toFixed(4)} SOL</span>
+                <span style={{ ...price('md') }}>{addedDisplay} {asset}</span>
                 <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>added</span>
               </div>
               <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[2] }}>
-                New balance: {balanceDisplay} SOL
+                New balance: {balanceDisplay} {asset}
               </div>
             </div>
             <button
@@ -445,21 +472,52 @@ export default function BuyCryptoPage() {
 
         {phase === 'idle' && (
           <>
+            {/* Token picker */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+              <div style={sectionLabel()}>Token to add</div>
+              <div style={{ display: 'flex', gap: S[2] }}>
+                {(['SOL', 'USDC'] as const).map(tk => {
+                  const active = asset === tk;
+                  return (
+                    <button
+                      key={tk}
+                      onClick={() => { if (asset !== tk) { setAsset(tk); setQuote(null); } }}
+                      style={{
+                        flex: 1,
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: 'var(--pill)',
+                        padding: '11px 18px',
+                        cursor: 'pointer',
+                        fontFamily: "'Manrope',sans-serif",
+                        fontSize: 15,
+                        fontWeight: 700,
+                        background: active ? 'var(--grad-brand)' : 'var(--field-input-bg)',
+                        color: active ? 'var(--text-on-cta)' : 'var(--text-muted)',
+                        borderColor: active ? 'transparent' : 'var(--glass-border)',
+                      }}
+                    >
+                      {tk}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Amount selection */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
-              <div style={sectionLabel()}>Amount (USD)</div>
+              <div style={sectionLabel()}>Amount ({currency})</div>
               <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
                 {([10, 25, 50] as const).map(v => (
                   <button
                     key={v}
-                    onClick={() => { setChip(v); setCustomUsd(''); }}
+                    onClick={() => { setChip(v); setCustomAmount(''); }}
                     style={{
                       ...btn(chip === v ? 'primary' : 'secondary', { pill: false }),
                       minWidth: 72,
                       flex: 1,
                     }}
                   >
-                    ${v}
+                    {symbol}{v}
                   </button>
                 ))}
                 <button
@@ -485,16 +543,15 @@ export default function BuyCryptoPage() {
                       color: 'var(--text-muted)',
                     }}
                   >
-                    $
+                    {symbol}
                   </div>
                   <input
                     autoFocus
                     type="number"
-                    min="1"
-                    max="1000"
-                    step="1"
-                    value={customUsd}
-                    onChange={e => setCustomUsd(e.target.value)}
+                    min="0"
+                    step="0.01"
+                    value={customAmount}
+                    onChange={e => setCustomAmount(e.target.value)}
                     placeholder="Enter amount"
                     style={{ ...input(), paddingLeft: S[6] }}
                   />
@@ -508,14 +565,19 @@ export default function BuyCryptoPage() {
                       color: 'var(--text-muted)',
                     }}
                   >
-                    USD
+                    {currency}
                   </div>
+                </div>
+              )}
+              {usdOutOfRange && (
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                  Enter an amount between {symbol}{Number((1 / toUsdc(1)).toFixed(2))} and {symbol}{Number((1000 / toUsdc(1)).toFixed(2))} ({currency}) to continue.
                 </div>
               )}
             </div>
 
             {/* Quote display */}
-            {usd >= 1 && (
+            {usd >= 1 && usd <= 1000 && (
               <div style={{ ...surface({ pad: S[4] }), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
                 <div>
                   <div style={{ ...sectionLabel(), marginBottom: S[1] }}>You get approximately</div>
@@ -527,10 +589,10 @@ export default function BuyCryptoPage() {
                   ) : quoteErr ? (
                     <div style={{ ...t('meta'), color: C.red }}>{quoteErr}</div>
                   ) : quote ? (
-                    <span style={price('md')}>{quote.sol_display}</span>
+                    <span style={price('md')}>≈ {quote.token_display}</span>
                   ) : null}
                 </div>
-                {quote && !quoteLoading && (
+                {quote && !quoteLoading && asset === 'SOL' && quote.sol_price != null && (
                   <div style={{ ...t('micro'), color: 'var(--text-muted)', textAlign: 'right' }}>
                     1 SOL ={'\n'}${quote.sol_price.toFixed(2)}
                   </div>
@@ -575,10 +637,11 @@ export default function BuyCryptoPage() {
                 </div>
               )}
 
-              {usd >= 1 ? (
+              {usd >= 1 && usd <= 1000 ? (
                 <Elements stripe={stripePromise}>
                   <CardPayForm
                     usd={usd}
+                    asset={asset}
                     wallet={wallet}
                     onSuccess={handleCardSuccess}
                     onError={msg => setCardErr(msg)}
@@ -595,7 +658,7 @@ export default function BuyCryptoPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
               <div style={{ height: 1, background: 'var(--divider)' }} />
               <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>
-                On devnet? Get free test SOL instead.
+                On devnet? Get free test {asset} instead.
               </div>
 
               {faucetErr && (
@@ -632,7 +695,7 @@ export default function BuyCryptoPage() {
                       <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10" />
                       <polyline points="12 8 12 12 14 14" />
                     </svg>
-                    Get test SOL (devnet faucet)
+                    Get test {asset} (devnet)
                   </>
                 )}
               </button>

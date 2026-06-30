@@ -31,6 +31,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'usd must be a positive number' }, { status: 400 });
     }
 
+    if (asset.toUpperCase() === 'USDC') {
+      // USDC is a USD stablecoin — 1:1, no price feed needed.
+      return NextResponse.json({
+        usd,
+        asset: 'USDC',
+        unit_price: 1,
+        token_amount: usd,
+        token_display: `${usd.toFixed(2)} USDC`,
+        lamports: 0,
+      });
+    }
+
     const sol_price = await getSolPrice();
     if (sol_price === 0) {
       return NextResponse.json(
@@ -44,10 +56,13 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       usd,
-      asset,
+      asset: 'SOL',
+      unit_price: sol_price,
       sol_price,
       sol_amount,
       sol_display: `${sol_amount.toFixed(4)} SOL`,
+      token_amount: sol_amount,
+      token_display: `${sol_amount.toFixed(4)} SOL`,
       lamports,
     });
   } catch (err: any) {
