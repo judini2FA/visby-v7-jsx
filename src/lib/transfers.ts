@@ -1,6 +1,7 @@
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createServiceClient } from '@/lib/supabase/service';
 import { notify } from '@/lib/notifications';
+import { USDC_MINT, USDC_DECIMALS } from '@/lib/usdc';
 
 export type TransferToken = 'SOL' | 'USDC';
 
@@ -134,9 +135,13 @@ export async function confirmTransfer(args: { id: string; from_wallet: string; t
           const expected = Math.round(Number(row.amount) * LAMPORTS_PER_SOL);
           // Recipient must have received at least the recorded amount, and the sender's balance must drop.
           verified = expected > 0 && received >= expected && fromDelta < 0;
-        } else {
-          // No client path mints non-SOL transfers yet — fall back to presence until USDC verification lands.
-          verified = true;
+        } else if (row.token === 'USDC') {
+          // Verify the recipient's USDC token-account balance rose by >= the recorded amount.
+          const expectedBase = Math.round(Number(row.amount) * 10 ** USDC_DECIMALS);
+          const find = (arr: any[] | null | undefined) => (arr ?? []).find((b: any) => b.owner === row.to_wallet && b.mint === USDC_MINT);
+          const pre = Number(find(meta.preTokenBalances)?.uiTokenAmount?.amount ?? 0);
+          const post = Number(find(meta.postTokenBalances)?.uiTokenAmount?.amount ?? 0);
+          verified = expectedBase > 0 && (post - pre) >= expectedBase;
         }
       }
     }

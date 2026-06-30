@@ -136,6 +136,13 @@ function shortWallet(w: string) {
   return w && w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : (w || '');
 }
 
+// A token amount → its USDC (≈ USD) value, ready for format(). SOL needs the live price; if it isn't
+// loaded the caller falls back to showing the raw token amount.
+function tokenUsdc(amount: number, token: string, solUsd: number | null): number | null {
+  if (token === 'USDC') return amount;
+  return solUsd ? amount * solUsd : null;
+}
+
 type TransferRow = {
   direction: 'in' | 'out';
   from_wallet: string;
@@ -165,6 +172,22 @@ function DirectionArrow({ direction }: { direction: 'in' | 'out' }) {
 
 function TransferHistory({ wallet, query }: { wallet: string; query: { data?: TransferRow[] | unknown } }) {
   const rows = (Array.isArray(query.data) ? query.data : []) as TransferRow[];
+  const { format } = useCurrency();
+  const [solUsd, setSolUsd] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/price/sol')
+      .then(r => r.json())
+      .then((j: { usd: number | null }) => {
+        if (!cancelled) {
+          const v = Number(j?.usd);
+          setSolUsd(Number.isFinite(v) && v > 0 ? v : null);
+        }
+      })
+      .catch(() => { if (!cancelled) setSolUsd(null); });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div style={surface({ pad: S[5], radius: 'var(--r-lg)' })}>
@@ -190,9 +213,20 @@ function TransferHistory({ wallet, query }: { wallet: string; query: { data?: Tr
                   <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{date}</div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                  <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>
-                    {out ? '-' : '+'}{r.amount} {r.token}
-                  </div>
+                  {(() => {
+                    const usd = tokenUsdc(r.amount, r.token, solUsd);
+                    const sign = out ? '-' : '+';
+                    return (
+                      <>
+                        <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>
+                          {usd != null ? `${sign}${format(usd)}` : `${sign}${r.amount} ${r.token}`}
+                        </div>
+                        {usd != null && (
+                          <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>{r.amount} {r.token}</div>
+                        )}
+                      </>
+                    );
+                  })()}
                   <span style={sb.style}>{sb.label}</span>
                 </div>
               </div>

@@ -1,4 +1,6 @@
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getAssociatedTokenAddress, createTransferInstruction, createAssociatedTokenAccountInstruction } from '@solana/spl-token';
+import { USDC_MINT, USDC_DECIMALS } from '@/lib/usdc';
 
 const RPC = process.env.NEXT_PUBLIC_HELIUS_RPC_URL ?? 'https://api.devnet.solana.com';
 
@@ -38,6 +40,38 @@ export async function sendSol(args: {
   const signed = await (solWallet as any).signTransaction(tx);
   // sendRawTransaction throws on preflight failure (insufficient funds, malformed tx) — a real error the
   // caller should surface. Once it resolves, the tx is broadcast and we only ever return its signature.
+  const signature = await connection.sendRawTransaction(signed.serialize(), { maxRetries: 5 });
+  await awaitConfirmation(connection, signature);
+  return signature;
+}
+
+export async function sendUsdc(args: {
+  fromWallet: string;
+  toWallet: string;
+  amountUsdc: number;
+  solWallet: any;
+}): Promise<string> {
+  const { fromWallet, toWallet, amountUsdc, solWallet } = args;
+  const connection = new Connection(RPC, 'confirmed');
+  const mint = new PublicKey(USDC_MINT);
+  const from = new PublicKey(fromWallet);
+  const to = new PublicKey(toWallet);
+  const fromAta = await getAssociatedTokenAddress(mint, from);
+  const toAta = await getAssociatedTokenAddress(mint, to);
+  const baseUnits = BigInt(Math.round(amountUsdc * 10 ** USDC_DECIMALS));
+
+  const { blockhash } = await connection.getLatestBlockhash();
+  const tx = new Transaction();
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = from;
+
+  // Create the recipient's USDC token account if they don't have one yet (sender pays the rent).
+  const toAtaInfo = await connection.getAccountInfo(toAta);
+  if (!toAtaInfo) tx.add(createAssociatedTokenAccountInstruction(from, toAta, to, mint));
+
+  tx.add(createTransferInstruction(fromAta, toAta, from, baseUnits));
+
+  const signed = await (solWallet as any).signTransaction(tx);
   const signature = await connection.sendRawTransaction(signed.serialize(), { maxRetries: 5 });
   await awaitConfirmation(connection, signature);
   return signature;

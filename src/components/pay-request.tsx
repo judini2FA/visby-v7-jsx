@@ -5,18 +5,26 @@ import { createPortal } from 'react-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { trpc } from '@/lib/trpc/client';
-import { sendSol } from '@/lib/transfer-client';
+import { sendSol, sendUsdc } from '@/lib/transfer-client';
 import { useCurrency } from '@/lib/currency';
 import { biometricConfirm, biometricAvailable } from '@/lib/app-lock';
 import { t, S, surface, btn, badge, avatar } from '@/lib/ui';
 
 type Mode = 'pay' | 'request';
+type Token = 'SOL' | 'USDC';
 type Step = 'idle' | 'preparing' | 'signing' | 'confirming' | 'done' | 'error';
 
 type FixedRecipient = { wallet: string; display_name?: string | null; avatar_url?: string | null };
 
 function shortWallet(w: string) {
   return w && w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : (w || '');
+}
+
+// A token amount → its USDC (≈ USD) value, ready for format(). SOL needs the live price; if it isn't
+// loaded the caller falls back to showing the raw token amount.
+function tokenUsdc(amount: number, token: string, solUsd: number | null): number | null {
+  if (token === 'USDC') return amount;
+  return solUsd ? amount * solUsd : null;
 }
 
 function Spinner() {
@@ -42,15 +50,17 @@ type SelectedRecipient = { wallet: string; display_name?: string | null; handle?
 export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet: string; onDone?: () => void; fixedRecipient?: FixedRecipient }) {
   const { getAccessToken } = usePrivy();
   const { wallets } = useSolanaWallets();
-  const { symbol, toUsdc, currency } = useCurrency();
+  const { symbol, toUsdc, currency, format } = useCurrency();
 
   const [mode, setMode] = useState<Mode>('pay');
+  const [token, setToken] = useState<Token>('SOL');
   const [recipientInput, setRecipientInput] = useState('');
   const [debounced, setDebounced] = useState('');
   const [selected, setSelected] = useState<SelectedRecipient | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [amount, setAmount] = useState('');
-  const [lockedSol, setLockedSol] = useState<number | null>(null); // exact SOL when fulfilling a request
+  // Exact token amount when fulfilling a request — paid verbatim, no fiat round-trip → no rounding drift.
+  const [lockedAmount, setLockedAmount] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [step, setStep] = useState<Step>('idle');
   const [errMsg, setErrMsg] = useState('');
@@ -93,20 +103,18 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
 
   const fiatNum = Number(amount);
   const priced = solUsd != null && solUsd > 0;
-  // lockedSol = the EXACT SOL of a request being fulfilled (no fiat round-trip → no rounding/drift). For
-  // normal entry: when the chosen currency IS SOL, the field is SOL directly (a single rate, no drift);
-  // any other currency converts via USD; offline, the field is treated as SOL.
-  const solAmount = lockedSol != null
-    ? lockedSol
-    : currency === 'SOL'
-      ? fiatNum
-      : priced
-        ? toUsdc(fiatNum) / (solUsd as number)
-        : fiatNum;
-  const amountValid = Number.isFinite(solAmount) && solAmount > 0;
-  const solDisplay = Number.isFinite(solAmount) ? Number(solAmount.toFixed(4)) : 0;
-  // When fulfilling a request the field shows the SOL amount itself (labelled SOL), not the fiat symbol.
-  const amountSymbol = lockedSol != null ? '' : (priced && currency !== 'SOL' ? symbol : '');
+  const usdValue = toUsdc(fiatNum);
+  const sendAmount =
+    lockedAmount != null ? lockedAmount
+    : token === 'USDC' ? usdValue
+    : currency === 'SOL' ? fiatNum
+    : priced ? usdValue / (solUsd as number)
+    : fiatNum;
+  const amountValid = Number.isFinite(sendAmount) && sendAmount > 0;
+  const sendDisplay = Number(sendAmount.toFixed(token === 'USDC' ? 2 : 4));
+  // When fulfilling a request, or when the view currency IS SOL, the field already holds token units —
+  // show no fiat symbol.
+  const amountSymbol = lockedAmount != null ? '' : (priced && currency !== 'SOL' ? symbol : '');
 
   const recipient: SelectedRecipient | null = fixedRecipient
     ? { wallet: fixedRecipient.wallet, display_name: fixedRecipient.display_name ?? null, avatar_url: fixedRecipient.avatar_url ?? null }
@@ -130,7 +138,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
   function resetForm() {
     clearSelection();
     setAmount('');
-    setLockedSol(null);
+    setLockedAmount(null);
     setNote('');
     setStep('idle');
     setErrMsg('');
@@ -151,11 +159,11 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
 
     let prep: any;
     try {
-      const token = await getAccessToken();
+      const authToken = await getAccessToken();
       const res = await fetch('/api/transfer/prepare', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ from_wallet: wallet, to: toWalletValue, token: 'SOL', amount: solAmount, idempotency_key: idem }),
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({ from_wallet: wallet, to: toWalletValue, token, amount: sendAmount, idempotency_key: idem }),
       });
       prep = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -184,7 +192,9 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
 
     let signature: string;
     try {
-      signature = await sendSol({ fromWallet: wallet, toWallet, amountSol: solAmount, solWallet });
+      signature = token === 'USDC'
+        ? await sendUsdc({ fromWallet: wallet, toWallet, amountUsdc: sendAmount, solWallet })
+        : await sendSol({ fromWallet: wallet, toWallet, amountSol: sendAmount, solWallet });
     } catch (err: any) {
       const m = String(err?.message ?? '');
       const lowFunds = /insufficient|prior credit|debit an account|0x1\b/i.test(m);
@@ -196,10 +206,10 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
     setStep('confirming');
     let confirmedSent = false;
     try {
-      const token = await getAccessToken();
+      const authToken = await getAccessToken();
       const cres = await fetch('/api/transfer/confirm', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({ transfer_id: transferId, from_wallet: wallet, tx_hash: signature }),
       });
       const cj = await cres.json().catch(() => ({}));
@@ -212,10 +222,10 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
     const fulfilled = fulfilling.current;
     if (fulfilled && fulfilled.wallet === toWallet) {
       try {
-        const token = await getAccessToken();
+        const authToken = await getAccessToken();
         await fetch('/api/transfer/request', {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
           body: JSON.stringify({ request_id: fulfilled.id, action: 'mark_paid', transfer_id: transferId }),
         });
       } catch {
@@ -224,8 +234,8 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
     }
 
     setSuccessMsg(confirmedSent
-      ? `Sent ${solDisplay} SOL to ${recipientLabel}.`
-      : `Sent ${solDisplay} SOL to ${recipientLabel} — confirming on the network, it'll appear shortly.`);
+      ? `Sent ${sendDisplay} ${token} to ${recipientLabel}.`
+      : `Sent ${sendDisplay} ${token} to ${recipientLabel} — confirming on the network, it'll appear shortly.`);
     setStep('done');
     resetForm();
     requestsQ.refetch();
@@ -238,11 +248,11 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
     setSuccessMsg('');
     setStep('preparing');
     try {
-      const token = await getAccessToken();
+      const authToken = await getAccessToken();
       const res = await fetch('/api/transfer/request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ requester_wallet: wallet, to: toWalletValue, token: 'SOL', amount: solAmount, note: note.trim() || null }),
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({ requester_wallet: wallet, to: toWalletValue, token, amount: sendAmount, note: note.trim() || null }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -258,7 +268,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
     }
 
     const name = recipientLabel;
-    setSuccessMsg(`Requested ${solDisplay} SOL from ${name}.`);
+    setSuccessMsg(`Requested ${sendDisplay} ${token} from ${name}.`);
     setStep('done');
     resetForm();
     requestsQ.refetch();
@@ -292,11 +302,11 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
       display_name: r.other?.display_name ?? null,
       avatar_url: r.other?.avatar_url ?? null,
     });
-    // Requests are SOL-denominated — pay EXACTLY that SOL (lockedSol drives the send), shown in the field
-    // as SOL. Editing the field clears the lock and reverts to normal currency entry.
-    const sol = Number(r.amount);
-    setLockedSol(sol);
-    setAmount(String(sol));
+    // Pay EXACTLY the requested token amount (lockedAmount drives the send), shown verbatim in the field.
+    // Editing the field or flipping the token toggle clears the lock and reverts to normal currency entry.
+    setToken((r.token === 'USDC' ? 'USDC' : 'SOL'));
+    setLockedAmount(Number(r.amount));
+    setAmount(String(r.amount));
     setSuccessMsg('');
     setStep('idle');
     requestAnimationFrame(() => amountRef.current?.focus());
@@ -304,10 +314,10 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
 
   async function patchRequest(request_id: string, action: 'decline' | 'cancel') {
     try {
-      const token = await getAccessToken();
+      const authToken = await getAccessToken();
       await fetch('/api/transfer/request', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({ request_id, action }),
       });
     } catch {
@@ -403,7 +413,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
               ref={amountRef}
               value={amount}
               onChange={e => {
-                if (lockedSol != null) setLockedSol(null); // manual edit → normal currency entry
+                if (lockedAmount != null) setLockedAmount(null); // manual edit → normal currency entry
                 const raw = e.target.value.replace(/[^0-9.]/g, '');
                 const parts = raw.split('.');
                 setAmount(parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : raw);
@@ -424,13 +434,37 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
               } as any}
             />
             {!amountSymbol && (
-              <span style={{ ...t('micro'), color: 'var(--text-muted)', alignSelf: 'flex-end', marginBottom: 8 }}>SOL</span>
+              <span style={{ ...t('micro'), color: 'var(--text-muted)', alignSelf: 'flex-end', marginBottom: 8 }}>{token}</span>
             )}
           </div>
           <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>
-            {amountValid && priced
-              ? `≈ ${solDisplay} SOL · from primary wallet`
+            {amountValid && (token === 'USDC' || priced)
+              ? `≈ ${sendDisplay} ${token} · from primary wallet`
               : 'from primary wallet'}
+          </div>
+
+          {/* Token toggle */}
+          <div style={{ display: 'flex', gap: S[2], marginTop: S[3] }}>
+            {(['SOL', 'USDC'] as const).map(tk => {
+              const active = token === tk;
+              return (
+                <button
+                  key={tk}
+                  onClick={() => { if (token !== tk) { setToken(tk); setLockedAmount(null); } }}
+                  disabled={inFlight}
+                  style={{
+                    border: '1px solid var(--glass-border)', borderRadius: 'var(--pill)',
+                    padding: '7px 18px', cursor: inFlight ? 'default' : 'pointer',
+                    fontFamily: "'Manrope',sans-serif", fontSize: 14, fontWeight: 700,
+                    background: active ? 'var(--grad-brand)' : 'var(--field-input-bg)',
+                    color: active ? 'var(--text-on-cta)' : 'var(--text-muted)',
+                    borderColor: active ? 'transparent' : 'var(--glass-border)',
+                  }}
+                >
+                  {tk}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -529,7 +563,15 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
                     </div>
                     {r.note && <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{r.note}</div>}
                   </div>
-                  <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700, flexShrink: 0 }}>{r.amount} {r.token}</div>
+                  {(() => {
+                    const usd = tokenUsdc(r.amount, r.token, solUsd);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                        <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>{usd != null ? format(usd) : `${r.amount} ${r.token}`}</div>
+                        {usd != null && <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>{r.amount} {r.token}</div>}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div style={{ display: 'flex', gap: S[2] }}>
                   <button onClick={() => prefillFromIncoming(r)} style={{ ...btn('primary', { full: true }), padding: '9px 14px' }}>Pay</button>
@@ -560,7 +602,15 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
                     {r.note && <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{r.note}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                    <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>{r.amount} {r.token}</div>
+                    {(() => {
+                      const usd = tokenUsdc(r.amount, r.token, solUsd);
+                      return (
+                        <>
+                          <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>{usd != null ? format(usd) : `${r.amount} ${r.token}`}</div>
+                          {usd != null && <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>{r.amount} {r.token}</div>}
+                        </>
+                      );
+                    })()}
                     <span style={sb.style}>{sb.label}</span>
                   </div>
                   {r.status === 'pending' && (
@@ -620,10 +670,10 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
 
               <div style={{ borderTop: '1px solid var(--divider)', paddingTop: S[4], display: 'flex', flexDirection: 'column', gap: S[1], alignItems: 'center' }}>
                 <div style={{ fontFamily: "'Manrope',sans-serif", fontSize: 32, fontWeight: 800, color: 'var(--text-strong)', letterSpacing: '-0.02em' }}>
-                  {priced ? `${symbol}${amount}` : `${solDisplay} SOL`}
+                  {amountSymbol ? `${symbol}${amount}` : `${sendDisplay} ${token}`}
                 </div>
                 <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                  {priced ? `≈ ${solDisplay} SOL` : 'entered as SOL'}
+                  {amountSymbol ? `≈ ${sendDisplay} ${token}` : `entered as ${token}`}
                 </div>
               </div>
 
@@ -635,7 +685,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
                   </div>
                 ) : (
                   <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                    {`To: ${recipientLabel} · Requesting: ${solDisplay} SOL`}
+                    {`To: ${recipientLabel} · Requesting: ${sendDisplay} ${token}`}
                   </div>
                 )}
               </div>
