@@ -67,6 +67,9 @@ applied; safe to re-run. Features stay inert / fall back to a local default unti
 - `MINT_AUTHORITY_SECRET_KEY` / `MINT_AUTHORITY_ADDRESS` → a **funded mainnet** authority (no devnet airdrop on
   mainnet — fund it; `/api/mint` airdrop fallback is devnet-only).
 - `NEXT_PUBLIC_TREASURY_WALLET` → mainnet treasury (holds buyer float, funds seller SOL payouts).
+- `NEXT_PUBLIC_USDC_MINT` → mainnet Circle USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`). Defaults to
+  devnet Circle USDC today, so USDC send works on devnet with no env. **To test USDC send on devnet you need
+  devnet USDC in your wallet** (Circle's devnet faucet / spl-token mint) — SOL send needs no extra funds.
 - **Stripe** → live keys (`STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`) —
   or skip if cutting straight to Rainforest.
 - Replace devnet explorer links (`?cluster=devnet`) — they're built from the env, just confirm they point to mainnet.
