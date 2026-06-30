@@ -77,6 +77,19 @@ function shortAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
+function brandLabel(b: string): string {
+  const map: Record<string, string> = { visa: 'Visa', mastercard: 'Mastercard', amex: 'Amex', discover: 'Discover', diners: 'Diners', jcb: 'JCB', unionpay: 'UnionPay' };
+  return map[(b || '').toLowerCase()] ?? (b ? b[0].toUpperCase() + b.slice(1) : 'Card');
+}
+
+interface SavedMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  exp_month?: number;
+  exp_year?: number;
+}
+
 async function fetchSolBalance(addr: string): Promise<number | null> {
   try {
     const res = await fetch(RPC, {
@@ -242,6 +255,11 @@ export default function BuyCryptoPage() {
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [faucetErr, setFaucetErr] = useState('');
 
+  const [savedMethods, setSavedMethods] = useState<SavedMethod[]>([]);
+  const [paySource, setPaySource] = useState<string>('new');
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [idemKey, setIdemKey] = useState(() => crypto.randomUUID());
+
   type Phase = 'idle' | 'card_success' | 'faucet_success';
   const [phase, setPhase] = useState<Phase>('idle');
   const [addedAmount, setAddedAmount] = useState(0);
@@ -296,6 +314,77 @@ export default function BuyCryptoPage() {
       });
     return () => { cancelled = true; };
   }, [usd, asset]);
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    setSavedLoading(true);
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(`/api/stripe/payment-methods?wallet=${wallet}`, {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        const methods: SavedMethod[] = res.ok && Array.isArray(data.methods) ? data.methods : [];
+        setSavedMethods(methods);
+        setPaySource(methods.length ? methods[0].id : 'new');
+      } catch {
+        if (!cancelled) {
+          setSavedMethods([]);
+          setPaySource('new');
+        }
+      } finally {
+        if (!cancelled) setSavedLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, getAccessToken]);
+
+  useEffect(() => {
+    setIdemKey(crypto.randomUUID());
+  }, [usd, asset, paySource]);
+
+  const [savedPaying, setSavedPaying] = useState(false);
+
+  async function handleChargeSaved() {
+    if (!wallet || paySource === 'new') return;
+    if (usd < 1 || usd > 1000) return;
+    setSavedPaying(true);
+    setCardErr('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/onramp/charge-saved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ wallet, usd, asset, payment_method_id: paySource, idempotency_key: idemKey }),
+      });
+      const data = await res.json();
+
+      if (res.status === 202 && data.charged && data.payment_intent_id) {
+        const fulfillRes = await fetch('/api/onramp/fulfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_intent_id: data.payment_intent_id }),
+        });
+        const fulfillData = await fulfillRes.json();
+        if (fulfillData.ok) {
+          handleCardSuccess(fulfillData.token_amount);
+        } else {
+          setCardErr(fulfillData.error ?? `${asset} transfer failed`);
+        }
+      } else if (data.ok) {
+        handleCardSuccess(data.token_amount);
+      } else {
+        setCardErr(data.error ?? 'Payment failed');
+      }
+    } catch (err: any) {
+      setCardErr(err.message ?? 'Payment failed');
+    } finally {
+      setSavedPaying(false);
+    }
+  }
 
   async function handleFaucet() {
     if (!wallet) return;
@@ -637,16 +726,147 @@ export default function BuyCryptoPage() {
                 </div>
               )}
 
+              {/* Payment source picker */}
+              {(savedMethods.length > 0 || savedLoading) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                  <div style={sectionLabel()}>Pay with</div>
+
+                  {savedMethods.map(m => {
+                    const active = paySource === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => setPaySource(m.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: S[3],
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          padding: '12px 14px',
+                          borderRadius: 'var(--r-sm)',
+                          background: active ? 'var(--grad-brand)' : 'var(--field-input-bg)',
+                          border: `1px solid ${active ? 'transparent' : 'var(--glass-border)'}`,
+                          width: '100%',
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 8,
+                            background: active ? 'rgba(255,255,255,.22)' : 'var(--grad-brand)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="5" width="20" height="14" rx="2.5" />
+                            <path d="M2 10h20" />
+                          </svg>
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span
+                            style={{
+                              ...t('body'),
+                              display: 'block',
+                              fontWeight: 700,
+                              color: active ? 'var(--text-on-cta)' : 'var(--text-strong)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {brandLabel(m.brand)} •••• {m.last4}
+                          </span>
+                        </span>
+                        {active && (
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-on-cta)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    onClick={() => setPaySource('new')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: S[3],
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      padding: '12px 14px',
+                      borderRadius: 'var(--r-sm)',
+                      background: paySource === 'new' ? 'var(--grad-brand)' : 'var(--field-input-bg)',
+                      border: `1px solid ${paySource === 'new' ? 'transparent' : 'var(--glass-border)'}`,
+                      width: '100%',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: paySource === 'new' ? 'rgba(255,255,255,.22)' : 'var(--grad-brand)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                    </span>
+                    <span
+                      style={{
+                        ...t('body'),
+                        flex: 1,
+                        fontWeight: 700,
+                        color: paySource === 'new' ? 'var(--text-on-cta)' : 'var(--text-strong)',
+                      }}
+                    >
+                      New card
+                    </span>
+                  </button>
+                </div>
+              )}
+
               {usd >= 1 && usd <= 1000 ? (
-                <Elements stripe={stripePromise}>
-                  <CardPayForm
-                    usd={usd}
-                    asset={asset}
-                    wallet={wallet}
-                    onSuccess={handleCardSuccess}
-                    onError={msg => setCardErr(msg)}
-                  />
-                </Elements>
+                paySource !== 'new' ? (
+                  <button
+                    onClick={handleChargeSaved}
+                    disabled={savedPaying}
+                    style={{
+                      ...btn('primary', { full: true, pill: false }),
+                      opacity: savedPaying ? 0.7 : 1,
+                      cursor: savedPaying ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {savedPaying ? (
+                      <>
+                        <Spinner /> Processing…
+                      </>
+                    ) : (
+                      `Buy ${asset}`
+                    )}
+                  </button>
+                ) : (
+                  <Elements stripe={stripePromise}>
+                    <CardPayForm
+                      usd={usd}
+                      asset={asset}
+                      wallet={wallet}
+                      onSuccess={handleCardSuccess}
+                      onError={msg => setCardErr(msg)}
+                    />
+                  </Elements>
+                )
               ) : (
                 <div style={{ ...t('body'), color: 'var(--text-muted)' }}>
                   Select an amount above to continue.
