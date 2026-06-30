@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
-import { callerOwnsWallet } from '@/lib/auth';
-import { requireKycForSale } from '@/lib/kyc';
+import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
+import { requireKycForSaleAny } from '@/lib/kyc';
 
 export async function POST(req: Request) {
     try {
@@ -16,8 +16,10 @@ export async function POST(req: Request) {
                   return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
                 }
 
-          // Gate listing behind ID verification (no-op until NEXT_PUBLIC_KYC_REQUIRED=1).
-          const kyc = await requireKycForSale(seller_wallet);
+          // Gate listing behind ID verification (no-op until NEXT_PUBLIC_KYC_REQUIRED=1). KYC is per-user:
+          // any of the seller's linked wallets being approved unlocks listing from this one.
+          const authCtx = await getAuthedContext(req);
+          const kyc = await requireKycForSaleAny(authCtx?.wallets ?? [seller_wallet]);
           if (!kyc.ok) return NextResponse.json({ error: 'kyc_required', kyc_status: kyc.status }, { status: 403 });
 
           const supabase = createServiceClient();
