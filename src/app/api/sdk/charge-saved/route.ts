@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
 import { finalizeSdkOrder } from '@/lib/sdk-settle';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'A valid Solana wallet is required' }, { status: 400 });
     }
     if (!(await callerOwnsWallet(req, buyer_wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const rl = await rateLimit(`sdk-charge-saved:${buyer_wallet}`, { limit: 8, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
     const supabase = createServiceClient();
 

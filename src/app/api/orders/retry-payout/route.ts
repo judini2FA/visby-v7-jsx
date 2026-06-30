@@ -5,7 +5,7 @@ import { isAdminRole } from '@/lib/admin';
 import { releasePayout } from '@/lib/payout';
 import { feeBreakdown } from '@/lib/fees';
 import { logSecurityEvent } from '@/lib/security-audit';
-import { clientIp } from '@/lib/rate-limit';
+import { clientIp, rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +22,9 @@ export async function POST(req: Request) {
     const { order_id, wallet } = await req.json();
     if (!order_id || !wallet) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const rl = await rateLimit(`retry-payout:${wallet}`, { limit: 10, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
     const supabase = createServiceClient();
 

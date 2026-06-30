@@ -42,6 +42,8 @@ const nextConfig = {
                   "worker-src 'self' blob:",
                   "object-src 'none'",
                   "base-uri 'self'",
+                  // Modern superset of X-Frame-Options: the app must never be framed (clickjacking).
+                  "frame-ancestors 'none'",
           ].join('; ');
 
           const securityHeaders = [

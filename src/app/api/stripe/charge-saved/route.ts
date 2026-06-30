@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
 import { createOrder } from '@/lib/orders';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -15,6 +16,9 @@ export async function POST(req: Request) {
     }
 
     if (!(await callerOwnsWallet(req, buyer_wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const rl = await rateLimit(`charge-saved:${buyer_wallet}`, { limit: 8, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
     const supabase = createServiceClient();
 

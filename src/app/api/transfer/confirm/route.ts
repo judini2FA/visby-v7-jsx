@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
 import { confirmTransfer } from '@/lib/transfers';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
 // Step 2: the client reports the on-chain tx hash it just signed + sent. We verify it on-chain and mark
 // the prepared transfer 'sent'. Idempotent — re-confirming an already-sent transfer is a no-op success.
@@ -18,6 +19,9 @@ export async function POST(req: Request) {
 
   if (!transfer_id || !from_wallet || !tx_hash) return NextResponse.json({ error: 'transfer_id, from_wallet, tx_hash are required' }, { status: 400 });
   if (!ctx.wallets.includes(from_wallet)) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
+
+  const rl = await rateLimit(`transfer-confirm:${from_wallet}`, { limit: 30, windowSec: 60 });
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
   const r = await confirmTransfer({ id: transfer_id, from_wallet, tx_hash });
   return NextResponse.json({ ok: r.ok, status: r.status });
