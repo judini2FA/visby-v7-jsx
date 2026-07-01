@@ -7,6 +7,12 @@ import { BackgroundField } from '@/components/background-field';
 import { PwaRegister } from '@/components/pwa-register';
 import { themeInitScript } from '@/lib/theme';
 
+// The whole app is auth-personalized behind the Privy provider (mounted in <Providers>), which cannot
+// initialize during build-time static prerender (throws "invalid Privy app ID"). force-dynamic on the
+// root layout propagates to every route, opting the app out of SSG so pages render at request time
+// with real env present. No SEO/perf loss here — every surface is personalized anyway.
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Visby — Fraud-Free NFT Provenance Marketplace',
   description: 'Buy and sell real-world goods with verifiable NFT provenance on Solana.',
