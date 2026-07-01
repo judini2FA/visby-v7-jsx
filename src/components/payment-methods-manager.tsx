@@ -21,6 +21,10 @@ import { trpc } from '@/lib/trpc/client';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 const RED = 'var(--danger)';
+// Bank linking (Plaid) is parked for MVP — the "Connect a bank" entry point and the balance-tile
+// fetch stay hidden until NEXT_PUBLIC_BANK_LINKING=1. Fail-closed: off by default. The routes/lib
+// stay dormant (park, not remove).
+const BANK_LINKING_ENABLED = process.env.NEXT_PUBLIC_BANK_LINKING === '1';
 const ORDER_KEY = 'visby-payment-order';
 const GRAD = 'linear-gradient(135deg,#25CDB8,#2A8AED 50%,#BC2DE6)';   // saturated — icon + amount text
 const BOX_GRAD = 'var(--grad-brand)';                                // lighter pastel — the primary slot box
@@ -265,7 +269,7 @@ function ConnectBankButton({ wallet, onConnected, onCancel }: { wallet: string; 
   return (
     <div style={{ ...surface({ pad: `${S[4]}px` }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
       <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>Connect a bank</div>
-      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>You'll log in securely through Plaid — Visby never sees your bank password.</div>
+      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>You'll log in securely to your bank — Visby never sees your password.</div>
       {err && <div style={{ ...t('meta'), color: RED }}>{err}</div>}
       <div style={{ display: 'flex', gap: S[2] }}>
         <button type="button" onClick={onCancel} disabled={busy} style={{ ...btn('secondary'), flex: 1 }}>Cancel</button>
@@ -409,7 +413,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
   useEffect(() => { loadCards(); }, [loadCards]);
 
   const loadBanks = useCallback(async () => {
-    if (previewMethods || !wallet) return;
+    if (!BANK_LINKING_ENABLED || previewMethods || !wallet) return;
     try {
       const token = await getAccessToken();
       const r = await fetch(`/api/plaid/accounts?wallet=${wallet}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -560,7 +564,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
         <div style={{ ...surface({ pad: `${S[2]}px` }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
           <AddRow kind="card" label="Add a card" onClick={() => setAddMode('card')} />
           <AddRow kind="wallet" label="Connect a wallet" onClick={() => setAddMode('wallet')} />
-          <AddRow kind="bank" label="Connect a bank" onClick={() => setAddMode('bank')} />
+          {BANK_LINKING_ENABLED && <AddRow kind="bank" label="Connect a bank" onClick={() => setAddMode('bank')} />}
           <AddRow kind="brokerage" label="Connect a brokerage" onClick={() => setAddMode('brokerage')} />
           <button onClick={() => setAddMode('')} style={{ ...t('meta'), color: 'var(--text-muted)', background: 'none', border: 0, cursor: 'pointer', padding: `${S[2]}px 0 ${S[1]}px`, textAlign: 'center' }}>Cancel</button>
         </div>

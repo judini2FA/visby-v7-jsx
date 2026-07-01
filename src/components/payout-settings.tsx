@@ -90,7 +90,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Test payout failed');
       setTestStatus('sent');
-      setTestMsg(`Sent — payout ${data.payout_id} ($${(data.amount / 100).toFixed(2)}, ${data.status}). Check your Stripe test dashboard.`);
+      setTestMsg(`Sent — payout ${data.payout_id} ($${(data.amount / 100).toFixed(2)}, ${data.status}). It'll arrive in your linked account shortly.`);
     } catch (err: any) { setTestMsg(err.message ?? 'Test payout failed'); setTestStatus('error'); }
   }
 
@@ -114,7 +114,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
                   {pt === 'crypto' ? 'Crypto wallet' : 'Bank account'}
                 </div>
                 <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                  {pt === 'crypto' ? 'SOL/USDC · instant' : 'via Stripe · 2–7 days'}
+                  {pt === 'crypto' ? 'SOL/USDC · instant' : 'bank transfer · 2–7 days'}
                 </div>
                 {sel && (
                   <span style={{ position: 'absolute', top: 10, right: 10, width: 16, height: 16, borderRadius: '50%', background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -145,7 +145,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
 
         {payoutType === 'bank' && (
           <div>
-            <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Stripe Connect account ID</div>
+            <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Payout account ID</div>
             <input value={stripeAccountId} onChange={e => setStripeAccountId(e.target.value)} placeholder="acct_1ABC123…" style={input()} />
           </div>
         )}
@@ -163,7 +163,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
           <div>
             <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)', marginBottom: S[1] }}>Send a test payout</div>
             <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-              Fires a $1.00 simulated payout through Stripe (test mode) so you can confirm it lands in your Stripe dashboard.
+              Fires a $1.00 test payout so you can confirm it lands in your account.
             </div>
           </div>
           <button type="button" onClick={sendTestPayout} disabled={testStatus === 'sending'}

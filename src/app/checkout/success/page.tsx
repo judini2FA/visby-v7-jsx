@@ -76,7 +76,7 @@ function CheckoutSuccessInner() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Method</span>
-              <span style={{ ...t('meta'), color: 'var(--text-strong)' }}>Card via Stripe</span>
+              <span style={{ ...t('meta'), color: 'var(--text-strong)' }}>Card</span>
             </div>
           </div>
 

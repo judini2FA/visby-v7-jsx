@@ -294,12 +294,12 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
           </div>
           {currency === 'SOL' && quote && (
             <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Quicksand',sans-serif" }}>
-              ≈ ${priceUsdc.toFixed(2)} USD · CoinGecko
+              ≈ ${priceUsdc.toFixed(2)} USD
             </div>
           )}
           {(currency === 'ETH' || currency === 'BTC') && swapQuote && (
             <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Quicksand',sans-serif" }}>
-              ≈ ${priceUsdc.toFixed(2)} USD · {swapQuote.source === 'lifi' ? `via ${swapQuote.tool}` : 'estimate'}
+              ≈ ${priceUsdc.toFixed(2)} USD
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
@@ -421,7 +421,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
                     {[
-                      ['Route',          swapQuote.source === 'lifi' ? swapQuote.tool : 'Price estimate'],
+                      ['Route',          swapQuote.source === 'lifi' ? 'Best rate' : 'Price estimate'],
                       ['You pay',        swapQuote.from_amount_display],
                       ['Swaps to',       swapQuote.usdc_out_display],
                       ['Network fee',    swapQuote.gas_usd > 0 ? `≈ $${swapQuote.gas_usd.toFixed(2)}` : '—'],
@@ -439,8 +439,8 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
 
                   <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, fontFamily: "'Manrope',sans-serif" }}>
                     {swapQuote.source === 'lifi'
-                      ? 'Live route quoted via Li.Fi. Swap settles on confirm (devnet simulation — executes on mainnet).'
-                      : 'Showing a price-feed estimate — live Li.Fi route is momentarily unavailable.'}
+                      ? 'Live rate locked. Your crypto converts on confirm.'
+                      : 'Showing a price estimate — the live rate is momentarily unavailable.'}
                   </div>
 
                   <button onClick={() => settle(currency, swapQuote.from_amount_display)} disabled={status === 'paying'}

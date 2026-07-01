@@ -140,7 +140,7 @@ export default function SettingsPage() {
           <Row
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}
             label="Credit / Debit Cards"
-            sublabel="Powered by Stripe — secure card payments"
+            sublabel="Secure card payments"
             right={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>}
             onClick={() => router.push('/profile')}
           />

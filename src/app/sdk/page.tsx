@@ -173,7 +173,7 @@ export function verifyVisbyWebhook(rawBody, signatureHeader, signingSecret) {
     { name: 'serial_number', desc: 'The serial you passed when creating the session' },
     { name: 'product_name', desc: 'The product name you passed when creating the session' },
     { name: 'amount_usd', desc: 'Amount charged to the buyer, in USD' },
-    { name: 'payment_confirmed', desc: 'true — the Stripe charge succeeded' },
+    { name: 'payment_confirmed', desc: 'true — the payment succeeded' },
   ];
 
   return (
