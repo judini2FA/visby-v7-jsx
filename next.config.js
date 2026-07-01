@@ -1,6 +1,12 @@
+const { withSentryConfig } = require('@sentry/nextjs');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     reactStrictMode: true,
+    // Next 14 needs this flag for instrumentation.ts (Sentry server/edge init) to load.
+    experimental: {
+          instrumentationHook: true,
+    },
     typescript: {
           ignoreBuildErrors: true,
     },
@@ -49,7 +55,8 @@ const nextConfig = {
                   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
                   "font-src 'self' https://fonts.gstatic.com",
                   "img-src 'self' data: blob: https://arweave.net https://nftstorage.link https://ipfs.io https://gateway.irys.xyz https://*.supabase.co",
-                  "connect-src 'self' blob: data: https://*.supabase.co https://api.privy.io https://auth.privy.io https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com https://js.stripe.com https://api.stripe.com https://api.coingecko.com https://staticimgly.com",
+                  // *.sentry.io lets the browser SDK POST client-side errors to the ingest endpoint.
+                  "connect-src 'self' blob: data: https://*.supabase.co https://api.privy.io https://auth.privy.io https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com https://js.stripe.com https://api.stripe.com https://api.coingecko.com https://staticimgly.com https://*.sentry.io",
                   "frame-src https://js.stripe.com https://auth.privy.io",
                   // @imgly / onnxruntime-web run inference in a Web Worker created from a blob: URL; without
                   // an explicit worker-src this falls back to default-src 'self' and the worker is blocked.
@@ -85,4 +92,12 @@ const nextConfig = {
     },
 };
 
-module.exports = nextConfig;
+// Source-map upload only happens when SENTRY_AUTH_TOKEN is set (CI); otherwise it's skipped and the
+// build still succeeds. silent keeps the build log clean.
+module.exports = withSentryConfig(nextConfig, {
+    org: 'visby-inc',
+    project: 'javascript-nextjs',
+    silent: true,
+    widenClientFileUpload: true,
+    disableLogger: true,
+});

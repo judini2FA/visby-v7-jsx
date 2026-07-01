@@ -29,8 +29,15 @@ export function fromCents(cents: number): number {
   return Math.round(cents) / 100;
 }
 
+// A flat card-processing fee (~$0.30) can exceed the %-based platform fee on a very small order,
+// settling that sale at a loss — worst at the 3.5% partner/SDK rate, where a sub-$50 card order goes
+// negative. Floor every platform fee at $0.50 so no transaction can dip below the processing cost;
+// never let the floor exceed the item price itself.
+export const FEE_FLOOR_CENTS = 50;
+
 export function platformFeeCents(priceCents: number, channel?: string | null): number {
-  return Math.round((priceCents * feeBpsForChannel(channel)) / 10000);
+  const pct = Math.round((priceCents * feeBpsForChannel(channel)) / 10000);
+  return Math.min(priceCents, Math.max(FEE_FLOOR_CENTS, pct));
 }
 
 // Seller's net after the platform fee and shipping, never negative.
