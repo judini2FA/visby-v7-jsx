@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
-import { isAdminWallet } from '@/lib/admin';
+import { useAdminRole } from '@/lib/use-admin-role';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, card, surface, btn, badge, sectionLabel, tabSlider, price, T } from '@/lib/ui';
 
@@ -256,7 +256,7 @@ export default function AdminDisputesPage() {
     getAccessToken().then(tok => setToken(tok ?? null));
   }, [ready, wallet, getAccessToken]);
 
-  const isAdmin = isAdminWallet(wallet);
+  const { isAdmin, loading: adminLoading } = useAdminRole();
 
   const fetchDisputes = useCallback(async () => {
     if (!wallet || !token || !isAdmin) return;
@@ -282,7 +282,7 @@ export default function AdminDisputesPage() {
   const tabs = tabSlider();
 
   // ── Not authorized ──
-  if (ready && !isAdmin) {
+  if (ready && !adminLoading && !isAdmin) {
     return (
       <div
         style={{

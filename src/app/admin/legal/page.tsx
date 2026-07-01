@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
-import { isAdminWallet } from '@/lib/admin';
+import { useAdminRole } from '@/lib/use-admin-role';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, surface, btn, glass, T } from '@/lib/ui';
 
@@ -73,14 +73,14 @@ export default function AdminLegalPage() {
     if (ready && wallet) getAccessToken().then(tok => setToken(tok ?? null));
   }, [ready, wallet, getAccessToken]);
 
-  const isAdmin = isAdminWallet(wallet);
+  const { isAdmin, loading: adminLoading } = useAdminRole();
 
   const refetch = useCallback(() => {
     fetch('/api/legal').then(r => r.json()).then(d => setDocs({ terms: d.terms ?? null, privacy: d.privacy ?? null })).catch(() => {});
   }, []);
   useEffect(() => { refetch(); }, [refetch]);
 
-  if (ready && !isAdmin) {
+  if (ready && !adminLoading && !isAdmin) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: S[3], padding: S[5] }}>
         <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

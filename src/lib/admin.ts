@@ -31,7 +31,10 @@ export async function getAdminRole(wallet?: string | null): Promise<AdminRole | 
       .eq('wallet', wallet)
       .maybeSingle();
     if (error || !data) return null;
-    return (data.role ?? null) as AdminRole | null;
+    // Validate against the known role set — a tampered/unknown role string must NOT satisfy
+    // isAdminRole(wallet) (no-required-arg would otherwise return true for garbage). Fail closed.
+    const role = data.role as string | null;
+    return role && (ADMIN_ROLES as string[]).includes(role) ? (role as AdminRole) : null;
   } catch {
     return null;
   }
