@@ -24,8 +24,8 @@ export async function POST(req: Request) {
   if (!ctx || !ctx.wallets.length) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { account_id, serial, buyer_wallet } = body as { account_id?: string; serial?: string; buyer_wallet?: string };
-  if (!account_id || !serial || !buyer_wallet) return NextResponse.json({ error: 'account_id, serial, buyer_wallet required' }, { status: 400 });
+  const { account_id, item_id, buyer_wallet } = body as { account_id?: string; item_id?: string; buyer_wallet?: string };
+  if (!account_id || !item_id || !buyer_wallet) return NextResponse.json({ error: 'account_id, item_id, buyer_wallet required' }, { status: 400 });
   if (!ctx.wallets.includes(buyer_wallet)) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
 
   const rl = await rateLimit(`moov-charge:${buyer_wallet}`, { limit: 8, windowSec: 60 });
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     const { data: item } = await supabase
       .from('items')
       .select('id, price_usdc, is_listed')
-      .eq('serial_number', serial)
+      .eq('id', item_id)
       .single();
     if (!item || !item.is_listed || item.price_usdc == null) {
       return NextResponse.json({ error: 'item_not_purchasable' }, { status: 409 });
@@ -51,9 +51,9 @@ export async function POST(req: Request) {
       sourcePaymentMethodID: sourcePM,
       destinationPaymentMethodID: destPM,
       amountCents: toCents(item.price_usdc),
-      description: `Visby order ${serial}`,
+      description: `Visby order ${item.id}`,
       idempotencyKey: `moov-charge:${item.id}:${buyer_wallet}`,
-      metadata: { item_id: item.id, serial, buyer_wallet },
+      metadata: { item_id: item.id, buyer_wallet },
       waitForRailResponse: true,
     });
 

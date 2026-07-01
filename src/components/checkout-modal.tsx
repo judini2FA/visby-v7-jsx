@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { MoovCardForm, MOOV_ENABLED } from '@/components/moov-card-form';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -194,6 +195,22 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     } catch (err: any) { setErrMsg(err.message ?? 'Payment failed'); setStatus('error'); }
   }
 
+  // Moov card rail (gated). The Card Link Drop returns (accountID, cardID); the server charges the card
+  // to the platform wallet and settles via the same fulfill path as Stripe.
+  async function payWithMoov(accountID: string, _cardID: string) {
+    setStatus('paying'); setErrMsg('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/moov/charge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ account_id: accountID, item_id: itemId, buyer_wallet: buyerWallet }),
+      });
+      const data = await res.json();
+      if (data.ok) { setStatus('done'); onSuccess(itemId); }
+      else { setErrMsg(data.error ?? (data.pending ? 'Payment is processing — check your orders shortly.' : 'Payment failed')); setStatus('error'); }
+    } catch (err: any) { setErrMsg(err.message ?? 'Payment failed'); setStatus('error'); }
+  }
+
   async function payWithSol() {
     if (!solWallet || !quotes?.SOL) return;
     setStatus('paying');
@@ -372,7 +389,9 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
 
             {/* ── CARD TAB ── */}
             {currency === 'CARD' && (
-              piSecret ? (
+              MOOV_ENABLED ? (
+                <MoovCardForm onCardID={payWithMoov} onError={msg => { setErrMsg(msg); setStatus('error'); }} />
+              ) : piSecret ? (
                 // Elements provides Stripe context only — no clientSecret means no Link, no branding
                 <Elements stripe={stripePromise}>
                   <CardPayForm
