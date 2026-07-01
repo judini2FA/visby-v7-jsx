@@ -19,3 +19,6 @@ export function payoutAction(payoutType: string, destination: string): string {
 export function tallyTransferAction(itemId: string, toWallet: string): string {
   return `transfer_tally:${itemId}:${toWallet}`;
 }
+export function sendMoneyAction(toWallet: string, token: string): string {
+  return `send_money:${token}:${toWallet}`;
+}

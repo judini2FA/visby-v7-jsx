@@ -6,6 +6,8 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { trpc } from '@/lib/trpc/client';
 import { sendSol, sendUsdc } from '@/lib/transfer-client';
+import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-client';
+import { sendMoneyAction } from '@/lib/step-up-shared';
 import { useCurrency } from '@/lib/currency';
 import { biometricConfirm, biometricAvailable } from '@/lib/app-lock';
 import { t, S, surface, btn, badge, avatar } from '@/lib/ui';
@@ -160,14 +162,29 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
     let prep: any;
     try {
       const authToken = await getAccessToken();
+      // MFA step-up: sign an action-bound challenge (triggers Privy's MFA prompt for enrolled users)
+      // before the send is authorized. Dormant until NEXT_PUBLIC_STEP_UP_ENFORCED=1.
+      let stepUpHeaders: Record<string, string> = {};
+      if (STEP_UP_ON) {
+        const signer = wallets.find((w: any) => w.address === wallet);
+        if (!signer || typeof (signer as any).signMessage !== 'function') {
+          setErrMsg("This wallet can't complete the security check on this device."); setStep('error'); return;
+        }
+        try {
+          const proof = await createStepUpProof({ action: sendMoneyAction(toWalletValue, token), signMessage: (m: Uint8Array) => (signer as any).signMessage(m) });
+          stepUpHeaders = stepUpHeader(proof);
+        } catch { setErrMsg('Security check cancelled.'); setStep('error'); return; }
+      }
       const res = await fetch('/api/transfer/prepare', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}), ...stepUpHeaders },
         body: JSON.stringify({ from_wallet: wallet, to: toWalletValue, token, amount: sendAmount, idempotency_key: idem }),
       });
       prep = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 404 || prep?.error === 'recipient_not_found') setErrMsg("We couldn't find that recipient.");
+        else if (prep?.error === 'mfa_required') setErrMsg('Turn on two-factor authentication in Settings to send money.');
+        else if (prep?.error === 'step_up_required' || prep?.error === 'step_up_failed') setErrMsg('Security check failed — please try again.');
         else if (res.status === 403 || prep?.error === 'limit_exceeded') setErrMsg(`That's over your send limit (${prep?.reason ?? 'limit'}).`);
         else setErrMsg(prep?.error ?? 'Could not start the transfer.');
         setStep('error');

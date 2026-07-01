@@ -4,6 +4,8 @@ import { NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { resolveRecipient, checkLimits, recordPrepared, type TransferToken } from '@/lib/transfers';
+import { requireStepUp } from '@/lib/step-up';
+import { sendMoneyAction } from '@/lib/step-up-shared';
 
 const TOKENS: TransferToken[] = ['SOL', 'USDC'];
 
@@ -30,6 +32,11 @@ export async function POST(req: Request) {
   // Reject sub-dust: SOL amounts that round to 0 lamports would record a "sent" transfer that moved nothing.
   if (token === 'SOL' && Math.round(amount * 1e9) < 1) return NextResponse.json({ error: 'amount is too small' }, { status: 400 });
   if (!ctx.wallets.includes(from_wallet)) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
+
+  // MFA step-up before authorizing a send (money leaving the user's wallet). Binds the destination +
+  // token; dormant until NEXT_PUBLIC_STEP_UP_ENFORCED=1, then also requires the owner to have MFA enrolled.
+  const stepUp = await requireStepUp(req, from_wallet, sendMoneyAction(to, token), ctx.userId);
+  if (stepUp) return stepUp;
 
   const recipient = await resolveRecipient(to);
   if (!recipient) return NextResponse.json({ error: 'recipient_not_found' }, { status: 404 });
