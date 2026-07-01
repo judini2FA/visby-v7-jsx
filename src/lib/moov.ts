@@ -113,12 +113,16 @@ export async function createMoovTransfer(args: {
   description?: string;
   idempotencyKey: string;
   metadata?: Record<string, string>;
+  waitForRailResponse?: boolean;   // block up to ~15s for the settled status (so we only fulfill on 'completed')
 }): Promise<{ transferID: string; status: string }> {
   if (!PLATFORM_ACCOUNT_ID) throw new Error('moov_platform_account_missing');
   const token = await getMoovToken([`/accounts/${PLATFORM_ACCOUNT_ID}/transfers.write`]);
   const data = await moovFetch(`/accounts/${PLATFORM_ACCOUNT_ID}/transfers`, token, {
     method: 'POST',
-    headers: { 'x-idempotency-key': args.idempotencyKey },
+    headers: {
+      'x-idempotency-key': args.idempotencyKey,
+      ...(args.waitForRailResponse ? { 'x-wait-for': 'rail-response' } : {}),
+    },
     body: JSON.stringify({
       source: { paymentMethodID: args.sourcePaymentMethodID },
       destination: { paymentMethodID: args.destinationPaymentMethodID },
