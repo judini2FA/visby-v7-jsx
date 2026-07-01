@@ -46,6 +46,26 @@ export function orderSoldSeller(i: { itemId: string; priceUsd: number | null; pr
   };
 }
 
+export function securityAlert(i: { label: string; when: string; device?: string | null }): EmailMsg {
+  const dev = i.device ? ` from ${esc(i.device.slice(0, 60))}` : '';
+  return {
+    subject: `Visby security alert: ${i.label}`,
+    html: layout({
+      heading: 'Security alert',
+      lines: [
+        `We detected <strong>${esc(i.label)}</strong> on your Visby account${dev}.`,
+        `When: ${esc(i.when)}`,
+        'If this was you, no action is needed. If not, review your active sessions and turn on two-factor authentication in Settings → Security right away.',
+      ],
+      cta: { label: 'Review security', href: url('/settings') },
+    }),
+    text: text([
+      `Visby security alert: ${i.label}${i.device ? ` from ${i.device.slice(0, 60)}` : ''} at ${i.when}.`,
+      `If this wasn't you, review your security settings: ${url('/settings')}`,
+    ]),
+  };
+}
+
 export function orderPlacedBuyer(i: { itemId: string; priceUsd: number | null; productName?: string | null }): EmailMsg {
   const name = i.productName ? esc(i.productName) : 'your Tally';
   return {

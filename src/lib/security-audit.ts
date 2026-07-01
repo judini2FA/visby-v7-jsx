@@ -1,4 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/service';
+import { emailWallet } from '@/lib/email';
+import { securityAlert } from '@/lib/email-templates';
 
 // Append-only audit trail for sensitive account events. Like notify(), every error is swallowed: a
 // failed audit write (missing table pre-migration, transient failure) must NEVER break the auth,
@@ -37,6 +39,17 @@ export type SecurityAuditInput = {
   user_agent?: string | null;
 };
 
+// High-sensitivity events that also trigger a best-effort email alert to the account owner.
+const ALERT_LABELS: Partial<Record<SecurityEvent, string>> = {
+  sign_in_new_device:          'a sign-in from a new device',
+  mfa_enrolled:                'two-factor authentication was enabled',
+  mfa_removed:                 'two-factor authentication was removed',
+  passkey_added:               'a new passkey was added',
+  passkey_removed:             'a passkey was removed',
+  payout_destination_changed:  'your payout destination was changed',
+  payment_method_changed:      'a payment method was changed',
+};
+
 export async function logSecurityEvent(e: SecurityAuditInput): Promise<void> {
   if (!e.wallet) return;
   try {
@@ -50,5 +63,14 @@ export async function logSecurityEvent(e: SecurityAuditInput): Promise<void> {
     });
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') console.debug('security audit skipped', err);
+  }
+
+  // Best-effort email alert on high-sensitivity events — a secondary signal that NEVER blocks the
+  // observed flow (fail-soft, and a no-op when RESEND_API_KEY isn't set).
+  const label = ALERT_LABELS[e.event];
+  if (label) {
+    try {
+      await emailWallet(e.wallet, securityAlert({ label, when: new Date().toUTCString(), device: e.user_agent ?? null }));
+    } catch { /* email is a best-effort secondary signal */ }
   }
 }
