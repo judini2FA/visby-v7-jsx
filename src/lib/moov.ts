@@ -95,6 +95,14 @@ export async function findCardPaymentMethod(accountID: string): Promise<string |
   return pm?.paymentMethodID ?? null;
 }
 
+// The moov-wallet payment method for an account — the collect-to-platform destination for a charge.
+export async function findWalletPaymentMethod(accountID: string): Promise<string | null> {
+  const token = await getMoovToken([`/accounts/${accountID}/payment-methods.read`]);
+  const list = await moovFetch(`/accounts/${accountID}/payment-methods`, token, { method: 'GET' });
+  const pm = (Array.isArray(list) ? list : []).find((m: any) => m.paymentMethodType === 'moov-wallet');
+  return pm?.paymentMethodID ?? null;
+}
+
 // Buyer card payment-method → seller/platform destination, skimming the Visby facilitator fee. The path
 // accountID is our PLATFORM account. x-idempotency-key dedupes retries (required).
 export async function createMoovTransfer(args: {

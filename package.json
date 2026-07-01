@@ -24,6 +24,7 @@
     "@metaplex-foundation/umi": "^1.5.1",
     "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
     "@metaplex-foundation/umi-web3js-adapters": "^1.5.1",
+    "@moovio/moov-js": "^0.0.21",
     "@orama/orama": "^3.1.18",
     "@privy-io/react-auth": "^1.80.0",
     "@privy-io/server-auth": "^1.32.5",
