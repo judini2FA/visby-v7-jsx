@@ -56,7 +56,7 @@
     "react-plaid-link": "^4.1.1",
     "sharp": "^0.35.2",
     "snaptrade-typescript-sdk": "^10.0.14",
-    "stripe": "^16.2.0",
+    "stripe": "^22.3.0",
     "superjson": "^2.2.1",
     "tailwind-merge": "^2.4.0",
     "tailwindcss-animate": "^1.0.7",
