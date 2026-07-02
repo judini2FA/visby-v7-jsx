@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   try {
     const { data } = await supabase
       .from('orders')
-      .select('id, item_id, buyer_wallet, seller_wallet, price_usdc, platform_fee_usd, seller_net_usd, sale_channel, payout_method, payout_released, payout_tx, status, created_at, delivered_at')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(5000);
     orders = data ?? [];

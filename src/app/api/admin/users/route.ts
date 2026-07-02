@@ -26,27 +26,45 @@ export async function GET(req: Request) {
 
   const supabase = createServiceClient();
 
-  let users: any[] = [];
-  try {
-    let query = supabase
-      .from('profiles')
-      .select('wallet, display_name, avatar_url, bio, kyc_status, account_type, is_flagged, created_at')
-      .order('created_at', { ascending: false })
-      .limit(200);
+  // Resilient read: `profiles` is ALTER-built (no base create-table in these migrations), so `created_at`
+  // and the later kyc/flag/avatar columns may not exist on every deployment. Try the full set + newest-
+  // first, then degrade — rather than returning an empty list on a single missing column, which
+  // previously rendered as a misleading "no users". (`bio` was such a phantom column and broke this.)
+  // Column availability varies by which migrations a deployment has applied (prod is currently missing
+  // kyc_status / account_type / created_at). Degrade through progressively smaller column sets, each tried
+  // with and without the created_at sort, so real users always show even when later migrations aren't run.
+  const SETS = [
+    'wallet, display_name, avatar_url, kyc_status, account_type, is_flagged, created_at',
+    'wallet, display_name, avatar_url, is_flagged',
+    'wallet, display_name',
+  ];
 
+  const build = (columns: string, ordered: boolean) => {
+    let query = supabase.from('profiles').select(columns).limit(200);
+    if (ordered) query = query.order('created_at', { ascending: false });
     if (filter === 'flagged') query = query.eq('is_flagged', true);
     if (q) {
       const like = `%${q.replace(/[%_]/g, '')}%`;
       query = query.or(`wallet.ilike.${like},display_name.ilike.${like}`);
     }
+    return query;
+  };
 
-    const { data, error } = await query;
-    users = error ? [] : (data ?? []);
-  } catch {
+  let users: any[] | null = null;
+  let lastErr: string | undefined;
+  outer: for (const cols of SETS) {
+    for (const ordered of [true, false]) {
+      const { data, error } = await build(cols, ordered);
+      if (!error) { users = data ?? []; break outer; }
+      lastErr = error.message;
+    }
+  }
+  if (users === null) {
+    console.error('[admin/users] query failed after fallbacks:', lastErr);
     users = [];
   }
 
-  return NextResponse.json({ users });
+  return NextResponse.json({ users: users ?? [] });
 }
 
 export async function PATCH(req: Request) {

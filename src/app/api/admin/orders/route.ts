@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   try {
     let query = supabase
       .from('orders')
-      .select('id, item_id, buyer_wallet, seller_wallet, price_usdc, pay_method, status, tracking_carrier, tracking_number, payout_released, platform_fee_usd, seller_net_usd, created_at, shipped_at, delivered_at')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(200);
 
