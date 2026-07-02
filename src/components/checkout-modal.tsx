@@ -9,6 +9,7 @@ import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useTheme } from '@/lib/theme';
 import { AddressForm, EMPTY_SHIP_TO, shipToValid, shipToSummary, type ShipTo } from '@/components/address-form';
+import { visibleTokens, isSwapToken } from '@/lib/payable-tokens';
 
 const C = {
   navy: 'var(--bg-0)', teal: '#22C6B7', cyan: '#25CDB8',
@@ -20,7 +21,9 @@ const TREASURY = process.env.NEXT_PUBLIC_TREASURY_WALLET!;
 const RPC      = process.env.NEXT_PUBLIC_HELIUS_RPC_URL ?? 'https://api.devnet.solana.com';
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
-type Currency = 'CARD' | 'SOL' | 'ETH' | 'BTC' | 'USDC';
+// Payable currencies are driven by src/lib/payable-tokens.ts (the gated set only appears once
+// NEXT_PUBLIC_MULTICRYPTO_ENABLED is on), so this is a plain symbol string.
+type Currency = string;
 interface Quote  { amount: number; display: string; rate_source: string; }
 interface Quotes { USDC: Quote|null; SOL: Quote|null; ETH: Quote|null; BTC: Quote|null; }
 
@@ -149,9 +152,9 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
       .catch(() => {});
   }, [currency, buyerWallet]);
 
-  // Fetch a real Li.Fi route when a crypto-swap tab (ETH/BTC) opens
+  // Fetch a real Li.Fi route when a crypto-swap tab opens (ETH/BTC, plus the gated expanded set)
   useEffect(() => {
-    if (currency !== 'ETH' && currency !== 'BTC') return;
+    if (!isSwapToken(currency)) return;
     setSwapQuote(null); setSwapLoading(true); setErrMsg('');
     fetch(`/api/lifi/swap-quote?item_id=${itemId}&from=${currency}`)
       .then(r => r.json())
@@ -271,12 +274,10 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   // What the buyer pays in network/transfer fees, by method (shipping is always free to the buyer).
   const transferFeeNote =
     currency === 'SOL' ? 'Solana network fee · paid by you'
-    : (currency === 'ETH' || currency === 'BTC') ? 'Network + bridge fees included'
+    : isSwapToken(currency) ? 'Network + bridge fees included'
     : 'None';
-  const tabs: { id: Currency; label: string; soon?: boolean }[] = [
-    { id: 'CARD', label: 'Card' }, { id: 'SOL', label: 'SOL' },
-    { id: 'ETH', label: 'ETH' }, { id: 'BTC', label: 'BTC' }, { id: 'USDC', label: 'USDC' },
-  ];
+  const tabs: { id: Currency; label: string; soon?: boolean }[] =
+    visibleTokens().map(t => ({ id: t.symbol, label: t.label }));
 
   return (
     <div onClick={status === 'done' ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'var(--modal-scrim)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -304,7 +305,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             <span style={{ fontSize: 22, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: "'Quicksand',sans-serif" }}>
               {currency === 'CARD' || currency === 'USDC'
                 ? `$${priceUsdc.toFixed(2)}`
-                : currency === 'ETH' || currency === 'BTC'
+                : isSwapToken(currency)
                   ? (swapQuote?.from_amount_display ?? '…')
                   : quote?.display ?? '…'}
             </span>
@@ -314,7 +315,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
               ≈ ${priceUsdc.toFixed(2)} USD
             </div>
           )}
-          {(currency === 'ETH' || currency === 'BTC') && swapQuote && (
+          {isSwapToken(currency) && swapQuote && (
             <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Quicksand',sans-serif" }}>
               ≈ ${priceUsdc.toFixed(2)} USD
             </div>
@@ -432,8 +433,8 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
               ) : <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: C.muted, fontSize: 13 }}><Spinner />Loading SOL quote…</div>
             )}
 
-            {/* ── ETH / BTC via Li.Fi swap ── */}
-            {(currency === 'ETH' || currency === 'BTC') && (
+            {/* ── Li.Fi swap tokens (ETH / BTC + gated expanded set) ── */}
+            {isSwapToken(currency) && (
               swapLoading || !swapQuote ? (
                 !errMsg && <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: C.muted, fontSize: 13 }}><Spinner />Finding the best route…</div>
               ) : (

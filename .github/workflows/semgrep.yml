@@ -1,0 +1,37 @@
+# SAST that works on a private repo without GitHub Advanced Security (unlike CodeQL). Semgrep OSS runs
+# published security rulesets locally in CI — no account or token needed. Gates PRs/pushes only on
+# ERROR-severity findings (injection, hardcoded secrets, auth mistakes) so day-to-day style noise
+# doesn't block; lower-severity findings still print in the run log. Weekly re-scan catches new rules.
+name: Semgrep
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '19 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Semgrep scan
+        run: >
+          semgrep scan
+          --config p/security-audit
+          --config p/secrets
+          --config p/nextjs
+          --config p/react
+          --config p/typescript
+          --config p/javascript
+          --severity ERROR
+          --error

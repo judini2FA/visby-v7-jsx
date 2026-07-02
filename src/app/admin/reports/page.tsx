@@ -227,7 +227,7 @@ function ReportCard({
 
       {/* details */}
       {report.details && (
-        <div style={{ ...surface({ pad: S[3], radius: 8 }) }}>
+        <div style={{ ...surface({ pad: S[3], radius: 'var(--r-sm)' }) }}>
           <p style={{ ...t('body'), color: T.text, margin: 0 }}>{report.details}</p>
         </div>
       )}

@@ -101,7 +101,7 @@ export default function AdminKycPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ ...t('body'), color: T.textStrong, fontFamily: 'monospace' }}>{short(r.wallet)}</div>
-                  <div style={{ display: 'flex', gap: S[2], alignItems: 'center', marginTop: 3, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: S[2], alignItems: 'center', marginTop: S[1], flexWrap: 'wrap' }}>
                     <span style={statusStyle(r.status)}>{r.status}</span>
                     {r.account_type && <span style={{ ...t('micro'), color: T.textMuted }}>{r.account_type}</span>}
                     {r.provider && <span style={{ ...t('micro'), color: T.textMuted }}>{r.provider}</span>}

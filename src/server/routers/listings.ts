@@ -3,7 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { createTRPCRouter, publicProcedure, protectedProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
 import { expandSearchTerms, sanitizeIlikeTerm } from '@/server/lib/synonyms';
-import { searchListings } from '@/server/lib/search-engine';
+import { searchListings, semanticSearchListings } from '@/server/lib/search-engine';
+import { semanticEnabled } from '@/lib/embeddings';
 import { ownersForItems } from '@/lib/owners';
 import { requireKycForSaleAny } from '@/lib/kyc';
 
@@ -99,19 +100,23 @@ export const listingsRouter = createTRPCRouter({
         return visible;
       };
 
-      // Intuitive text search → in-app Orama engine (typo tolerance, BM25 relevance,
-      // synonyms). Falls back to SQL ilike + synonym expansion if anything throws.
+      // Text search fail-soft chain: semantic (AI) when an embeddings key is set → Orama BM25 engine
+      // (typo tolerance, synonyms) → SQL ilike below. Any layer throwing just tries the next.
       if (input.search) {
+        const sp = {
+          query: input.search,
+          category: input.category,
+          condition: input.condition,
+          minPrice: input.minPrice,
+          maxPrice: input.maxPrice,
+          sort: input.sort,
+          limit: input.limit,
+        };
+        if (semanticEnabled()) {
+          try { return await withOwners(await semanticSearchListings(sp)); } catch { /* → Orama */ }
+        }
         try {
-          return await withOwners(await searchListings({
-            query: input.search,
-            category: input.category,
-            condition: input.condition,
-            minPrice: input.minPrice,
-            maxPrice: input.maxPrice,
-            sort: input.sort,
-            limit: input.limit,
-          }));
+          return await withOwners(await searchListings(sp));
         } catch {
           // fall through to the SQL path below
         }

@@ -1,0 +1,28 @@
+# The always-works baseline: `npm audit` needs no GitHub Advanced Security, so it runs on a private
+# repo for free. Gates PRs on high+ severity advisories in production dependencies (dev-only tooling is
+# excluded to keep the signal actionable), and re-checks weekly to catch newly-disclosed CVEs.
+name: npm audit
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '41 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

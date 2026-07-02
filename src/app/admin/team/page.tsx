@@ -84,8 +84,8 @@ export default function AdminTeamPage() {
         <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <h1 style={{ ...t('title'), color: T.textStrong, margin: 0 }}>Admin team</h1>
         <div style={{ display: 'flex', gap: S[2], marginLeft: 'auto', alignItems: 'center' }}>
-          <Link href="/admin/reports" style={{ ...btn('text'), fontSize: 13 }}>Reports</Link>
-          <Link href="/admin/audit" style={{ ...btn('text'), fontSize: 13 }}>Audit log</Link>
+          <Link href="/admin/reports" style={btn('text')}>Reports</Link>
+          <Link href="/admin/audit" style={btn('text')}>Audit log</Link>
           <HeaderMenu />
         </div>
       </div>
@@ -97,7 +97,7 @@ export default function AdminTeamPage() {
           <input value={target} onChange={e => setTarget(e.target.value)} placeholder="Wallet address" style={{ ...input() }} />
           <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
             {roles.map(r => (
-              <button key={r} onClick={() => setRole(r)} style={{ ...(role === r ? btn('primary') : btn('secondary')), fontSize: 12, padding: '7px 12px', textTransform: 'capitalize' }}>{r.replace('_', ' ')}</button>
+              <button key={r} onClick={() => setRole(r)} style={{ ...(role === r ? btn('primary') : btn('secondary')), fontSize: 12, padding: '8px 12px', textTransform: 'capitalize' }}>{r.replace('_', ' ')}</button>
             ))}
           </div>
           {err && <span style={{ ...t('meta'), color: 'var(--danger)' }}>{err}</span>}

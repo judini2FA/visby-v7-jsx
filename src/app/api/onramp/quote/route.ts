@@ -1,22 +1,8 @@
 import { NextResponse } from 'next/server';
+import { solUsd } from '@/lib/price-oracle';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-async function getSolPrice(): Promise<number> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const r = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
-      { signal: controller.signal, cache: 'no-store' }
-    );
-    const data = await r.json();
-    return data.solana?.usd ?? 0;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 export async function GET(req: Request) {
   try {
@@ -43,7 +29,7 @@ export async function GET(req: Request) {
       });
     }
 
-    const sol_price = await getSolPrice();
+    const sol_price = await solUsd();
     if (sol_price === 0) {
       return NextResponse.json(
         { error: 'SOL price feed unavailable — try again shortly' },

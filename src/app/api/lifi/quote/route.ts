@@ -1,27 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
+import { coinsUsd } from '@/lib/price-oracle';
 
 export const dynamic = 'force-dynamic';
 
 async function getCgPrices(): Promise<{ eth: number; sol: number; btc: number }> {
-  const controller = new AbortController();
-  const timeout    = setTimeout(() => controller.abort(), 5000);
-  try {
-    const r = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum,bitcoin&vs_currencies=usd',
-      { signal: controller.signal, cache: 'no-store' }
-    );
-    const data = await r.json();
-    return {
-      eth: data.ethereum?.usd ?? 0,
-      sol: data.solana?.usd   ?? 0,
-      btc: data.bitcoin?.usd  ?? 0,
-    };
-  } catch {
-    return { eth: 0, sol: 0, btc: 0 };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const p = await coinsUsd(['solana', 'ethereum', 'bitcoin']);
+  return { eth: p.ethereum ?? 0, sol: p.solana ?? 0, btc: p.bitcoin ?? 0 };
 }
 
 export async function GET(req: Request) {

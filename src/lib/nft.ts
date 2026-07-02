@@ -3,6 +3,11 @@ import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import { mplCore, transferV1 } from '@metaplex-foundation/mpl-core';
 import { keypairIdentity, publicKey as umiKey } from '@metaplex-foundation/umi';
 
+// SINGLE CUSTODY BOUNDARY — the only place the raw mint-authority secret is materialized into a
+// Keypair. Every mint/transfer path routes through here, so migrating custody off a plaintext env var
+// (mainnet: AWS Nitro Enclave or an Ed25519-capable HSM/MPC signer like Turnkey/Fireblocks — vanilla
+// AWS KMS can't sign Ed25519) is a one-function change, not a codebase sweep. Never log `secret` or
+// the returned `secretKey`. Throws 'not set' when unconfigured; a JSON.parse error means malformed.
 export function getMintAuthority(): Keypair {
   const secret = process.env.MINT_AUTHORITY_SECRET_KEY;
   if (!secret || secret === '[]') throw new Error('MINT_AUTHORITY_SECRET_KEY not set');

@@ -38,25 +38,44 @@ function subscribe(cb: () => void) { listeners.add(cb); return () => { listeners
 function getSnapshot(): Currency { return current; }
 function getServerSnapshot(): Currency { return 'USD'; }
 
-// Live USD price per coin (CoinGecko-backed via /api/price/rates), loaded once. Until it arrives, a crypto
+// Live USD price per coin (CoinGecko-backed via /api/price/rates). Until the first load arrives, a crypto
 // view falls back to USD so a price never renders blank.
 let cryptoUsd: Partial<Record<CryptoCurrency, number>> = {};
-let ratesLoaded = false;
+let ratesFetchedAt = 0;
 let ratesInFlight = false;
+let refresherStarted = false;
+const RATES_TTL_MS = 60_000; // matches the server-side /api/price/rates cache window
+
 function loadCryptoRates() {
-  if (ratesLoaded || ratesInFlight || typeof window === 'undefined') return;
+  if (ratesInFlight || typeof window === 'undefined') return;
+  if (ratesFetchedAt && Date.now() - ratesFetchedAt < RATES_TTL_MS) return; // still fresh
   ratesInFlight = true;
   fetch('/api/price/rates')
     .then((r) => r.json())
     .then((j: { usd?: Record<string, number> }) => {
       if (j?.usd && typeof j.usd === 'object') {
         cryptoUsd = j.usd as Partial<Record<CryptoCurrency, number>>;
-        ratesLoaded = true;
+        ratesFetchedAt = Date.now();
         emit();
       }
     })
     .catch(() => {})
     .finally(() => { ratesInFlight = false; });
+  ensureRefresher();
+}
+
+// A crypto price-view must stay current, not freeze at first load. While a crypto view is active,
+// refresh on an interval and whenever the tab regains focus (rates can be minutes stale after the tab
+// is backgrounded). One module-level refresher, not one per useCurrency() consumer.
+function ensureRefresher() {
+  if (refresherStarted || typeof window === 'undefined') return;
+  refresherStarted = true;
+  setInterval(() => { if (isCrypto(current)) loadCryptoRates(); }, RATES_TTL_MS);
+  const refetchIfVisible = () => {
+    if (document.visibilityState === 'visible' && isCrypto(current)) loadCryptoRates();
+  };
+  document.addEventListener('visibilitychange', refetchIfVisible);
+  window.addEventListener('focus', refetchIfVisible);
 }
 
 export function setCurrency(c: Currency) {

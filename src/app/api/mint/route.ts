@@ -13,6 +13,7 @@ import {
   keypairIdentity,
   publicKey as umiKey,
 } from '@metaplex-foundation/umi';
+import { getMintAuthority } from '@/lib/nft';
 import { createServiceClient } from '@/lib/supabase/service';
 import { checkSerial } from '@/lib/serial-registry';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
@@ -74,12 +75,13 @@ export async function POST(req: Request) {
 
     const rpcUrl = process.env.NEXT_PUBLIC_HELIUS_RPC_URL || 'https://api.devnet.solana.com';
 
-    const mintAuthoritySecret = process.env.MINT_AUTHORITY_SECRET_KEY;
     let mintAuthority: Keypair;
-
-    if (mintAuthoritySecret && mintAuthoritySecret !== '[]') {
-      mintAuthority = Keypair.fromSecretKey(Buffer.from(JSON.parse(mintAuthoritySecret)));
-    } else {
+    try {
+      mintAuthority = getMintAuthority();
+    } catch (e: any) {
+      // Unconfigured (local devnet) → ephemeral keypair. A malformed key fails loud rather than
+      // silently minting under an uncontrolled authority.
+      if (!/not set/.test(e?.message ?? '')) throw e;
       mintAuthority = Keypair.generate();
     }
 

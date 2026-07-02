@@ -11,6 +11,14 @@
     {
       "path": "/api/cron/reconcile-settlements",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/self-heal/dispatch",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/embed-items",
+      "schedule": "0 5 * * *"
     }
   ]
 }

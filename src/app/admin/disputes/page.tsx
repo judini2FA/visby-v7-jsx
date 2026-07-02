@@ -126,7 +126,6 @@ function DisputeCard({
                 ...badge('danger'),
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
-                fontSize: 10,
               }}
             >
               {/* alert icon */}
@@ -158,7 +157,7 @@ function DisputeCard({
 
       {/* reason */}
       {dispute.reason && (
-        <div style={{ ...surface({ pad: S[3], radius: 8 }) }}>
+        <div style={{ ...surface({ pad: S[3], radius: 'var(--r-sm)' }) }}>
           <p style={{ ...t('body'), color: T.text, margin: 0 }}>{dispute.reason}</p>
         </div>
       )}
@@ -185,7 +184,7 @@ function DisputeCard({
       )}
 
       {error && (
-        <div style={{ ...surface({ pad: S[3], radius: 8 }), borderColor: 'var(--danger-soft)' }}>
+        <div style={{ ...surface({ pad: S[3], radius: 'var(--r-sm)' }), borderColor: 'var(--danger-soft)' }}>
           <p style={{ ...t('body'), color: C.red, margin: 0 }}>{error}</p>
         </div>
       )}

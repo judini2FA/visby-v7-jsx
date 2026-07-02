@@ -10,7 +10,7 @@ import {
   publicKey as umiKey,
 } from '@metaplex-foundation/umi';
 import { createServiceClient } from '@/lib/supabase/service';
-import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
+import { transferFromAuthority, getRpcUrl, getMintAuthority } from '@/lib/nft';
 import { checkSerial } from '@/lib/serial-registry';
 
 type MintArgs = {
@@ -46,16 +46,12 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
 
     const rpcUrl = getRpcUrl();
 
-    const mintAuthoritySecret = process.env.MINT_AUTHORITY_SECRET_KEY;
-    if (!mintAuthoritySecret || mintAuthoritySecret === '[]') {
-      return { ok: false, error: 'MINT_AUTHORITY_SECRET_KEY not set' };
-    }
-
     let mintAuthority: Keypair;
     try {
-      mintAuthority = Keypair.fromSecretKey(Buffer.from(JSON.parse(mintAuthoritySecret)));
-    } catch {
-      return { ok: false, error: 'MINT_AUTHORITY_SECRET_KEY is malformed' };
+      mintAuthority = getMintAuthority();
+    } catch (e: any) {
+      const notSet = /not set/.test(e?.message ?? '');
+      return { ok: false, error: notSet ? 'MINT_AUTHORITY_SECRET_KEY not set' : 'MINT_AUTHORITY_SECRET_KEY is malformed' };
     }
 
     const conn = new Connection(rpcUrl, 'confirmed');
