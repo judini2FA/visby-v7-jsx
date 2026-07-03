@@ -13,19 +13,9 @@ const scrypt = promisify(_scrypt);
 const KEYLEN = 64;
 const SALT_BYTES = 16;
 
-export const PASSWORD_MIN = 8;
-export const PASSWORD_MAX = 128;
-
-// Returns a human-facing reason if the password is too weak, else null. Deliberately lenient (length +
-// not-all-one-character) — an intimidating strength meter fights the "toddler-proof" goal; the real
-// account security is the Privy email factor + 2FA, this is an additional layer.
-export function passwordProblem(pw: unknown): string | null {
-  if (typeof pw !== 'string') return 'Enter a password.';
-  if (pw.length < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} characters.`;
-  if (pw.length > PASSWORD_MAX) return `Keep it under ${PASSWORD_MAX} characters.`;
-  if (/^(.)\1+$/.test(pw)) return 'Too easy to guess — mix it up a little.';
-  return null;
-}
+// The pure validation rules live in a client-safe module (no node:crypto), so client components import
+// them from there directly. Re-exported here so server routes can keep importing from account-password.
+export { PASSWORD_MIN, PASSWORD_MAX, passwordProblem } from './password-rules';
 
 export async function hashPassword(pw: string): Promise<string> {
   const salt = randomBytes(SALT_BYTES);

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
-import { passwordProblem } from '@/lib/account-password';
+import { passwordProblem } from '@/lib/password-rules';
 import { t, S, btn, input, card, T } from '@/lib/ui';
 
 // Session flag is per-wallet so switching accounts on the same device re-gates. Cleared on Privy
