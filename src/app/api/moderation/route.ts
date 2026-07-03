@@ -48,8 +48,13 @@ export async function GET(req: Request) {
   }
 }
 
-const VALID_ACTIONS = ['force_delist', 'flag_user'] as const;
+const VALID_ACTIONS = ['force_delist', 'flag_user', 'suspend_user', 'ban_user', 'reinstate_user'] as const;
 type ModAction = typeof VALID_ACTIONS[number];
+
+// Actions that operate on a user (target_id = wallet) rather than a report row. These are launched
+// from the admin Users page, not a specific report, so report_id is optional for them — only
+// force_delist/flag_user (report-driven) still require one.
+const USER_LEVEL_ACTIONS: ModAction[] = ['flag_user', 'suspend_user', 'ban_user', 'reinstate_user'];
 
 function isMissing(error: { message?: string; code?: string } | null): boolean {
   return !!error && (
@@ -60,19 +65,26 @@ function isMissing(error: { message?: string; code?: string } | null): boolean {
 
 export async function PATCH(req: Request) {
   try {
-    const { wallet, report_id, status, action, target_id } = await req.json();
+    const { wallet, report_id, status, action, target_id, reason } = await req.json();
 
     const admin = await requireAdmin(req, wallet);
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    if (!report_id) {
+    // report_id is required for the plain status-flip path and for the report-driven actions
+    // (force_delist / flag_user). User-level actions (suspend_user/ban_user/reinstate_user) are
+    // launched from the admin Users page against a wallet, not a report, so it's optional there —
+    // when present we still update that report's row as a side effect.
+    const isUserLevelAction = action !== undefined && USER_LEVEL_ACTIONS.includes(action as ModAction);
+    if (!report_id && !isUserLevelAction) {
       return NextResponse.json({ error: 'report_id is required' }, { status: 400 });
     }
 
     const supabase = createServiceClient();
+    const modReason = typeof reason === 'string' && reason.trim() ? reason.trim() : null;
 
     // Enforcement actions take the moderator's intent further than a status flip: delist a reported
-    // listing, or flag a reported seller. Both then mark the report 'actioned'.
+    // listing, flag/suspend/ban a seller, or reinstate one. Report-driven actions then mark the report
+    // 'actioned'; user-level actions only touch the report if one was actually passed.
     if (action !== undefined) {
       if (!VALID_ACTIONS.includes(action as ModAction)) {
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -90,20 +102,50 @@ export async function PATCH(req: Request) {
           console.error('[moderation/PATCH force_delist] error:', error);
           return NextResponse.json({ error: 'Could not delist item' }, { status: 500 });
         }
-      } else {
-        // flag_user — upsert so it works whether or not the seller already has a profile row.
-        // Suspension must actually stop the counterfeiter, not just hide their storefront: mint/list
-        // routes reject on is_flagged, and here we also delist everything currently live so existing
-        // listings don't linger in browse/search until a separate manual force_delist per item.
+      } else if (action === 'reinstate_user') {
+        // Clears the moderation lifecycle back to normal. Deliberately does NOT re-list the user's
+        // items — a suspended/banned seller's listings were pulled for a reason; they relist themselves
+        // once reinstated, giving them a chance to fix whatever triggered the action.
         const { error } = await supabase
           .from('profiles')
-          .upsert({ wallet: target_id, is_flagged: true }, { onConflict: 'wallet' });
+          .upsert({
+            wallet: target_id,
+            account_status: 'active',
+            is_flagged: false,
+            moderation_reason: null,
+            moderated_at: new Date().toISOString(),
+            moderated_by: wallet,
+          }, { onConflict: 'wallet' });
         if (error) {
           if (isMissing(error)) {
-            return NextResponse.json({ error: 'is_flagged column not migrated yet' }, { status: 503 });
+            return NextResponse.json({ error: 'account_status column not migrated yet' }, { status: 503 });
           }
-          console.error('[moderation/PATCH flag_user] error:', error);
-          return NextResponse.json({ error: 'Could not flag user' }, { status: 500 });
+          console.error('[moderation/PATCH reinstate_user] error:', error);
+          return NextResponse.json({ error: 'Could not reinstate user' }, { status: 500 });
+        }
+      } else {
+        // flag_user (alias of suspend_user) / suspend_user / ban_user — upsert so it works whether or
+        // not the seller already has a profile row. Suspension/ban must actually stop the counterfeiter,
+        // not just hide their storefront: mint/list routes reject on account_status/is_flagged, and here
+        // we also delist everything currently live so existing listings don't linger in browse/search
+        // until a separate manual force_delist per item. is_flagged is kept in sync as the legacy signal.
+        const newStatus: 'suspended' | 'banned' = action === 'ban_user' ? 'banned' : 'suspended';
+        const { error } = await supabase
+          .from('profiles')
+          .upsert({
+            wallet: target_id,
+            account_status: newStatus,
+            is_flagged: true,
+            moderation_reason: modReason,
+            moderated_at: new Date().toISOString(),
+            moderated_by: wallet,
+          }, { onConflict: 'wallet' });
+        if (error) {
+          if (isMissing(error)) {
+            return NextResponse.json({ error: 'account_status column not migrated yet' }, { status: 503 });
+          }
+          console.error(`[moderation/PATCH ${action}] error:`, error);
+          return NextResponse.json({ error: 'Could not update user status' }, { status: 500 });
         }
 
         const { error: delistErr } = await supabase
@@ -112,23 +154,31 @@ export async function PATCH(req: Request) {
           .eq('current_owner_wallet', target_id)
           .eq('is_listed', true);
         if (delistErr && !isMissing(delistErr)) {
-          // Flag already landed (the part that blocks future mint/list); log but don't fail the
+          // Flag/status already landed (the part that blocks future mint/list); log but don't fail the
           // request — a moderator can still force_delist stragglers individually.
-          console.error('[moderation/PATCH flag_user] bulk delist error:', delistErr);
+          console.error(`[moderation/PATCH ${action}] bulk delist error:`, delistErr);
         }
       }
 
-      const { error: repErr } = await supabase
-        .from('reports')
-        .update({ status: 'actioned', reviewed_at: new Date().toISOString(), reviewed_by: wallet })
-        .eq('id', report_id);
-      if (repErr && !isMissing(repErr)) {
-        console.error('[moderation/PATCH action->report] error:', repErr);
+      if (report_id) {
+        const { error: repErr } = await supabase
+          .from('reports')
+          .update({ status: 'actioned', reviewed_at: new Date().toISOString(), reviewed_by: wallet })
+          .eq('id', report_id);
+        if (repErr && !isMissing(repErr)) {
+          console.error('[moderation/PATCH action->report] error:', repErr);
+        }
       }
+
       if (action === 'force_delist') {
         void logSecurityEvent({ wallet, event: 'listing_delisted', detail: { report_id, target_item_or_serial: target_id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
+      } else if (action === 'reinstate_user') {
+        void logSecurityEvent({ wallet, event: 'user_reinstated', detail: { report_id, target_wallet: target_id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
+      } else if (action === 'ban_user') {
+        void logSecurityEvent({ wallet, event: 'user_banned', detail: { report_id, target_wallet: target_id, reason: modReason }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
       } else {
-        void logSecurityEvent({ wallet, event: 'user_flagged', detail: { report_id, target_wallet: target_id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
+        // suspend_user or its flag_user alias
+        void logSecurityEvent({ wallet, event: 'user_suspended', detail: { report_id, target_wallet: target_id, reason: modReason }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
       }
       return NextResponse.json({ ok: true });
     }

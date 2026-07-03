@@ -44,14 +44,14 @@
 - [x] 2.6 Provenance explainer — done 2026-07-03: extracted `<TallyExplainerCard>`/`<TallyExplainerInline>`; card on item page (identical render), inline on order-confirmation page.
 - **Gate:** a business bulk-logs serials that stay unminted until each sells; a QR on a physical item opens its provenance.
 
-## Phase 3 — Shipping & fulfillment (EasyPost)
-- [ ] 3.1 EasyPost test key in; live-test full chain (ship-from → rate-shop → buy label → tracking/label_url → net payout)
-- [ ] 3.2 Validate EasyPost SDK response-shape assumptions in src/lib/shipping.ts against the real API
-- [ ] 3.3 Visby webhook receiver for EasyPost tracking → auto-confirm delivery → review email + payout release
-- [ ] 3.4 Shipping insurance option at label purchase for high-value items
-- [ ] 3.5 Retire direct UPS/FedEx/USPS adapters
-- [ ] 3.6 Production billing: swap EasyPost account to Visby's fund account before live labels — Judah
-- **Gate:** a test order ships with a real EasyPost test label and delivery webhook auto-fires review email + payout.
+## Phase 3 — Shipping & fulfillment (AtoShip — replaced EasyPost 2026-07-03)
+- [x] 3.1 AtoShip key in; rate-shop live-tested (Austin→SF returned real UPS/USPS/FedEx rates) 2026-07-03
+- [x] 3.2 Validated AtoShip response shapes against the REAL API (adapter src/lib/shipping/atoship.ts — docs said `rates`, real API is `data`; service_code null → deterministic slug)
+- [x] 3.3 Delivery webhook DONE 2026-07-03: /api/shipping/webhook (HMAC + shared-secret verify, fail-closed) → shared finalizeDelivery(source:'carrier') → auto-confirm delivery + review email + payout; carrier delivery HOLDS payout if an open dispute exists. NEEDS: set SHIPPING_WEBHOOK_SECRET + register the URL in AtoShip dashboard + confirm AtoShip's real signature scheme.
+- [ ] 3.4 Shipping insurance option at label purchase for high-value items — NOT done
+- [x] 3.5 Direct UPS/FedEx/USPS adapters retired (git rm'd 2026-07-03)
+- [ ] 3.6 Production billing: fund AtoShip wallet + swap to ak_live_ before live labels — Judah
+- **Gate:** a test order ships with a real label and the delivery webhook auto-fires review email + payout. (Webhook code done; end-to-end live test pending AtoShip dashboard config.)
 
 ## Phase 4 — Money rails completion (non-custodial always)
 - [ ] 4.1 Stripe Financial Connections: bank link + verification; wallet-page bank tiles re-railed onto it
@@ -84,7 +84,8 @@
 - [ ] 6.5 Dispute evidence capture: photo/doc upload + proof-of-delivery attach + admin evidence view
 - [ ] 6.6 Chargeback playbook: evidence bundle export (delivery + provenance trail) per order
 - [ ] 6.7 NFC chip workflow (tag write/verify → item page) — after QR proves the loop
-- **Gate:** unverified users can buy but not sell; sanctioned wallets blocked; a dispute carries evidence an issuer would accept.
+- [x] 6.8 Account suspend + ban — DONE 2026-07-03 (Judah request). profiles.account_status ('active'|'suspended'|'banned') live (is_flagged backfilled→suspended). account-status.ts (isBanned/isRestricted, fail-open). Enforced: tRPC protectedProcedure + all money routes (transfer/onramp) reject banned; mint + listing + listForSale reject suspended-or-banned. Moderation route: suspend_user/ban_user/reinstate_user (+ flag_user alias) with delisting + audit events. /api/account/status endpoint. Admin Users page: status badges + Suspend/Ban/Reinstate controls. Client AccountGate: banned=full-screen block+signout, suspended=dismissible banner; fails open. Verified: tsc clean, clean hydration, routes reject unauth (401/403).
+- **Gate:** unverified users can buy but not sell; sanctioned wallets blocked; a dispute carries evidence an issuer would accept; a banned account is locked out and a suspended one can't sell.
 
 ## Phase 7 — UX & "toddler-proof" experience
 - [ ] 7.1 First-run onboarding walkthrough (what Visby is, what a Tally is, how paying works — zero jargon)

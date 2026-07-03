@@ -7,6 +7,7 @@ import { searchListings, semanticSearchListings } from '@/server/lib/search-engi
 import { semanticEnabled } from '@/lib/embeddings';
 import { ownersForItems } from '@/lib/owners';
 import { requireKycForSaleAny } from '@/lib/kyc';
+import { isRestricted } from '@/lib/account-status';
 
 // Hide listings owned by flagged sellers from public browse. Degrades to "hide nothing" if the
 // is_flagged column isn't migrated yet, so the marketplace never breaks on a missing column.
@@ -53,19 +54,14 @@ export const listingsRouter = createTRPCRouter({
       if (!kyc.ok) throw new TRPCError({ code: 'FORBIDDEN', message: 'kyc_required' });
       const supabase = createServiceClient();
 
-      // Counterfeit-takedown enforcement: a moderator-suspended account cannot (re)list inventory.
-      // Fail-safe: a DB read error is logged and treated as not-flagged (fail open on outages);
-      // only an explicit is_flagged=true blocks.
+      // Counterfeit-takedown enforcement: a moderator-suspended OR banned account cannot (re)list
+      // inventory. isRestricted checks account_status (not just the legacy is_flagged boolean), so a
+      // NEWLY-suspended account is blocked immediately even before is_flagged is set. Fails open on a
+      // DB read error (outage) so a transient hiccup never locks out a legitimate seller — only an
+      // explicit suspend/ban blocks.
       {
         const suspendCheckWallets = Array.from(new Set([...ctx.wallets, input.seller_wallet].filter(Boolean)));
-        const { data: flaggedRows, error: flagErr } = await supabase
-          .from('profiles')
-          .select('wallet')
-          .eq('is_flagged', true)
-          .in('wallet', suspendCheckWallets);
-        if (flagErr) {
-          console.error('[listings.listForSale] is_flagged check failed (failing open):', flagErr.message);
-        } else if ((flaggedRows ?? []).length > 0) {
+        if (await isRestricted(suspendCheckWallets)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'account_suspended' });
         }
       }

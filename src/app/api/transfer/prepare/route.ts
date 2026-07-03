@@ -6,6 +6,7 @@ import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { resolveRecipient, prepareAtomic, type TransferToken } from '@/lib/transfers';
 import { requireStepUp } from '@/lib/step-up';
 import { sendMoneyAction } from '@/lib/step-up-shared';
+import { isBanned } from '@/lib/account-status';
 
 const TOKENS: TransferToken[] = ['SOL', 'USDC'];
 
@@ -32,6 +33,11 @@ export async function POST(req: Request) {
   // Reject sub-dust: SOL amounts that round to 0 lamports would record a "sent" transfer that moved nothing.
   if (token === 'SOL' && Math.round(amount * 1e9) < 1) return NextResponse.json({ error: 'amount is too small' }, { status: 400 });
   if (!ctx.wallets.includes(from_wallet)) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
+
+  // Ban-freeze: only a BAN locks a user out of moving their own money — suspension only blocks selling.
+  // isBanned reads the worst account_status across all of the caller's linked wallets and fails open on
+  // a DB error so an outage never freezes a legitimate user's funds.
+  if (await isBanned(ctx.wallets)) return NextResponse.json({ error: 'account_banned' }, { status: 403 });
 
   // MFA step-up before authorizing a send (money leaving the user's wallet). Binds the destination +
   // token; dormant until NEXT_PUBLIC_STEP_UP_ENFORCED=1, then also requires the owner to have MFA enrolled.

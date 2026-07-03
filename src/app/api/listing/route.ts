@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
 import { requireKycForSaleAny } from '@/lib/kyc';
+import { isRestricted } from '@/lib/account-status';
 
 export async function POST(req: Request) {
     try {
@@ -24,19 +25,14 @@ export async function POST(req: Request) {
 
           const supabase = createServiceClient();
 
-          // Counterfeit-takedown enforcement: a moderator-suspended account cannot (re)list inventory.
-          // Fail-safe: a DB read error is logged and treated as not-flagged (fail open on outages);
-          // only an explicit is_flagged=true blocks.
+          // Counterfeit-takedown enforcement: a moderator-suspended OR banned account cannot (re)list
+          // inventory. isRestricted checks account_status (not just the legacy is_flagged boolean), so a
+          // NEWLY-suspended account is blocked immediately even before is_flagged is set. Fails open on a
+          // DB read error (outage) so a transient hiccup never locks out a legitimate seller — only an
+          // explicit suspend/ban blocks.
           {
             const suspendCheckWallets = Array.from(new Set([...(authCtx?.wallets ?? []), seller_wallet].filter(Boolean)));
-            const { data: flaggedRows, error: flagErr } = await supabase
-              .from('profiles')
-              .select('wallet')
-              .eq('is_flagged', true)
-              .in('wallet', suspendCheckWallets);
-            if (flagErr) {
-              console.error('[listing] is_flagged check failed (failing open):', flagErr.message);
-            } else if ((flaggedRows ?? []).length > 0) {
+            if (await isRestricted(suspendCheckWallets)) {
               return NextResponse.json({ error: 'account_suspended' }, { status: 403 });
             }
           }

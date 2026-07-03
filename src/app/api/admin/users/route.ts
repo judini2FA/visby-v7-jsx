@@ -34,6 +34,7 @@ export async function GET(req: Request) {
   // kyc_status / account_type / created_at). Degrade through progressively smaller column sets, each tried
   // with and without the created_at sort, so real users always show even when later migrations aren't run.
   const SETS = [
+    'wallet, display_name, avatar_url, kyc_status, account_type, is_flagged, account_status, created_at',
     'wallet, display_name, avatar_url, kyc_status, account_type, is_flagged, created_at',
     'wallet, display_name, avatar_url, is_flagged',
     'wallet, display_name',

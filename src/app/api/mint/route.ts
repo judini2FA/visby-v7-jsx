@@ -19,6 +19,7 @@ import { checkSerial } from '@/lib/serial-registry';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
 import { requireKycForSaleAny } from '@/lib/kyc';
+import { isRestricted } from '@/lib/account-status';
 import { captureError } from '@/lib/monitoring';
 
 export async function POST(req: Request) {
@@ -58,21 +59,12 @@ export async function POST(req: Request) {
     const kyc = await requireKycForSaleAny(authCtx?.wallets ?? [owner_wallet]);
     if (!kyc.ok) return NextResponse.json({ error: 'kyc_required', kyc_status: kyc.status }, { status: 403 });
 
-    // Counterfeit-takedown enforcement: a moderator-suspended account cannot mint new inventory, on any
-    // of the caller's linked wallets (mirrors the per-user KYC check above). Fail-safe: a DB read error
-    // is logged and treated as not-flagged so a transient outage never blocks a legitimate seller — only
-    // an explicit is_flagged=true blocks.
+    // Moderation enforcement: a suspended OR banned account cannot mint new inventory, on any of the
+    // caller's linked wallets (mirrors the per-user KYC check above). isRestricted fails open on a DB
+    // hiccup so a transient outage never blocks a legitimate seller — only an explicit suspend/ban/flag.
     {
       const suspendCheckWallets = Array.from(new Set([...(authCtx?.wallets ?? []), owner_wallet].filter(Boolean)));
-      const supabaseFlagCheck = createServiceClient();
-      const { data: flaggedRows, error: flagErr } = await supabaseFlagCheck
-        .from('profiles')
-        .select('wallet')
-        .eq('is_flagged', true)
-        .in('wallet', suspendCheckWallets);
-      if (flagErr) {
-        console.error('[mint] is_flagged check failed (failing open):', flagErr.message);
-      } else if ((flaggedRows ?? []).length > 0) {
+      if (await isRestricted(suspendCheckWallets)) {
         return NextResponse.json({ error: 'account_suspended' }, { status: 403 });
       }
     }

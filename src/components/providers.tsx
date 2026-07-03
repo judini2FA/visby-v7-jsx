@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme } from '@/lib/theme';
 import { NativeBootstrap } from '@/components/native-bootstrap';
 import { AppLock } from '@/components/app-lock';
 import { PasswordGate } from '@/components/password-gate';
+import { AccountGate } from '@/components/account-gate';
 import { CurrencySync } from '@/components/currency-sync';
 import { captureError } from '@/lib/monitoring';
 
@@ -112,7 +113,9 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
           <QueryClientProvider client={queryClient}>
             <CurrencySync />
             <PasswordGate>
-              <AppLock>{children}</AppLock>
+              <AppLock>
+                <AccountGate>{children}</AccountGate>
+              </AppLock>
             </PasswordGate>
           </QueryClientProvider>
         </trpc.Provider>

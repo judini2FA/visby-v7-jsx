@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { callerOwnsWallet } from '@/lib/auth';
+import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { disburseOnramp } from '@/lib/onramp-disburse';
+import { isBanned } from '@/lib/account-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,17 @@ export async function POST(req: Request) {
     // moves treasury crypto on demand is still an open door.
     if (!(await callerOwnsWallet(req, pi.metadata?.wallet))) {
       return NextResponse.json({ error: 'Not authorized — please sign in.' }, { status: 401 });
+    }
+
+    // Ban-freeze: only a BAN locks a user out of moving their own money. This delivers tokens the user
+    // already paid Stripe for, but a banned account still shouldn't be able to pull treasury crypto on
+    // demand — the charge itself can be refunded out-of-band. Fails open on a DB error so an outage
+    // never freezes a legitimate user's funds. Resolve via getAuthedContext (not just the single
+    // pi.metadata.wallet) so a ban on any of the caller's linked wallets is honored, mirroring the
+    // other money routes.
+    const authCtx = await getAuthedContext(req);
+    if (await isBanned(authCtx?.wallets ?? [pi.metadata?.wallet].filter(Boolean) as string[])) {
+      return NextResponse.json({ error: 'account_banned' }, { status: 403 });
     }
 
     const result = await disburseOnramp(stripe, pi);

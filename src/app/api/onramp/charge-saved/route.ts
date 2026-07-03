@@ -7,6 +7,7 @@ import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 import { disburseOnramp } from '@/lib/onramp-disburse';
 import { requireStepUp } from '@/lib/step-up';
 import { onrampChargeAction } from '@/lib/step-up-shared';
+import { isBanned } from '@/lib/account-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,12 @@ export async function POST(req: Request) {
     if (!ctx || !ctx.wallets.includes(wallet)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Ban-freeze: only a BAN locks a user out of moving their own money (buying tokens with a saved
+    // card is still "their own funds", it just enters via card rather than leaves via transfer).
+    // Suspension alone does not block this. Fails open on a DB error so an outage never freezes a
+    // legitimate user's funds.
+    if (await isBanned(ctx.wallets)) return NextResponse.json({ error: 'account_banned' }, { status: 403 });
 
     const rl = await rateLimit(`onramp-charge-saved:${wallet}`, { limit: 8, windowSec: 60 });
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
