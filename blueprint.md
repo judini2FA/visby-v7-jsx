@@ -54,14 +54,14 @@
 - **Gate:** a test order ships with a real label and the delivery webhook auto-fires review email + payout. (Webhook code done; end-to-end live test pending AtoShip dashboard config.)
 
 ## Phase 4 — Money rails completion (non-custodial always)
-- [ ] 4.1 Stripe Financial Connections: bank link + verification; wallet-page bank tiles re-railed onto it
+- [~] 4.1 Stripe Financial Connections — SERVER FOUNDATION done 2026-07-03 (Stripe acct operational: FC-capable). migration_linked_bank_accounts (live) + /api/bank/{create-session,complete,list,disconnect} (authed + wallet-owned; complete verifies FC-session ownership; SDK v16.12 native FC types). Adversarially verified GO. REMAINING: wallet-page UI (Stripe.js collectFinancialConnectionsAccounts) to replace the dead Plaid tile + a live bank-link test.
 - [ ] 4.2 Remove Plaid + SnapTrade (code, tables, keys)
 - [ ] 4.3 Fiat payouts: Stripe Connect transfer to seller bank when bank = Primary method
 - [ ] 4.4 ACH pay-in
 - [ ] 4.5 Multi-currency auto-conversion: seller receives their preferred currency on payout
 - [ ] 4.6 Moov card reader wired into checkout (card-present → same order state machine → Tally mint + payout)
 - [x] 4.7 Order state machine — validator DONE 2026-07-03: src/lib/order-state-machine.ts (OrderStatus union + LEGAL_TRANSITIONS table faithful to every real orders.status write site + canTransition/assertTransition) + scripts/test-order-state-machine.mjs (31/31 pass) + TODO markers at the 4 write sites. Adversarially verified: table matches reality, no missing/wrong edges. Runtime enforcement is still the existing per-route CAS; wiring hard asserts at the TODOs is an optional reviewed follow-up. (sdk_orders is a SEPARATE state machine — out of scope.)
-- [ ] 4.8 Cross-provider reconciliation job: Stripe + Moov + on-chain vs 9%/3.5% fee math; alert on drift
+- [x] 4.8 Cross-provider reconciliation — DONE 2026-07-03: /api/cron/reconcile-fees (daily, CRON_SECRET-authed, READ-ONLY) re-derives each recent order's fee via the real feeBreakdown + checks payout consistency (payout_released⇒payout_tx, delivered⇒fee fields), alerts on >1¢ drift via captureMessage. src/lib/reconcile.ts (pure reconcileOrder) + scripts/test-reconcile-fees.mjs (13/13 pass). Added to vercel.json crons. Adversarially verified GO (grep-confirmed no writes).
 - [ ] 4.9 Stripe Tax (marketplace facilitator) behind a flag — enable when Judah confirms nexus/entity
 - [ ] 4.10 1099-K seller reporting via Stripe Connect, behind a flag
 - **Gate:** money moves and settles across all rails without Visby taking custody; every rail reconciles.

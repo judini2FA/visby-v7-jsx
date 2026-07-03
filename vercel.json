@@ -13,6 +13,10 @@
       "schedule": "0 8 * * *"
     },
     {
+      "path": "/api/cron/reconcile-fees",
+      "schedule": "30 8 * * *"
+    },
+    {
       "path": "/api/self-heal/dispatch",
       "schedule": "0 9 * * *"
     },
