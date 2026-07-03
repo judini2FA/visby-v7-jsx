@@ -60,7 +60,7 @@
 - [ ] 4.4 ACH pay-in
 - [ ] 4.5 Multi-currency auto-conversion: seller receives their preferred currency on payout
 - [ ] 4.6 Moov card reader wired into checkout (card-present → same order state machine → Tally mint + payout)
-- [ ] 4.7 Order state machine: formal transition validator (legal-transition table + guards + unit tests)
+- [x] 4.7 Order state machine — validator DONE 2026-07-03: src/lib/order-state-machine.ts (OrderStatus union + LEGAL_TRANSITIONS table faithful to every real orders.status write site + canTransition/assertTransition) + scripts/test-order-state-machine.mjs (31/31 pass) + TODO markers at the 4 write sites. Adversarially verified: table matches reality, no missing/wrong edges. Runtime enforcement is still the existing per-route CAS; wiring hard asserts at the TODOs is an optional reviewed follow-up. (sdk_orders is a SEPARATE state machine — out of scope.)
 - [ ] 4.8 Cross-provider reconciliation job: Stripe + Moov + on-chain vs 9%/3.5% fee math; alert on drift
 - [ ] 4.9 Stripe Tax (marketplace facilitator) behind a flag — enable when Judah confirms nexus/entity
 - [ ] 4.10 1099-K seller reporting via Stripe Connect, behind a flag
@@ -84,7 +84,7 @@
 - [ ] 6.5 Dispute evidence capture: photo/doc upload + proof-of-delivery attach + admin evidence view
 - [ ] 6.6 Chargeback playbook: evidence bundle export (delivery + provenance trail) per order
 - [ ] 6.7 NFC chip workflow (tag write/verify → item page) — after QR proves the loop
-- [x] 6.8 Account suspend + ban — DONE 2026-07-03 (Judah request). profiles.account_status ('active'|'suspended'|'banned') live (is_flagged backfilled→suspended). account-status.ts (isBanned/isRestricted, fail-open). Enforced: tRPC protectedProcedure + all money routes (transfer/onramp) reject banned; mint + listing + listForSale reject suspended-or-banned. Moderation route: suspend_user/ban_user/reinstate_user (+ flag_user alias) with delisting + audit events. /api/account/status endpoint. Admin Users page: status badges + Suspend/Ban/Reinstate controls. Client AccountGate: banned=full-screen block+signout, suspended=dismissible banner; fails open. Verified: tsc clean, clean hydration, routes reject unauth (401/403).
+- [x] 6.8 Account suspend + ban — DONE 2026-07-03 (Judah request). profiles.account_status ('active'|'suspended'|'banned') live (is_flagged backfilled→suspended). account-status.ts (isBanned/isRestricted, fail-open). Enforced: tRPC protectedProcedure + all money routes (transfer/onramp) reject banned; mint + listing + listForSale reject suspended-or-banned. Moderation route: suspend_user/ban_user/reinstate_user (+ flag_user alias) with delisting + audit events. /api/account/status endpoint. Admin Users page: status badges + Suspend/Ban/Reinstate controls. Client AccountGate: banned=full-screen block+signout, suspended=dismissible banner; fails open. Verified: tsc clean, clean hydration, routes reject unauth (401/403). **OPERATIONAL: 13/13 live-DB checks passed 2026-07-03** — banned blocks all incl. money, suspended blocks selling not own funds, legacy is_flagged still restricts, fail-open on empty, ban_user delists live listings + reinstate reverses. Deployed to prod (9b302e5).
 - **Gate:** unverified users can buy but not sell; sanctioned wallets blocked; a dispute carries evidence an issuer would accept; a banned account is locked out and a suspended one can't sell.
 
 ## Phase 7 — UX & "toddler-proof" experience

@@ -64,6 +64,7 @@ export async function finalizeDelivery(orderId: string, opts: FinalizeOpts): Pro
     // Atomically claim the delivery. Whoever flips paid/shipped -> delivered owns dispute handling +
     // payout for this order — see module header. For source:'buyer' the CAS also matches buyer_wallet,
     // exactly as the original inline implementation did, so a buyer can only confirm their own order.
+    // TODO(4.7): assertTransition('paid'|'shipped', 'delivered') here — see src/lib/order-state-machine.ts.
     let claimQuery = supabase
       .from('orders')
       .update({ status: 'delivered', delivered_at: new Date().toISOString() })

@@ -102,6 +102,7 @@ export async function POST(req: Request) {
 
       // CLAIM the order out of 'paid' BEFORE spending money on a label. A concurrent or retried ship
       // request loses this CAS and is rejected, so a label can never be bought (and paid for) twice.
+      // TODO(4.7): assertTransition('paid', 'shipped') here — see src/lib/order-state-machine.ts.
       const { data: claimed, error: claimErr } = await supabase
         .from('orders')
         .update({ status: 'shipped', shipped_at: nowIso })
@@ -116,11 +117,13 @@ export async function POST(req: Request) {
       try {
         bought = await buyLabel(chosen, from, to, parcel);
       } catch (labelErr) {
+        // TODO(4.7): assertTransition('shipped', 'paid') here (rollback) — see src/lib/order-state-machine.ts.
         await supabase.from('orders').update({ status: 'paid', shipped_at: null }).eq('id', order_id);
         const msg = labelErr instanceof Error ? labelErr.message : 'Label purchase failed.';
         return NextResponse.json({ error: msg }, { status: 502 });
       }
       if (!bought) {
+        // TODO(4.7): assertTransition('shipped', 'paid') here (rollback) — see src/lib/order-state-machine.ts.
         await supabase.from('orders').update({ status: 'paid', shipped_at: null }).eq('id', order_id);
         return NextResponse.json({ error: 'Label purchase failed.' }, { status: 502 });
       }
@@ -187,6 +190,7 @@ export async function POST(req: Request) {
       if (!carrier || !tracking_number) return NextResponse.json({ error: 'Enter carrier and tracking number' }, { status: 400 });
       const c = String(carrier).trim(), tn = String(tracking_number).trim();
       if (c.length > 64 || tn.length > 128) return NextResponse.json({ error: 'Carrier or tracking number too long' }, { status: 400 });
+      // TODO(4.7): assertTransition('paid', 'shipped') here — see src/lib/order-state-machine.ts.
       const { data: row, error } = await supabase
         .from('orders')
         .update({ status: 'shipped', shipped_at: nowIso, tracking_carrier: c, tracking_number: tn })

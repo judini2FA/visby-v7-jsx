@@ -70,6 +70,9 @@ export async function createOrder(o: {
     const fees = feeBreakdown(o.price_usdc ?? 0, 0, o.sale_channel);
     const payout_method = o.pay_method === 'card' ? 'card' : 'crypto';
 
+    // TODO(4.7): assertTransition here — this is a row CREATE (not a transition), always at
+    // 'paid'; a future guard would just assert the literal equals 'paid', not call the state
+    // machine. See src/lib/order-state-machine.ts.
     const base = {
       item_id:       o.item_id,
       buyer_wallet:  o.buyer_wallet,

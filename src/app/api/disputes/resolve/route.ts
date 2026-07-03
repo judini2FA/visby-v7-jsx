@@ -174,6 +174,8 @@ export async function PATCH(req: Request) {
     //   (2) LOCK the ORDER out of the payable set BEFORE any money moves. The confirm/payout path CASes
     //       on status IN (paid,shipped) & payout_released=false, so flipping the order to 'refunded'
     //       here makes the two mutually exclusive: exactly one of {refund buyer, pay seller} can win.
+    // TODO(4.7): assertTransition('paid'|'shipped'|'delivered', 'refunded') here — see
+    // src/lib/order-state-machine.ts.
     const { data: lockedOrder, error: lockErr } = await supabase
       .from('orders')
       .update({ status: 'refunded', disputed: false, refunded_at: now })
