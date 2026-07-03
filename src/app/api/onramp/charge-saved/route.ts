@@ -1,32 +1,17 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
-import { callerOwnsWallet } from '@/lib/auth';
-import {
-  sendSolFromAuthority, getSolBalance,
-  sendUsdcFromAuthority, getUsdcBalance, getAuthorityUsdcBalance,
-} from '@/lib/solana-fund';
+import { getAuthedContext } from '@/lib/auth';
+import { getAuthorityUsdcBalance } from '@/lib/solana-fund';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { disburseOnramp } from '@/lib/onramp-disburse';
+import { requireStepUp } from '@/lib/step-up';
+import { onrampChargeAction } from '@/lib/step-up-shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
-async function getSolPrice(): Promise<number> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const r = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
-      { signal: controller.signal, cache: 'no-store' }
-    );
-    const data = await r.json();
-    return data.solana?.usd ?? 0;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 // Add funds from a SAVED card (off-session), then disburse the token from the treasury. Same disbursement
 // as /onramp/fulfill, but the charge is server-confirmed against a stored payment method instead of a
@@ -47,12 +32,19 @@ export async function POST(req: Request) {
     if (!payment_method_id || typeof payment_method_id !== 'string') {
       return NextResponse.json({ error: 'payment_method_id is required' }, { status: 400 });
     }
-    if (!(await callerOwnsWallet(req, wallet))) {
+    const ctx = await getAuthedContext(req);
+    if (!ctx || !ctx.wallets.includes(wallet)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const rl = await rateLimit(`onramp-charge-saved:${wallet}`, { limit: 8, windowSec: 60 });
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
+    // MFA step-up: this charges a SAVED card off-session (card -> crypto) without the card being
+    // re-entered, so it gets the same step-up as a send. Fresh-card purchases (CardPayForm, buyer typing
+    // card details) are untouched. Dormant until NEXT_PUBLIC_STEP_UP_ENFORCED=1.
+    const stepUp = await requireStepUp(req, wallet, onrampChargeAction(wallet, usd, asset), ctx.userId);
+    if (stepUp) return stepUp;
 
     // Don't charge for USDC the treasury can't deliver (USDC is 1:1 with USD).
     if (asset === 'USDC') {
@@ -97,30 +89,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Payment ${pi.status} — try a different card` }, { status: 402 });
     }
 
-    // Charge cleared — disburse. A failure here leaves the PI succeeded-but-unfulfilled, completable via
-    // /onramp/fulfill (which keys off the same metadata + the fulfilled flag).
-    try {
-      if (asset === 'USDC') {
-        const token_amount = usd;
-        const tx = await sendUsdcFromAuthority(wallet, token_amount);
-        await stripe.paymentIntents.update(pi.id, { metadata: { ...pi.metadata, fulfilled: 'true', token_amount: String(token_amount) } });
-        const new_balance = await getUsdcBalance(wallet);
-        return NextResponse.json({ ok: true, tx, asset: 'USDC', token_amount, new_balance });
-      }
-
-      const sol_price = await getSolPrice();
-      if (sol_price === 0) throw new Error('SOL price feed unavailable');
-      const sol_amount = usd / sol_price;
-      const tx = await sendSolFromAuthority(wallet, Math.round(sol_amount * 1e9));
-      await stripe.paymentIntents.update(pi.id, { metadata: { ...pi.metadata, fulfilled: 'true', sol_amount: String(sol_amount), token_amount: String(sol_amount) } });
-      const new_balance = await getSolBalance(wallet);
-      return NextResponse.json({ ok: true, tx, asset: 'SOL', sol_amount, token_amount: sol_amount, new_balance });
-    } catch {
-      return NextResponse.json(
-        { ok: false, charged: true, payment_intent_id: pi.id, error: 'Payment received — finishing delivery…' },
-        { status: 202 }
-      );
+    // Charge cleared — disburse through the shared exactly-once path (atomic claim, multi-source price
+    // feed). A failure here leaves the PI succeeded-but-unfulfilled, completable via /onramp/fulfill.
+    const result = await disburseOnramp(stripe, pi);
+    if (result.ok) {
+      const { tx, asset: a, token_amount, sol_amount, new_balance } = result;
+      return NextResponse.json({ ok: true, tx, asset: a, token_amount, sol_amount, new_balance });
     }
+    return NextResponse.json(
+      { ok: false, charged: true, payment_intent_id: pi.id, error: 'Payment received — finishing delivery…' },
+      { status: 202 }
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

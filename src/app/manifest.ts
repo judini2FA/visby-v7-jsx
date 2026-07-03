@@ -4,9 +4,9 @@ import type { MetadataRoute } from 'next';
 // PWA install on Chrome). Served by Next at /manifest.webmanifest. Icons live in /public.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Visby — NFT Provenance Marketplace',
+    name: 'Visby — Provenance Marketplace',
     short_name: 'Visby',
-    description: 'Buy and sell real-world luxury goods with verifiable NFT provenance on Solana.',
+    description: 'Buy and sell real-world luxury goods with chain-verified provenance.',
     start_url: '/',
     scope: '/',
     display: 'standalone',

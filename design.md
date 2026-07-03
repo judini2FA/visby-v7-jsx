@@ -140,7 +140,29 @@ Before shipping a screen:
 - [ ] No jargon/noise text a normal buyer wouldn't need.
 - [ ] Reads cleanly in **both** light and dark.
 
-## 11. File map
+## 11. Product experience principles (UX law — same weight as the visual rules)
+Visby's user might be holding crypto for the first time in their life. Design for them.
+
+1. **Toddler-proof rule.** If a flow needs explaining, it's wrong. One primary action per
+   screen; the next step should be the obvious big button.
+2. **Plain English, zero crypto jargon.** User-facing copy says **"Tally"**, never "NFT";
+   "your wallet", never "MPC/embedded wallet"; "verified history", never "on-chain
+   provenance". Jargon is allowed only on merchant/SDK developer pages.
+3. **Progressive disclosure.** Advanced things (wallet addresses, tx hashes, chain details)
+   live behind a tap, never up front. Default views show only what a buyer/seller needs.
+4. **Always show the final cost before confirming.** Fees, shipping, conversion — the number
+   the user approves is the number that moves. No surprises, ever. Sellers see the 9% +
+   shipping math before they list.
+5. **Every state helps.** Empty states say what to do next; errors say what happened and how
+   to fix it in one sentence; loading states never strand the user.
+6. **Calm, premium, never cyberpunk.** Trust is the product. The interface stays quiet so the
+   goods (and their verified history) are the show.
+7. **Fail safely and honestly.** If a payment/mint step fails, the user sees the truth and a
+   retry — never a stuck "did it work?" screen. (Order state machine backs this.)
+8. **Admin surfaces** follow the same system with the "white + shadows" read: `surface()`
+   density, no glass stacking, data-first.
+
+## 12. File map
 - `src/lib/ui.ts` — helpers + scale (`t`, `S`, `price`, `card`, `sheet`, `surface`, `btn`,
   `badge`, `avatar`, `tabSlider`, `sectionLabel`, `input`, `T`).
 - `src/styles/tokens.css` — CSS variables: colour, glass, `--surface-bg`, `--img-scrim`, type

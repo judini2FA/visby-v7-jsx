@@ -3,6 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { createTRPCRouter, publicProcedure, protectedProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
 
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
 export const profilesRouter = createTRPCRouter({
   // PUBLIC, unauthenticated read — project ONLY public columns. Never select('*') here: profiles also
   // holds ship_to (buyer home address), ship_from, connected_wallets / tally_wallet (cross-chain wallet
@@ -13,16 +15,38 @@ export const profilesRouter = createTRPCRouter({
       const supabase = createServiceClient();
       const { data } = await supabase
         .from('profiles')
-        .select('wallet, display_name, bio, avatar_url, preferred_currency')
+        .select('wallet, display_name, username, bio, avatar_url, preferred_currency, account_type')
         .eq('wallet', input.wallet)
         .single();
       return data ?? null;
+    }),
+
+  // Public — used by the profile-edit UI to live-check a candidate username before saving.
+  usernameAvailable: publicProcedure
+    .input(z.object({ username: z.string(), wallet: z.string().optional() }))
+    .query(async ({ input }) => {
+      const uname = input.username.trim();
+      if (!USERNAME_RE.test(uname)) {
+        return { available: false, reason: '3-20 characters: letters, numbers, underscore.' };
+      }
+      const supabase = createServiceClient();
+      let q = supabase.from('profiles').select('wallet').eq('username', uname.toLowerCase());
+      if (input.wallet) q = q.neq('wallet', input.wallet);
+      const { data, error } = await q.limit(1);
+      if (error) {
+        // Column not migrated yet — don't block the rest of the form on this check.
+        if (error.code === '42703' || error.code === 'PGRST204') return { available: true };
+        return { available: false, reason: 'Could not check availability — try again.' };
+      }
+      if ((data ?? []).length > 0) return { available: false, reason: 'That username is taken.' };
+      return { available: true };
     }),
 
   upsertProfile: protectedProcedure
     .input(z.object({
       wallet:             z.string(),
       display_name:       z.string().max(40).optional(),
+      username:           z.string().regex(USERNAME_RE, 'Username must be 3-20 characters: letters, numbers, underscore.').optional(),
       bio:                z.string().max(200).optional(),
       avatar_url:         z.string().max(1000).optional(),
       preferred_currency: z.string().max(10).optional(),
@@ -41,6 +65,9 @@ export const profilesRouter = createTRPCRouter({
         updated_at: new Date().toISOString(),
       };
       if (input.display_name !== undefined) patch.display_name = input.display_name || null;
+      // Stored lowercased (migration_username.sql's unique index is on lower(username) too, but
+      // normalizing on write keeps a single canonical casing instead of relying on the index alone).
+      if (input.username !== undefined) patch.username = input.username ? input.username.toLowerCase() : null;
       if (input.bio !== undefined) patch.bio = input.bio || null;
       if (input.avatar_url !== undefined) patch.avatar_url = input.avatar_url || null;
       if (input.preferred_currency !== undefined) patch.preferred_currency = input.preferred_currency || null;
@@ -48,8 +75,8 @@ export const profilesRouter = createTRPCRouter({
       if (input.tally_wallet !== undefined) patch.tally_wallet = input.tally_wallet || null;
 
       // Columns that may not exist before their migration runs — strip + retry so the core fields
-      // always save (migration_profile_avatar.sql, migration_connected_wallets.sql).
-      const OPTIONAL_COLS = ['avatar_url', 'connected_wallets', 'tally_wallet', 'preferred_currency'] as const;
+      // always save (migration_profile_avatar.sql, migration_connected_wallets.sql, migration_username.sql).
+      const OPTIONAL_COLS = ['avatar_url', 'connected_wallets', 'tally_wallet', 'preferred_currency', 'username'] as const;
 
       const { data, error } = await supabase
         .from('profiles')
@@ -57,6 +84,9 @@ export const profilesRouter = createTRPCRouter({
         .select()
         .single();
       if (error) {
+        if (error.code === '23505' && (error.message?.includes('username') || error.message?.includes('profiles_username'))) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'That username is taken.' });
+        }
         const missingCol = error.code === '42703' || error.code === 'PGRST204' || OPTIONAL_COLS.some(c => error.message?.includes(c));
         if (missingCol) {
           let didStrip = false;
@@ -67,7 +97,12 @@ export const profilesRouter = createTRPCRouter({
           }
           if (didStrip) {
             const retry = await supabase.from('profiles').upsert(patch, { onConflict: 'wallet' }).select().single();
-            if (retry.error) throw new Error(retry.error.message);
+            if (retry.error) {
+              if (retry.error.code === '23505' && retry.error.message?.includes('username')) {
+                throw new TRPCError({ code: 'CONFLICT', message: 'That username is taken.' });
+              }
+              throw new Error(retry.error.message);
+            }
             return retry.data;
           }
         }
@@ -108,6 +143,7 @@ export const profilesRouter = createTRPCRouter({
         .map(p => ({
           wallet: p.wallet as string,
           display_name: (p.display_name as string | null) ?? null,
+          username: (p.username as string | null) ?? null,
           bio: (p.bio as string | null) ?? null,
           avatar_url: (p.avatar_url as string | null) ?? null,
           listing_count: counts[p.wallet] ?? 0,

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
+import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Connection, PublicKey } from '@solana/web3.js';
@@ -11,6 +12,8 @@ import { useVisbWallet } from '@/lib/wallet';
 import { useTheme } from '@/lib/theme';
 import { useCurrency } from '@/lib/currency';
 import { USDC_MINT, USDC_DECIMALS } from '@/lib/usdc';
+import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-client';
+import { onrampChargeAction } from '@/lib/step-up-shared';
 import { t, S, price, card, surface, btn, badge, sectionLabel, input } from '@/lib/ui';
 import { HeaderMenu } from '@/components/layout/header-menu';
 
@@ -132,6 +135,7 @@ function CardPayForm({
   const stripe = useStripe();
   const elements = useElements();
   const { mode } = useTheme();
+  const { getAccessToken } = usePrivy();
   const [paying, setPaying] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -166,9 +170,10 @@ function CardPayForm({
       }
 
       if (paymentIntent?.status === 'succeeded') {
+        const authToken = await getAccessToken();
         const fulfillRes = await fetch('/api/onramp/fulfill', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
           body: JSON.stringify({ payment_intent_id: paymentIntent.id }),
         });
         const fulfillData = await fulfillRes.json();
@@ -238,6 +243,7 @@ function CardPayForm({
 export default function BuyCryptoPage() {
   const router = useRouter();
   const { ready, authenticated, getAccessToken } = usePrivy();
+  const { wallets: solWallets } = useSolanaWallets();
   const { address: wallet } = useVisbWallet();
   const { symbol, currency, toUsdc } = useCurrency();
 
@@ -355,17 +361,45 @@ export default function BuyCryptoPage() {
     setCardErr('');
     try {
       const token = await getAccessToken();
+      // MFA step-up: this charges a SAVED card off-session (card -> crypto) without the card being
+      // re-entered, so sign an action-bound challenge first (triggers Privy's MFA prompt for enrolled
+      // users). Dormant until NEXT_PUBLIC_STEP_UP_ENFORCED=1 — same gate as money-send.
+      let stepUpHeaders: Record<string, string> = {};
+      if (STEP_UP_ON) {
+        const signer = solWallets.find((w: any) => w.address === wallet);
+        if (!signer || typeof (signer as any).signMessage !== 'function') {
+          setCardErr("This wallet can't complete the security check on this device.");
+          return;
+        }
+        try {
+          const proof = await createStepUpProof({ action: onrampChargeAction(wallet, usd, asset), signMessage: (m: Uint8Array) => (signer as any).signMessage(m) });
+          stepUpHeaders = stepUpHeader(proof);
+        } catch {
+          setCardErr('Security check cancelled.');
+          return;
+        }
+      }
       const res = await fetch('/api/onramp/charge-saved', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...stepUpHeaders },
         body: JSON.stringify({ wallet, usd, asset, payment_method_id: paySource, idempotency_key: idemKey }),
       });
       const data = await res.json();
 
+      if (res.status === 401 && (data?.error === 'step_up_required' || data?.error === 'step_up_failed')) {
+        setCardErr('Security check failed — please try again.');
+        return;
+      }
+      if (res.status === 403 && data?.error === 'mfa_required') {
+        setCardErr('Turn on two-factor authentication in Settings to buy with a saved card.');
+        return;
+      }
+
       if (res.status === 202 && data.charged && data.payment_intent_id) {
+        const fulfillToken = await getAccessToken();
         const fulfillRes = await fetch('/api/onramp/fulfill', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(fulfillToken ? { Authorization: `Bearer ${fulfillToken}` } : {}) },
           body: JSON.stringify({ payment_intent_id: data.payment_intent_id }),
         });
         const fulfillData = await fulfillRes.json();

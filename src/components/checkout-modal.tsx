@@ -30,6 +30,10 @@ interface Quotes { USDC: Quote|null; SOL: Quote|null; ETH: Quote|null; BTC: Quot
 interface Props {
   itemId: string; itemName: string; priceUsdc: number;
   buyerWallet: string; onClose: () => void; onSuccess: (itemId: string) => void;
+  // 'pending' = buying an unminted business serial (POST /api/business/buy-pending, itemId is the
+  // pending_serials row id, mint happens at settlement). Only SOL is wired for that endpoint today,
+  // so non-SOL tabs are hidden rather than left to fail against an endpoint that doesn't support them.
+  mode?: 'item' | 'pending';
 }
 
 // Stripe CardElement renders in an iframe and can't read CSS vars — pass concrete colors per mode.
@@ -97,12 +101,13 @@ function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
 }
 
 // ── Main modal ─────────────────────────────────────────────────
-export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet, onClose, onSuccess }: Props) {
+export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet, onClose, onSuccess, mode = 'item' }: Props) {
   const { getAccessToken } = usePrivy();
   const { wallets } = useSolanaWallets();
   const solWallet   = wallets.find((w: any) => w.walletClientType === 'privy') ?? wallets[0];
+  const isPending = mode === 'pending';
 
-  const [currency, setCurrency] = useState<Currency>('CARD');
+  const [currency, setCurrency] = useState<Currency>(isPending ? 'SOL' : 'CARD');
   const [quotes,   setQuotes]   = useState<Quotes | null>(null);
   const [piSecret, setPiSecret] = useState<string | null>(null);
   const [status,   setStatus]   = useState<'idle'|'paying'|'done'|'error'>('idle');
@@ -120,17 +125,35 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   const [addrSaving,  setAddrSaving]  = useState(false);
   const [addrErr,     setAddrErr]     = useState('');
 
-  // Load price quotes — non-blocking, modal works fine without them
+  // Load price quotes — non-blocking, modal works fine without them. /api/lifi/quote resolves its
+  // price off the `items` table, which doesn't have a row yet for a pending (unminted) serial — so
+  // pending mode derives the SOL quote itself from the same CoinGecko-backed rate feed the currency
+  // store uses, keyed off the priceUsdc prop instead of a DB lookup.
   useEffect(() => {
+    if (isPending) {
+      fetch('/api/price/rates')
+        .then(r => r.json())
+        .then((d: { usd?: Record<string, number> }) => {
+          const solUsd = d.usd?.SOL;
+          if (!solUsd) return;
+          const amount = priceUsdc / solUsd;
+          setQuotes({
+            SOL: { amount, display: `${amount.toFixed(4)} SOL`, rate_source: 'coingecko' },
+            USDC: null, ETH: null, BTC: null,
+          });
+        })
+        .catch(() => {});
+      return;
+    }
     fetch(`/api/lifi/quote?item_id=${itemId}`)
       .then(r => r.json())
       .then(d => { if (d.quotes) setQuotes(d.quotes); })
       .catch(() => {});
-  }, [itemId]);
+  }, [itemId, isPending, priceUsdc]);
 
   // Create PaymentIntent as soon as the card tab is active
   useEffect(() => {
-    if (currency !== 'CARD' || piSecret || !buyerWallet || shipLoading) return;
+    if (isPending || currency !== 'CARD' || piSecret || !buyerWallet || shipLoading) return;
     fetch('/api/stripe/payment-intent', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_id: itemId, buyer_wallet: buyerWallet }),
@@ -152,9 +175,10 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
       .catch(() => {});
   }, [currency, buyerWallet]);
 
-  // Fetch a real Li.Fi route when a crypto-swap tab opens (ETH/BTC, plus the gated expanded set)
+  // Fetch a real Li.Fi route when a crypto-swap tab opens (ETH/BTC, plus the gated expanded set).
+  // Unreachable in pending mode (only the SOL tab is offered) but guarded defensively anyway.
   useEffect(() => {
-    if (!isSwapToken(currency)) return;
+    if (isPending || !isSwapToken(currency)) return;
     setSwapQuote(null); setSwapLoading(true); setErrMsg('');
     fetch(`/api/lifi/swap-quote?item_id=${itemId}&from=${currency}`)
       .then(r => r.json())
@@ -229,12 +253,16 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
       const signed    = await (solWallet as any).signTransaction(tx);
       const signature = await connection.sendRawTransaction(signed.serialize());
       await connection.confirmTransaction(signature, 'confirmed');
-      const res  = await fetch('/api/sol-pay', {
+      // Pending mode mints at settlement, so the id the caller must route to (the new items row) only
+      // exists in the response — itemId here is still the pending_serials row id.
+      const res  = await fetch(isPending ? '/api/business/buy-pending' : '/api/sol-pay', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, tx_signature: signature, buyer_wallet: buyerWallet, quoted_sol_price: priceUsdc / quotes.SOL.amount }),
+        body: JSON.stringify(isPending
+          ? { pending_serial_id: itemId, tx_signature: signature, buyer_wallet: buyerWallet, quoted_sol_price: priceUsdc / quotes.SOL.amount }
+          : { item_id: itemId, tx_signature: signature, buyer_wallet: buyerWallet, quoted_sol_price: priceUsdc / quotes.SOL.amount }),
       });
       const data = await res.json();
-      if (data.ok) { setStatus('done'); onSuccess(itemId); }
+      if (data.ok) { setStatus('done'); onSuccess(isPending ? (data.item_id ?? itemId) : itemId); }
       else { setErrMsg(data.error ?? 'Transfer failed'); setStatus('error'); }
     } catch (err: any) {
       const m = String(err?.message ?? '');
@@ -276,8 +304,11 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     currency === 'SOL' ? 'Solana network fee · paid by you'
     : isSwapToken(currency) ? 'Network + bridge fees included'
     : 'None';
-  const tabs: { id: Currency; label: string; soon?: boolean }[] =
-    visibleTokens().map(t => ({ id: t.symbol, label: t.label }));
+  // buy-pending only supports the SOL/crypto rail today — CARD/USDC/Li.Fi swap all assume an `items`
+  // row that doesn't exist yet for a pending serial, so pending mode offers SOL only, no tab strip.
+  const tabs: { id: Currency; label: string; soon?: boolean }[] = isPending
+    ? [{ id: 'SOL', label: 'SOL' }]
+    : visibleTokens().map(t => ({ id: t.symbol, label: t.label }));
 
   return (
     <div onClick={status === 'done' ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'var(--modal-scrim)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -358,17 +389,23 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs — pending mode only ever has one payable method, so a note replaces the tab strip */}
         {hasShip && !editingAddr && status !== 'done' && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'var(--glass-bg)', borderRadius: 16, padding: 4 }}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => { setCurrency(t.id); setErrMsg(''); setStatus('idle'); setSwapQuote(null); }}
-              style={{ flex: 1, position: 'relative', background: currency === t.id ? 'var(--glass-bg-strong)' : 'none', border: `1px solid ${currency === t.id ? 'var(--glass-border)' : 'transparent'}`, borderRadius: 12, padding: '9px 4px', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif", transition: 'all .15s', opacity: t.soon ? 0.5 : 1 }}>
-              <div style={{ fontSize: 12, fontWeight: currency === t.id ? 700 : 500, color: currency === t.id ? 'var(--text-strong)' : 'var(--text-muted)' }}>{t.label}</div>
-              {t.soon && <div style={{ position: 'absolute', top: -5, right: -2, fontSize: 7, background: 'var(--glass-bg-strong)', color: C.muted, borderRadius: 4, padding: '1px 4px', fontFamily: "'Quicksand',sans-serif" }}>SOON</div>}
-            </button>
-          ))}
-        </div>
+          isPending ? (
+            <div style={{ fontSize: 12, color: C.muted, fontFamily: "'Manrope',sans-serif", marginBottom: 20 }}>
+              Pay with SOL — the only method available for this item today.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'var(--glass-bg)', borderRadius: 16, padding: 4 }}>
+              {tabs.map(t => (
+                <button key={t.id} onClick={() => { setCurrency(t.id); setErrMsg(''); setStatus('idle'); setSwapQuote(null); }}
+                  style={{ flex: 1, position: 'relative', background: currency === t.id ? 'var(--glass-bg-strong)' : 'none', border: `1px solid ${currency === t.id ? 'var(--glass-border)' : 'transparent'}`, borderRadius: 12, padding: '9px 4px', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif", transition: 'all .15s', opacity: t.soon ? 0.5 : 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: currency === t.id ? 700 : 500, color: currency === t.id ? 'var(--text-strong)' : 'var(--text-muted)' }}>{t.label}</div>
+                  {t.soon && <div style={{ position: 'absolute', top: -5, right: -2, fontSize: 7, background: 'var(--glass-bg-strong)', color: C.muted, borderRadius: 4, padding: '1px 4px', fontFamily: "'Quicksand',sans-serif" }}>SOON</div>}
+                </button>
+              ))}
+            </div>
+          )
         )}
 
         {/* Success */}

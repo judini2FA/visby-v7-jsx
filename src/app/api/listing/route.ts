@@ -23,6 +23,24 @@ export async function POST(req: Request) {
           if (!kyc.ok) return NextResponse.json({ error: 'kyc_required', kyc_status: kyc.status }, { status: 403 });
 
           const supabase = createServiceClient();
+
+          // Counterfeit-takedown enforcement: a moderator-suspended account cannot (re)list inventory.
+          // Fail-safe: a DB read error is logged and treated as not-flagged (fail open on outages);
+          // only an explicit is_flagged=true blocks.
+          {
+            const suspendCheckWallets = Array.from(new Set([...(authCtx?.wallets ?? []), seller_wallet].filter(Boolean)));
+            const { data: flaggedRows, error: flagErr } = await supabase
+              .from('profiles')
+              .select('wallet')
+              .eq('is_flagged', true)
+              .in('wallet', suspendCheckWallets);
+            if (flagErr) {
+              console.error('[listing] is_flagged check failed (failing open):', flagErr.message);
+            } else if ((flaggedRows ?? []).length > 0) {
+              return NextResponse.json({ error: 'account_suspended' }, { status: 403 });
+            }
+          }
+
           const { data, error } = await supabase
             .from('items')
             .update({

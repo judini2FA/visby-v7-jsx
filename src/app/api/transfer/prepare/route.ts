@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
-import { resolveRecipient, checkLimits, recordPrepared, type TransferToken } from '@/lib/transfers';
+import { resolveRecipient, prepareAtomic, type TransferToken } from '@/lib/transfers';
 import { requireStepUp } from '@/lib/step-up';
 import { sendMoneyAction } from '@/lib/step-up-shared';
 
@@ -42,15 +42,15 @@ export async function POST(req: Request) {
   if (!recipient) return NextResponse.json({ error: 'recipient_not_found' }, { status: 404 });
   if (recipient.wallet === from_wallet) return NextResponse.json({ error: 'Source and destination are the same wallet' }, { status: 400 });
 
-  const limit = await checkLimits(from_wallet, token, amount);
-  if (!limit.ok) return NextResponse.json({ error: 'limit_exceeded', reason: limit.reason }, { status: 403 });
-
+  // Cap check + pending record in one atomic step (see prepareAtomic) — concurrent prepares can't
+  // race past the daily limit.
   const kind = ctx.wallets.includes(recipient.wallet) ? 'self' : 'p2p';
-  const rec = await recordPrepared({
+  const rec = await prepareAtomic({
     idempotency_key, from_wallet, to_wallet: recipient.wallet, to_handle: recipient.handle,
     token, amount, kind,
   });
   if (!rec) return NextResponse.json({ error: 'Could not prepare transfer' }, { status: 500 });
+  if (!rec.ok) return NextResponse.json({ error: 'limit_exceeded', reason: rec.reason }, { status: 403 });
 
   return NextResponse.json({
     ok: true, transfer_id: rec.id, kind,

@@ -159,6 +159,9 @@ export async function POST(req: Request) {
           label_url:        labelUrl,
           shipping_cost:    bought.rate,
           shipping_service: bought.service,
+          // Column predates the provider swap (named for EasyPost) — now holds the AtoShip lbl_ id,
+          // kept so an unused label can be voided/refunded.
+          ep_shipment_id:   bought.label_id ?? null,
         })
         .eq('id', order_id)
         // A refund can flip the order 'shipped' -> 'refunded' while we were buying the label. Only write

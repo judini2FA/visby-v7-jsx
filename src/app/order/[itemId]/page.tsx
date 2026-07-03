@@ -10,6 +10,7 @@ import { solscanTx } from '@/lib/explorer';
 import { OrderReviewSection } from '@/components/reviews';
 import { DisputePanel } from '@/components/dispute-panel';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { TallyExplainerInline } from '@/components/tally-explainer';
 
 const GREEN = 'var(--ok)';
 
@@ -529,6 +530,7 @@ export default function OrderPage() {
         {/* Provenance / receipt */}
         <div style={{ ...card(), padding: S[4], display: 'flex', flexDirection: 'column', gap: S[4] }}>
           <div style={sectionLabel()}>Provenance</div>
+          <TallyExplainerInline />
 
           {txHash && (
             <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }) }}>

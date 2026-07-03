@@ -46,10 +46,33 @@ export async function resolveRecipient(to: string): Promise<ResolvedRecipient | 
     return { wallet: q, handle: null, display_name: data?.display_name ?? null, avatar_url: data?.avatar_url ?? null };
   }
 
-  // Strip LIKE metacharacters (incl. `_`, the single-char wildcard) so the handle matches LITERALLY, not as
-  // a pattern. ilike with no `%` is then a case-insensitive exact match.
+  // username is unique (migration_username.sql, case-insensitive) with charset [a-z0-9_], so an exact
+  // match resolves unambiguously — try it FIRST, derived from the RAW handle (minus a leading '@'). We must
+  // NOT reuse the display_name-sanitized `safe` below: it deletes '_', which is valid in usernames, so
+  // `cool_guy` would silently miss. `.eq` on the lowercased candidate is exact and injection-free (a
+  // format-validated [a-z0-9_] string carries no LIKE wildcards).
+  const unameCandidate = q.replace(/^@/, '').toLowerCase();
+  if (/^[a-z0-9_]{3,20}$/.test(unameCandidate)) {
+    const { data: byUsername, error: unameErr } = await supabase
+      .from('profiles')
+      .select('wallet, username, display_name, avatar_url')
+      .eq('username', unameCandidate)
+      .limit(2);
+    // Column may not exist pre-migration (42703/PGRST204) — fall through to display_name in that case.
+    if (!unameErr) {
+      const unameMatches = (byUsername ?? []).filter((r: any) => isSolAddr(r.wallet));
+      if (unameMatches.length === 1) {
+        const only = unameMatches[0] as any;
+        return { wallet: only.wallet, handle: only.username ?? q, display_name: only.display_name ?? null, avatar_url: only.avatar_url ?? null };
+      }
+    }
+  }
+
+  // Strip LIKE metacharacters (incl. `_`, the single-char wildcard) so the display_name handle matches
+  // LITERALLY, not as a pattern. ilike with no `%` is then a case-insensitive exact match.
   const safe = q.slice(0, 60).replace(/[%_,()*\\]/g, ' ').trim();
   if (!safe) return null;
+
   // display_name is NOT unique. Fetch up to 2 and REFUSE to guess a money destination when it's ambiguous
   // (>1 match) — the user must use a wallet address or pick from their wallet-keyed Recents/Following list.
   const { data } = await supabase
@@ -91,6 +114,44 @@ export async function checkLimits(fromWallet: string, token: TransferToken, amou
   const used = await dailyUsed(fromWallet, token);
   if (used + amount > daily) return { ok: false, reason: `daily_limit:${daily}` };
   return { ok: true };
+}
+
+// Atomic check-and-record via the prepare_transfer_atomic RPC (migration_transfer_atomic.sql): the daily
+// cap and the insert happen in ONE transaction serialized per wallet+token, so concurrent prepares can't
+// each read the same usage and all slip past the cap (the checkLimits→recordPrepared TOCTOU). Until the
+// migration runs the RPC doesn't exist — fall back to the legacy two-step path so sends keep working.
+export async function prepareAtomic(row: {
+  idempotency_key: string; from_wallet: string; to_wallet: string; to_handle: string | null;
+  token: TransferToken; amount: number; kind: 'p2p' | 'self';
+}): Promise<{ ok: true; id: string; existing: boolean } | { ok: false; reason: string } | null> {
+  const { perTx, daily } = limitsFor(row.token);
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.rpc('prepare_transfer_atomic', {
+    p_idempotency_key: row.idempotency_key,
+    p_from_wallet: row.from_wallet,
+    p_to_wallet: row.to_wallet,
+    p_to_handle: row.to_handle,
+    p_token: row.token,
+    p_amount: row.amount,
+    p_kind: row.kind,
+    p_per_tx: perTx,
+    p_daily: daily,
+    p_pending_ttl_min: Math.round(PENDING_TTL_MS / 60_000),
+  });
+
+  if (error) {
+    const missingFn = error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
+    if (!missingFn) return null;
+    const limit = await checkLimits(row.from_wallet, row.token, row.amount);
+    if (!limit.ok) return { ok: false, reason: limit.reason ?? 'limit_exceeded' };
+    const rec = await recordPrepared(row);
+    return rec ? { ok: true, id: rec.id, existing: rec.existing } : null;
+  }
+
+  const r = data as { ok?: boolean; id?: string; existing?: boolean; reason?: string } | null;
+  if (!r) return null;
+  if (r.ok) return r.id ? { ok: true, id: r.id, existing: !!r.existing } : null;
+  return { ok: false, reason: r.reason ?? 'limit_exceeded' };
 }
 
 // Idempotent: a repeated idempotency_key returns the existing row instead of inserting a duplicate, so a

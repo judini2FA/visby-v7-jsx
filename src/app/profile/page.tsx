@@ -245,6 +245,7 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
   const utils = trpc.useUtils();
   const upsert = trpc.profiles.upsertProfile.useMutation({ onSuccess: () => utils.profiles.getProfile.invalidate() });
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [bio,  setBio]  = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -258,12 +259,29 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
     if (existing && !hydrated.current) {
       hydrated.current = true;
       setName(existing.display_name ?? '');
+      setUsername((existing as any).username ?? '');
       setBio(existing.bio ?? '');
       setAvatarUrl(existing.avatar_url ?? '');
     }
   }, [existing]);
 
   const displayName = name || existing?.display_name || '';
+
+  // Debounced live availability check — only queries once the candidate differs from what's saved
+  // and looks like a legal username, so we're not pinging the server on every keystroke or for the
+  // user's own already-saved handle.
+  const [debouncedUsername, setDebouncedUsername] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedUsername(username.trim().toLowerCase()), 400);
+    return () => clearTimeout(id);
+  }, [username]);
+  const existingUsername = ((existing as any)?.username ?? '') as string;
+  const usernameFormatOk = /^[a-z0-9_]{3,20}$/.test(debouncedUsername);
+  const usernameUnchanged = debouncedUsername === existingUsername.toLowerCase();
+  const checkUsername = trpc.profiles.usernameAvailable.useQuery(
+    { username: debouncedUsername, wallet },
+    { enabled: debouncedUsername.length > 0 && usernameFormatOk && !usernameUnchanged, retry: false },
+  );
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -286,13 +304,31 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
     }
   }
 
+  const usernameInput = username.trim().toLowerCase();
+  const usernameTouched = usernameInput !== existingUsername.toLowerCase();
+  // Block save while the field holds an illegal or known-taken value. A pending/unchecked debounce
+  // is allowed through — upsertProfile re-validates format server-side and 23505 catches a last-second
+  // collision, so this is a UX guard, not the source of truth.
+  const usernameBlocksSave = usernameTouched && usernameInput.length > 0 && (!usernameFormatOk || (checkUsername.data && !checkUsername.data.available));
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (usernameBlocksSave) return;
     // avatar_url guarded like the others: an empty value means "not loaded yet / no change" — never send ''
     // (which upsertProfile would persist as null and wipe the avatar). Uploading a new photo sets a real URL.
-    await upsert.mutateAsync({ wallet, display_name: name.trim() || undefined, bio: bio.trim() || undefined, avatar_url: avatarUrl || undefined });
-    setSaved(true);
-    setTimeout(() => { setSaved(false); onClose(); }, 1200);
+    try {
+      await upsert.mutateAsync({
+        wallet,
+        display_name: name.trim() || undefined,
+        username: usernameTouched ? (usernameInput || undefined) : undefined,
+        bio: bio.trim() || undefined,
+        avatar_url: avatarUrl || undefined,
+      });
+      setSaved(true);
+      setTimeout(() => { setSaved(false); onClose(); }, 1200);
+    } catch {
+      // upsert.isError below renders the message; CONFLICT (username taken) surfaces the same way.
+    }
   }
 
   return (
@@ -336,6 +372,35 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
           <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>Shown instead of your wallet address</div>
         </div>
         <div>
+          <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Username</div>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 15, pointerEvents: 'none' }}>@</span>
+            <input
+              value={username}
+              onChange={e => setUsername(e.target.value.replace(/\s/g, '').slice(0, 20))}
+              placeholder="e.g. sneaker_vault"
+              maxLength={20}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              style={{ ...input(), paddingLeft: 28 }}
+            />
+          </div>
+          <div style={{ ...t('meta'), marginTop: S[1], color: usernameBlocksSave ? C.red : (usernameTouched && checkUsername.data?.available ? C.green : 'var(--text-muted)') }}>
+            {usernameInput.length === 0
+              ? 'Lets people send you money by @handle'
+              : !usernameFormatOk
+                ? '3-20 characters: letters, numbers, underscore'
+                : usernameUnchanged
+                  ? 'This is your current username'
+                  : checkUsername.isFetching
+                    ? 'Checking availability…'
+                    : checkUsername.data
+                      ? (checkUsername.data.available ? 'Available' : (checkUsername.data.reason ?? 'That username is taken.'))
+                      : 'Lets people send you money by @handle'}
+          </div>
+        </div>
+        <div>
           <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Bio</div>
           <textarea value={bio} onChange={e => setBio(e.target.value)} placeholder={existing?.bio ?? 'What do you sell?'} maxLength={200} rows={3}
             style={{ ...input(), resize: 'vertical', lineHeight: 1.6 }} />
@@ -353,7 +418,7 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
         )}
         {upsert.isError && (
           <div style={{ ...surface({ pad: '10px 14px' }), ...t('meta'), color: C.red, borderColor: 'var(--danger-soft)' }}>
-            Could not save — check your connection and try again.
+            {upsert.error?.data?.code === 'CONFLICT' ? upsert.error.message : 'Could not save — check your connection and try again.'}
           </div>
         )}
         <div style={{ display: 'flex', gap: S[2] }}>
@@ -361,8 +426,8 @@ function EditProfileForm({ wallet, email, onClose }: { wallet: string; email?: s
             style={{ ...btn('secondary'), flex: 1 }}>
             Cancel
           </button>
-          <button type="submit" disabled={upsert.isPending}
-            style={{ ...btn(saved ? 'secondary' : 'primary'), flex: 2, opacity: upsert.isPending ? 0.7 : 1, cursor: upsert.isPending ? 'not-allowed' : 'pointer', color: saved ? C.green : undefined }}>
+          <button type="submit" disabled={upsert.isPending || usernameBlocksSave}
+            style={{ ...btn(saved ? 'secondary' : 'primary'), flex: 2, opacity: (upsert.isPending || usernameBlocksSave) ? 0.6 : 1, cursor: (upsert.isPending || usernameBlocksSave) ? 'not-allowed' : 'pointer', color: saved ? C.green : undefined }}>
             {saved ? 'Saved!' : upsert.isPending ? 'Saving…' : 'Save Profile'}
           </button>
         </div>

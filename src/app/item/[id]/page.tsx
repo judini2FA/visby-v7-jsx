@@ -20,6 +20,8 @@ import { ReportButton } from '@/components/report-button';
 import { isAdminWallet } from '@/lib/admin';
 import { useCurrency } from '@/lib/currency';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { TallyQr } from '@/components/tally-qr';
+import { TallyExplainerCard } from '@/components/tally-explainer';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -76,6 +78,7 @@ export default function ItemPage() {
   const [itemOrder, setItemOrder] = useState<{ status: string; shipped_at: string | null; delivered_at: string | null } | null | undefined>(undefined);
   const [shipEst, setShipEst] = useState<number | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
   const isAdmin = isAdminWallet(walletAddress);
 
@@ -507,13 +510,23 @@ export default function ItemPage() {
 
             <div style={{ position: 'relative', padding: S[5] }}>
               {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[1] }}>
-                <span style={{ ...t('title'), color: '#15121C', fontWeight: 800 }}>Tally</span>
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.08em', color: 'rgba(21,18,28,.6)', border: '1px solid rgba(21,18,28,.22)', borderRadius: 999, padding: '2px 7px' }}>NFT</span>
-              </div>
-              <div style={{ ...t('meta'), color: 'rgba(21,18,28,.68)', marginBottom: S[5], lineHeight: 1.5 }}>
-                An NFT-powered provenance used to track the history of a product.
-              </div>
+              <TallyExplainerCard />
+
+              {/* Owner-only: print/affix a QR to the physical item, linking back to this page */}
+              {isOwner && (
+                <div style={{ marginBottom: S[5] }}>
+                  <button onClick={() => setShowQr(s => !s)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: S[1], background: 'rgba(255,255,255,.5)', border: '1px solid rgba(21,18,28,.18)', borderRadius: 'var(--pill)', padding: '8px 14px', cursor: 'pointer', ...t('meta'), color: '#15121C', fontWeight: 700 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="21"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="17" y1="17" x2="17" y2="17.01"/></svg>
+                    {showQr ? 'Hide item QR' : 'Show item QR'}
+                  </button>
+                  {showQr && (
+                    <div style={{ marginTop: S[3] }}>
+                      <TallyQr itemId={item.id} />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Provenance — mint address */}
               <div style={{ ...t('micro'), color: 'rgba(21,18,28,.5)', letterSpacing: '.06em', marginBottom: S[1] }}>MINT ADDRESS</div>

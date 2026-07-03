@@ -16,7 +16,7 @@ export type Addr = {
   phone?: string;
 };
 
-export type Carrier = 'UPS' | 'FedEx' | 'USPS';
+export type Carrier = 'UPS' | 'FedEx' | 'USPS' | 'DHL';
 
 export type ShipRate = {
   id: string;
@@ -36,6 +36,8 @@ export type BoughtLabel = {
   label_url: string | null;
   label_base64: string | null;
   label_format: 'PDF' | 'PNG' | 'GIF' | 'ZPL' | null;
+  // Provider's label id (AtoShip lbl_...) — persisted so the label can be voided/refunded later.
+  label_id?: string | null;
 };
 
 export interface CarrierAdapter {

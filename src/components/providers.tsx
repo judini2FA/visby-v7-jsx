@@ -8,7 +8,9 @@ import { registerTrpcToken } from '@/lib/trpc/token-bridge';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 import { NativeBootstrap } from '@/components/native-bootstrap';
 import { AppLock } from '@/components/app-lock';
+import { PasswordGate } from '@/components/password-gate';
 import { CurrencySync } from '@/components/currency-sync';
+import { captureError } from '@/lib/monitoring';
 
 // Hands the tRPC client a way to fetch a fresh Privy token so protectedProcedures can authenticate.
 function TrpcAuthBridge() {
@@ -43,17 +45,36 @@ function SecurityBootstrap() {
   return null;
 }
 
-// Auto-creates a Solana embedded wallet for users who only have an Ethereum wallet
+// Auto-creates a Solana embedded wallet for users who don't have one yet. Belt-and-suspenders over
+// Privy's own dashboard-driven auto-create (SVM enabled) — a new account needs a Solana wallet for
+// buy/checkout/mint. useSolanaWallets exposes its OWN `ready` flag: calling createWallet() before the
+// Solana subsystem is initialized is what made the old version hang silently, so we gate on solanaReady
+// (not just Privy's top-level ready) and never swallow a real error.
 function EnsureSolanaWallet({ children }: { children: React.ReactNode }) {
   const { authenticated, ready } = usePrivy();
-  const { wallets, createWallet } = useSolanaWallets();
+  const { wallets, createWallet, ready: solanaReady } = useSolanaWallets();
   const attempted = useRef(false);
   useEffect(() => {
-    if (ready && authenticated && wallets.length === 0 && !attempted.current) {
-      attempted.current = true;
-      createWallet().catch(() => {});
-    }
-  }, [ready, authenticated, wallets.length]);
+    if (!ready || !solanaReady || !authenticated) return;
+    if (wallets.length > 0) { attempted.current = false; return; } // already have one — nothing to do
+    if (attempted.current) return;
+    attempted.current = true;
+    (async () => {
+      try {
+        await createWallet();
+      } catch (e: any) {
+        // "already has an embedded wallet" is benign — a race with Privy's own auto-create; the wallets
+        // list will reflect it. Any OTHER error is a real failure worth surfacing (it lands in the
+        // browser console via captureError) instead of hanging silently, and we clear the attempt flag
+        // so a transient failure can retry on the next render.
+        const msg = String(e?.message ?? e ?? '');
+        if (!/already (has|exists)/i.test(msg)) {
+          captureError(e instanceof Error ? e : new Error(msg || 'createWallet failed'), { stage: 'EnsureSolanaWallet.createWallet' });
+          attempted.current = false;
+        }
+      }
+    })();
+  }, [ready, solanaReady, authenticated, wallets.length, createWallet]);
   return <>{children}</>;
 }
 
@@ -90,7 +111,9 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
             <CurrencySync />
-            <AppLock>{children}</AppLock>
+            <PasswordGate>
+              <AppLock>{children}</AppLock>
+            </PasswordGate>
           </QueryClientProvider>
         </trpc.Provider>
       </EnsureSolanaWallet>

@@ -9,6 +9,7 @@ import { S, t, price, card, sheet, surface, btn, sectionLabel, avatar, input } f
 import { LikeButton } from '@/components/like-button';
 import { OwnerStack, AvatarCircle } from '@/components/owner-stack';
 import { ListingCard } from '@/components/listing-card';
+import { PendingSerialCard } from '@/components/pending-serial-card';
 import { useCurrency } from '@/lib/currency';
 import { HeaderMenu } from '@/components/layout/header-menu';
 
@@ -100,6 +101,14 @@ export default function HomePage() {
     limit: 80,
   }, { enabled: browse === 'products' });
 
+  // Unminted business inventory (pending_serials) — merged into the same grid as minted listings.
+  // Not wired into the 3-tier search (semantic/Orama/ilike) yet, so it only shows when there's no
+  // active search query — searching should never surface a row search can't actually rank.
+  const { data: pendingRaw = [], isLoading: pendingLoading } = trpc.listings.getAvailablePending.useQuery(
+    { limit: 80 },
+    { enabled: browse === 'products' && !debouncedQ },
+  );
+
   // Seller (profile) search — the same search bar pulls up profiles when the Sellers filter is on.
   const { data: suggestedSellers = [] } = trpc.follows.getSuggested.useQuery(
     { wallet: myWallet || undefined },
@@ -112,7 +121,20 @@ export default function HomePage() {
   const sellers = debouncedQ ? searchedSellers : suggestedSellers;
 
   const items = useMemo(() => {
-    let list = raw;
+    // Merge minted listings with pending (unminted) business inventory. Pending rows have no
+    // `owners`/`current_owner_wallet` — normalize them here (owners: [], business_wallet stands in
+    // for current_owner_wallet) so the shared filters below can treat every row the same way without
+    // each filter needing its own kind-check.
+    const mintedNormalized = raw.map(i => ({ ...i, kind: 'minted' as const }));
+    const pendingNormalized = pendingRaw.map(p => ({
+      ...p,
+      kind: 'pending' as const,
+      current_owner_wallet: p.business_wallet,
+      owners: [] as { wallet: string; avatar_url?: string | null }[],
+      description: null as string | null,
+    }));
+    let list: (typeof mintedNormalized[number] | typeof pendingNormalized[number])[] =
+      [...mintedNormalized, ...pendingNormalized];
 
     if (newUsed !== 'All') {
       list = list.filter(i => {
@@ -124,9 +146,26 @@ export default function HomePage() {
     if (ownersF !== 'any') {
       const min = parseInt(ownersF, 10);
       list = list.filter(i => {
+        // Pending (unminted) rows have no ownership chain yet — they only pass the "0 previous
+        // owners" filter, never a "1+" etc. one, since nobody has ever owned them.
+        if (i.kind === 'pending') return ownersF === '0';
         const o = (i as any).owners;
         const prev = Array.isArray(o) && o.length ? Math.max(0, o.length - 1) : ((i as any).transfer_count ?? 0);
         return ownersF === '0' ? prev === 0 : prev >= min;
+      });
+    }
+
+    // Price range applies to pending rows too (already server-filtered for minted via getListings,
+    // but getAvailablePending doesn't take min/max, so enforce it client-side here).
+    const minPn = minP ? parseFloat(minP) : undefined;
+    const maxPn = maxP ? parseFloat(maxP) : undefined;
+    if (minPn != null || maxPn != null) {
+      list = list.filter(i => {
+        if (i.kind !== 'pending') return true; // minted rows already server-filtered
+        const p = i.price_usdc ?? 0;
+        if (minPn != null && p < minPn) return false;
+        if (maxPn != null && p > maxPn) return false;
+        return true;
       });
     }
 
@@ -143,10 +182,24 @@ export default function HomePage() {
         };
         return score(b) - score(a);
       });
+    } else if (sort === 'price_asc') {
+      list = [...list].sort((a, b) => (a.price_usdc ?? 0) - (b.price_usdc ?? 0));
+    } else if (sort === 'price_desc') {
+      list = [...list].sort((a, b) => (b.price_usdc ?? 0) - (a.price_usdc ?? 0));
+    } else if (sort === 'newest') {
+      // Minted rows come pre-sorted newest-first from getListings, pending rows from
+      // getAvailablePending — interleave both by created_at so newest overall leads regardless of kind.
+      list = [...list].sort((a, b) => {
+        const at = (a as any).created_at ? new Date((a as any).created_at).getTime() : 0;
+        const bt = (b as any).created_at ? new Date((b as any).created_at).getTime() : 0;
+        return bt - at;
+      });
     }
+    // 'popular' sort is minted-only (view_count); pending rows keep their newest-first server order,
+    // trailing after the popularity-sorted minted rows since list order is otherwise untouched here.
 
     return list;
-  }, [raw, debouncedQ, sort, newUsed, ownersF]);
+  }, [raw, pendingRaw, debouncedQ, sort, newUsed, ownersF, minP, maxP]);
 
   const hasFilters = cat !== 'All' || newUsed !== 'All' || ownersF !== 'any' || !!minP || !!maxP;
   function clearFilters() { setCat('All'); setNewUsed('All'); setOwnersF('any'); setMinP(''); setMaxP(''); }
@@ -350,11 +403,15 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Cards */}
+          {/* Cards — minted listings render as ListingCard, pending business inventory as
+              PendingSerialCard; key is prefixed by kind so a minted item and a pending row can never
+              collide even if their ids coincided. */}
           {!isLoading && items.length > 0 && (
             <div className="visby-grid">
               {items.map((item) => (
-                <ListingCard key={item.id} item={item as any} />
+                item.kind === 'pending'
+                  ? <PendingSerialCard key={`pending:${item.id}`} item={item as any} />
+                  : <ListingCard key={`minted:${item.id}`} item={item as any} />
               ))}
             </div>
           )}

@@ -22,3 +22,9 @@ export function tallyTransferAction(itemId: string, toWallet: string): string {
 export function sendMoneyAction(toWallet: string, token: string): string {
   return `send_money:${token}:${toWallet}`;
 }
+// Binds the charging wallet + USD amount + asset, so a step-up proof for one saved-card charge can't be
+// replayed to pull a different amount (off-session charges move card -> crypto without the card being
+// re-entered, so they get the same step-up as a send).
+export function onrampChargeAction(wallet: string, usd: number, asset: string): string {
+  return `onramp_charge:${asset}:${usd}:${wallet}`;
+}

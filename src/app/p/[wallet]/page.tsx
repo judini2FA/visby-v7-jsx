@@ -13,6 +13,7 @@ import { BlockButton } from '@/components/block-button';
 import { ReportButton } from '@/components/report-button';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { ListingCard } from '@/components/listing-card';
+import { PendingSerialCard } from '@/components/pending-serial-card';
 
 const GD = T.gradBrand;
 
@@ -102,6 +103,12 @@ export default function PublicProfilePage() {
   const { data: rep } = trpc.reviews.getBySeller.useQuery(
     { wallet },
     { enabled: !!wallet }
+  );
+
+  const isBusiness = profile?.account_type === 'business';
+  const { data: pendingInventory = [], isLoading: loadingPending } = trpc.listings.getAvailablePending.useQuery(
+    { wallet: profileWallet },
+    { enabled: !!profileWallet && isBusiness }
   );
 
   const listedItems   = ownedItems.filter((i: any) => i.is_listed);
@@ -270,6 +277,30 @@ export default function PublicProfilePage() {
             {[1, 2, 3].map(i => (
               <div key={i} style={{ ...card(), height: 72, animation: 'pulse 2s infinite' }} />
             ))}
+          </div>
+        )}
+
+        {/* Business storefront — a business's available (unminted) inventory, front and center so
+            the page reads as a storefront first, profile second. Shown even while other profile
+            sections are still loading, since it has its own loading/enabled state. */}
+        {isBusiness && (loadingPending || pendingInventory.length > 0) && (
+          <div style={{ marginBottom: S[6] }}>
+            <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
+              For Sale{!loadingPending ? ` · ${pendingInventory.length}` : ''}
+            </div>
+            {loadingPending ? (
+              <div className="visby-grid">
+                {[1, 2].map(i => (
+                  <div key={i} style={{ ...card({ radius: 'var(--r-lg)' }), height: 240, animation: 'pulse 2s infinite' }} />
+                ))}
+              </div>
+            ) : (
+              <div className="visby-grid">
+                {pendingInventory.map((item: any) => (
+                  <PendingSerialCard key={item.id} item={item} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 

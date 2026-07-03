@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { sendSolFromAuthority } from '@/lib/solana-fund';
 import { toCents } from '@/lib/fees';
+import { solUsd } from '@/lib/price-oracle';
 
 // Escrow refund. Mirror of releasePayout but in reverse: while buyer funds are still held (payout NOT
 // released), return the full buyer payment. Card → refund the original Stripe charge. Crypto → the
@@ -23,13 +24,9 @@ export type RefundOrder = {
 export type RefundResult = { ok: boolean; refund_tx: string | null; error?: string };
 
 async function solPriceUsd(): Promise<number | null> {
-  try {
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    const d = await r.json();
-    return d?.solana?.usd ?? null;
-  } catch {
-    return null;
-  }
+  // Fund-moving: always a fresh multi-source read (never cached) — see price-oracle.ts.
+  const p = await solUsd({ fresh: true });
+  return p > 0 ? p : null;
 }
 
 export async function refundOrder(order: RefundOrder): Promise<RefundResult> {

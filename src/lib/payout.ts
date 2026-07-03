@@ -1,6 +1,7 @@
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { sendSolFromAuthority } from '@/lib/solana-fund';
 import { captureError } from '@/lib/monitoring';
+import { solUsd } from '@/lib/price-oracle';
 
 // Escrow release. Buyer funds are held until delivery is confirmed; then the seller's net
 // (price − platform fee − shipping) is paid to their PRIMARY payout method.
@@ -28,13 +29,9 @@ export type PayoutOrder = {
 export type PayoutResult = { ok: boolean; payout_tx: string | null; error?: string };
 
 async function solPriceUsd(): Promise<number | null> {
-  try {
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    const d = await r.json();
-    return d?.solana?.usd ?? null;
-  } catch {
-    return null;
-  }
+  // Fund-moving: always a fresh multi-source read (never cached) — see price-oracle.ts.
+  const p = await solUsd({ fresh: true });
+  return p > 0 ? p : null;
 }
 
 export async function releasePayout(order: PayoutOrder): Promise<PayoutResult> {

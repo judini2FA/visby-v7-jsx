@@ -58,6 +58,25 @@ export async function POST(req: Request) {
     const kyc = await requireKycForSaleAny(authCtx?.wallets ?? [owner_wallet]);
     if (!kyc.ok) return NextResponse.json({ error: 'kyc_required', kyc_status: kyc.status }, { status: 403 });
 
+    // Counterfeit-takedown enforcement: a moderator-suspended account cannot mint new inventory, on any
+    // of the caller's linked wallets (mirrors the per-user KYC check above). Fail-safe: a DB read error
+    // is logged and treated as not-flagged so a transient outage never blocks a legitimate seller — only
+    // an explicit is_flagged=true blocks.
+    {
+      const suspendCheckWallets = Array.from(new Set([...(authCtx?.wallets ?? []), owner_wallet].filter(Boolean)));
+      const supabaseFlagCheck = createServiceClient();
+      const { data: flaggedRows, error: flagErr } = await supabaseFlagCheck
+        .from('profiles')
+        .select('wallet')
+        .eq('is_flagged', true)
+        .in('wallet', suspendCheckWallets);
+      if (flagErr) {
+        console.error('[mint] is_flagged check failed (failing open):', flagErr.message);
+      } else if ((flaggedRows ?? []).length > 0) {
+        return NextResponse.json({ error: 'account_suspended' }, { status: 403 });
+      }
+    }
+
     // Tally Destination: mint into the seller's chosen Solana wallet when set + valid, else their wallet.
     const tallyOwner = (typeof destination_wallet === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(destination_wallet))
       ? destination_wallet

@@ -92,6 +92,9 @@ export async function PATCH(req: Request) {
         }
       } else {
         // flag_user — upsert so it works whether or not the seller already has a profile row.
+        // Suspension must actually stop the counterfeiter, not just hide their storefront: mint/list
+        // routes reject on is_flagged, and here we also delist everything currently live so existing
+        // listings don't linger in browse/search until a separate manual force_delist per item.
         const { error } = await supabase
           .from('profiles')
           .upsert({ wallet: target_id, is_flagged: true }, { onConflict: 'wallet' });
@@ -101,6 +104,17 @@ export async function PATCH(req: Request) {
           }
           console.error('[moderation/PATCH flag_user] error:', error);
           return NextResponse.json({ error: 'Could not flag user' }, { status: 500 });
+        }
+
+        const { error: delistErr } = await supabase
+          .from('items')
+          .update({ is_listed: false, price_usdc: null, listed_at: null })
+          .eq('current_owner_wallet', target_id)
+          .eq('is_listed', true);
+        if (delistErr && !isMissing(delistErr)) {
+          // Flag already landed (the part that blocks future mint/list); log but don't fail the
+          // request — a moderator can still force_delist stragglers individually.
+          console.error('[moderation/PATCH flag_user] bulk delist error:', delistErr);
         }
       }
 

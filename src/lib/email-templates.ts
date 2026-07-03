@@ -109,6 +109,25 @@ export function reviewRequestBuyer(i: { itemId: string; productName?: string | n
   };
 }
 
+export function passwordResetEmail(i: { code: string }): EmailMsg {
+  return {
+    subject: 'Reset your Visby account password',
+    html: layout({
+      heading: 'Reset your password',
+      lines: [
+        'Use this code to set a new Visby account password:',
+        `<strong style="font-size:20px;letter-spacing:0.04em">${esc(i.code)}</strong>`,
+        'This code expires in 30 minutes. If you didn’t request this, you can safely ignore this email — your password won’t change.',
+      ],
+    }),
+    text: text([
+      'Use this code to set a new Visby account password:',
+      i.code,
+      'This code expires in 30 minutes. If you didn’t request this, you can safely ignore this email.',
+    ]),
+  };
+}
+
 export function newDeviceEmail(i: { platform?: string | null; userAgent?: string | null; ip?: string | null }): EmailMsg {
   const where = [i.platform, i.ip].filter(Boolean).map((s) => esc(String(s))).join(' · ') || 'a new device';
   return {

@@ -1,29 +1,19 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { sendSolFromAuthority, getSolBalance, sendUsdcFromAuthority, getUsdcBalance } from '@/lib/solana-fund';
+import { callerOwnsWallet } from '@/lib/auth';
+import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
+import { disburseOnramp } from '@/lib/onramp-disburse';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-async function getSolPrice(): Promise<number> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const r = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
-      { signal: controller.signal, cache: 'no-store' }
-    );
-    const data = await r.json();
-    return data.solana?.usd ?? 0;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 export async function POST(req: Request) {
   try {
+    const rl = await rateLimit(`onramp-fulfill:${clientIp(req)}`, { limit: 20, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
     const { payment_intent_id } = await req.json();
     if (!payment_intent_id || typeof payment_intent_id !== 'string') {
       return NextResponse.json({ error: 'Missing payment_intent_id' }, { status: 400 });
@@ -38,66 +28,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const { wallet, usd, fulfilled, asset: assetRaw } = pi.metadata as {
-      wallet: string;
-      usd: string;
-      fulfilled?: string;
-      asset?: string;
-    };
-    const asset = assetRaw === 'USDC' ? 'USDC' : 'SOL';
-
-    if (fulfilled === 'true') {
-      const new_balance = asset === 'USDC' ? await getUsdcBalance(wallet) : await getSolBalance(wallet);
-      return NextResponse.json({
-        ok: true,
-        already_fulfilled: true,
-        asset,
-        token_amount: parseFloat(pi.metadata.token_amount ?? pi.metadata.sol_amount ?? '0'),
-        sol_amount: parseFloat(pi.metadata.sol_amount ?? '0'),
-        new_balance,
-      });
+    // Only the signed-in owner of the payment's destination wallet may trigger delivery. Funds could
+    // never be redirected (the wallet is fixed in the PI metadata), but an unauthenticated endpoint that
+    // moves treasury crypto on demand is still an open door.
+    if (!(await callerOwnsWallet(req, pi.metadata?.wallet))) {
+      return NextResponse.json({ error: 'Not authorized — please sign in.' }, { status: 401 });
     }
 
-    const usdNum = parseFloat(usd);
+    const result = await disburseOnramp(stripe, pi);
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-    if (asset === 'USDC') {
-      // USDC is 1:1 with USD — disburse exactly what was paid.
-      const token_amount = usdNum;
-      const tx = await sendUsdcFromAuthority(wallet, token_amount);
-      await stripe.paymentIntents.update(payment_intent_id, {
-        metadata: { ...pi.metadata, fulfilled: 'true', token_amount: String(token_amount) },
-      });
-      const new_balance = await getUsdcBalance(wallet);
-      return NextResponse.json({ ok: true, tx, asset: 'USDC', token_amount, new_balance });
-    }
-
-    const sol_price = await getSolPrice();
-    if (sol_price === 0) {
-      return NextResponse.json(
-        { error: 'SOL price feed unavailable — cannot calculate disbursement' },
-        { status: 503 }
-      );
-    }
-
-    const sol_amount = usdNum / sol_price;
-    const lamports = Math.round(sol_amount * 1e9);
-
-    const tx = await sendSolFromAuthority(wallet, lamports);
-
-    await stripe.paymentIntents.update(payment_intent_id, {
-      metadata: { ...pi.metadata, fulfilled: 'true', sol_amount: String(sol_amount), token_amount: String(sol_amount) },
-    });
-
-    const new_balance = await getSolBalance(wallet);
-
-    return NextResponse.json({
-      ok: true,
-      tx,
-      asset: 'SOL',
-      sol_amount,
-      token_amount: sol_amount,
-      new_balance,
-    });
+    const { ok, already_fulfilled, asset, token_amount, sol_amount, tx, new_balance } = result;
+    return NextResponse.json({ ok, already_fulfilled, asset, token_amount, sol_amount, tx, new_balance });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

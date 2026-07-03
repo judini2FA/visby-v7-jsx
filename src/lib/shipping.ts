@@ -1,24 +1,21 @@
-import { ups } from './shipping/ups';
-import { fedex } from './shipping/fedex';
-import { usps } from './shipping/usps';
-import type { Addr, Parcel, ShipRate, BoughtLabel, Carrier, CarrierAdapter } from './shipping/types';
+import * as atoship from './shipping/atoship';
+import type { Addr, Parcel, ShipRate, BoughtLabel, Carrier } from './shipping/types';
 
-// Direct-carrier rate-shop. Fans out to UPS / FedEx / USPS adapters, normalizes to one ShipRate
-// list, recommends the cheapest service that lands within the 2-business-day window, and buys the
-// chosen label. A carrier with missing creds is silently skipped — one carrier failing never
-// breaks the others.
+// Multi-carrier shipping via AtoShip (decision 2026-07-03 — replaced EasyPost after their signup
+// failed; the direct UPS/FedEx/USPS adapters are retired). One rates call shops every carrier;
+// recommendation is the cheapest service that lands within the 2-business-day window; the chosen
+// rate's id buys the label. With no ATOSHIP_API_KEY the app falls back to manual tracking entry.
 export type { Parcel, Addr, ShipRate, BoughtLabel, Carrier } from './shipping/types';
-
-const ADAPTERS: CarrierAdapter[] = [ups, fedex, usps];
+export { voidLabel } from './shipping/atoship';
 
 const RECOMMEND_MAX_DAYS = 2;
 
 export function shippingConfigured(): boolean {
-  return ADAPTERS.some(a => a.isConfigured());
+  return atoship.atoshipConfigured();
 }
 
 export function configuredCarriers(): Carrier[] {
-  return ADAPTERS.filter(a => a.isConfigured()).map(a => a.name);
+  return shippingConfigured() ? ['USPS', 'UPS', 'FedEx'] : [];
 }
 
 function cheapest(rates: ShipRate[]): ShipRate | null {
@@ -38,11 +35,9 @@ export function recommendRate(rates: ShipRate[]): ShipRate | null {
 export const pickCheapest = (rates: ShipRate[], _maxDays?: number): ShipRate | null => recommendRate(rates);
 
 export async function rateShop(from: Addr, to: Addr, parcel: Parcel): Promise<{ rates: ShipRate[] } | null> {
-  const configured = ADAPTERS.filter(a => a.isConfigured());
-  if (!configured.length) return null;
+  if (!shippingConfigured()) return null;
 
-  const settled = await Promise.allSettled(configured.map(a => a.getRates(from, to, parcel)));
-  const rates = settled.flatMap(s => (s.status === 'fulfilled' ? s.value : []));
+  const rates = await atoship.getRates(from, to, parcel).catch(() => [] as ShipRate[]);
   rates.sort((a, b) => a.rate - b.rate);
 
   const rec = recommendRate(rates);
@@ -52,9 +47,8 @@ export async function rateShop(from: Addr, to: Addr, parcel: Parcel): Promise<{ 
 }
 
 export async function buyLabel(rate: ShipRate, from: Addr, to: Addr, parcel: Parcel): Promise<BoughtLabel | null> {
-  const adapter = ADAPTERS.find(a => a.name === rate.carrier);
-  if (!adapter) return null;
-  return adapter.buyLabel(rate, from, to, parcel);
+  if (!shippingConfigured()) return null;
+  return atoship.buyLabel(rate, from, to, parcel);
 }
 
 // Representative US destination for a listing-time ballpark; the real buyer address is used at

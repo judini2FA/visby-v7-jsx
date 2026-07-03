@@ -30,8 +30,13 @@ const CONDS = [
   { key: 'Fair',      desc: 'Heavy wear, flaws noted in description' },
 ];
 
-type Mode = 'mint' | 'resell';
+type Mode = 'mint' | 'resell' | 'bulk';
 type MintStatus = 'idle' | 'uploading' | 'minting' | 'done' | 'error';
+type PendingSerial = {
+  id: string; serial_number: string; name: string; category: string | null; condition: string | null;
+  description: string | null; image_url: string | null; brand: string | null; price_usdc: number | null;
+  available: boolean; status: 'pending' | 'minted' | 'cancelled'; created_at: string;
+};
 
 // ─────────────────────────────────────────────────────────────
 // MINT NEW form
@@ -451,13 +456,269 @@ function RelistPanel({ wallet }: { wallet: string }) {
 
 
 // ─────────────────────────────────────────────────────────────
+// BULK LOG panel (business accounts only) — pre-log genuine inventory serials as
+// pending/unminted. Minting happens later, when each item actually sells (2.3, not here).
+// ─────────────────────────────────────────────────────────────
+const CSV_HINT = 'serial_number, name, category, condition, description, image_url, brand, price_usdc';
+
+// Small on/off switch — mirrors the Toggle in src/app/settings/page.tsx so every switch in the
+// app looks and behaves the same.
+function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onToggle} disabled={disabled}
+      style={{ width: 44, height: 26, borderRadius: 13, background: on ? 'var(--grad-brand)' : 'var(--surface-bg)', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, position: 'relative', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, transition: 'all .2s', flexShrink: 0, padding: 0 }}>
+      <div style={{ width: 20, height: 20, borderRadius: '50%', background: on ? '#fff' : 'var(--text-muted)', position: 'absolute', top: 1, left: on ? 20 : 1, transition: 'left .2s, background .2s' }} />
+    </button>
+  );
+}
+
+function BulkLogPanel({ wallet }: { wallet: string }) {
+  const { getAccessToken } = usePrivy();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [csv, setCsv]           = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult]     = useState<{ inserted: number; skipped: number; errors: string[] } | null>(null);
+  const [error, setError]       = useState('');
+  const [rows, setRows]         = useState<PendingSerial[]>([]);
+  const [loadingRows, setLoadingRows] = useState(true);
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [rowBusy, setRowBusy]   = useState<Record<string, boolean>>({});
+  const [rowError, setRowError] = useState<Record<string, string>>({});
+
+  async function loadRows() {
+    if (!wallet) return;
+    setLoadingRows(true);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/business/bulk-serials?wallet=${encodeURIComponent(wallet)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) { const j = await res.json(); setRows(j.rows ?? []); }
+    } catch { /* non-fatal */ } finally { setLoadingRows(false); }
+  }
+  useEffect(() => { loadRows(); }, [wallet]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function patchRow(id: string, patch: { available?: boolean; price_usdc?: number | null }): Promise<boolean> {
+    setRowBusy(prev => ({ ...prev, [id]: true }));
+    setRowError(prev => ({ ...prev, [id]: '' }));
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/business/bulk-serials', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ wallet, id, ...patch }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message ?? j.error ?? 'Could not update — try again');
+      setRows(prev => prev.map(r => (r.id === id ? { ...r, ...j.row } : r)));
+      return true;
+    } catch (err: any) {
+      setRowError(prev => ({ ...prev, [id]: err.message ?? 'Unknown error' }));
+      return false;
+    } finally {
+      setRowBusy(prev => ({ ...prev, [id]: false }));
+    }
+  }
+
+  function pickFile(files: FileList | null) {
+    const f = files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setCsv(String(reader.result ?? ''));
+    reader.readAsText(f);
+  }
+
+  async function submit() {
+    if (!wallet || !csv.trim() || submitting) return;
+    setSubmitting(true); setError(''); setResult(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/business/bulk-serials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ wallet, csv }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? 'Could not log serials — try again');
+      setResult({ inserted: j.inserted ?? 0, skipped: j.skipped ?? 0, errors: j.errors ?? [] });
+      setCsv('');
+      await loadRows();
+    } catch (err: any) {
+      setError(err.message ?? 'Unknown error');
+    } finally { setSubmitting(false); }
+  }
+
+  const pending = rows.filter(r => r.status === 'pending');
+
+  return (
+    <div style={{ paddingTop: S[5], paddingBottom: S[7], display: 'flex', flexDirection: 'column', gap: S[6] }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+        <div style={sectionLabel()}>Paste or upload CSV</div>
+        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+          Columns, in order: {CSV_HINT}
+        </div>
+        <textarea value={csv} onChange={e => setCsv(e.target.value)} rows={6}
+          placeholder={`serial_number,name,category,condition\nSN-001,Air Jordan 1,Sneakers,New`}
+          style={{ ...input(), resize: 'vertical', lineHeight: 1.6, fontFamily: "'Manrope',monospace" }} />
+        <div style={{ display: 'flex', gap: S[2] }}>
+          <button type="button" onClick={() => fileRef.current?.click()} style={{ ...btn('secondary'), flex: 1 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload CSV file
+          </button>
+          <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => pickFile(e.target.files)} />
+        </div>
+
+        {error && (
+          <div style={{ ...badge('danger'), display: 'flex', padding: '12px 16px', borderRadius: 'var(--r-sm)', ...t('body'), letterSpacing: 0 }}>
+            {error}
+          </div>
+        )}
+
+        <button type="button" onClick={submit} disabled={submitting || !csv.trim()}
+          style={{ ...btn(submitting || !csv.trim() ? 'secondary' : 'primary', { full: true, pill: false }), opacity: submitting || !csv.trim() ? 0.6 : 1, cursor: submitting || !csv.trim() ? 'not-allowed' : 'pointer' }}>
+          {submitting ? (
+            <><div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', animation: 'spin .8s linear infinite' }} />Logging…</>
+          ) : 'Log serials'}
+        </button>
+
+        {result && (
+          <div style={{ ...card({ pad: S[4] }), display: 'flex', flexDirection: 'column', gap: S[2] }}>
+            <div style={{ display: 'flex', gap: S[5] }}>
+              <div>
+                <div style={{ ...t('title'), color: 'var(--ok)' }}>{result.inserted}</div>
+                <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>Logged</div>
+              </div>
+              <div>
+                <div style={{ ...t('title'), color: 'var(--text-muted)' }}>{result.skipped}</div>
+                <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>Duplicate / Skipped</div>
+              </div>
+            </div>
+            {result.errors.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+                {result.errors.slice(0, 10).map((e, i) => (
+                  <div key={i} style={{ ...t('meta'), color: 'var(--danger)' }}>{e}</div>
+                ))}
+                {result.errors.length > 10 && (
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>+{result.errors.length - 10} more</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+        <div style={sectionLabel()}>Pending serials ({pending.length})</div>
+        {loadingRows ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+            {[1, 2, 3].map(i => <div key={i} style={{ height: 60, background: 'var(--glass-bg)', borderRadius: 'var(--r-sm)', animation: 'pulse 2s infinite' }} />)}
+          </div>
+        ) : pending.length === 0 ? (
+          <div style={{ textAlign: 'center', paddingTop: S[7], paddingBottom: S[7], display: 'flex', flexDirection: 'column', gap: S[2] }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>No pending serials yet</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Paste or upload a CSV above to pre-log inventory</div>
+          </div>
+        ) : (
+          pending.map(r => {
+            const draft = priceDrafts[r.id] ?? (r.price_usdc != null ? String(r.price_usdc) : '');
+            const busy = !!rowBusy[r.id];
+            const rowErr = rowError[r.id];
+
+            async function commitPrice() {
+              const trimmed = draft.trim();
+              const next = trimmed === '' ? null : Number(trimmed);
+              if (next != null && (!Number.isFinite(next) || next <= 0)) {
+                setRowError(prev => ({ ...prev, [r.id]: 'Enter a positive price' }));
+                return;
+              }
+              if (next === r.price_usdc) return; // unchanged — skip the round trip
+              await patchRow(r.id, { price_usdc: next });
+            }
+
+            async function togglePublish() {
+              if (busy) return;
+              const nextAvailable = !r.available;
+              if (nextAvailable) {
+                // Publishing — make sure a price is set (draft may not be committed yet).
+                const trimmed = draft.trim();
+                const draftPrice = trimmed === '' ? null : Number(trimmed);
+                if (!(typeof draftPrice === 'number' && Number.isFinite(draftPrice) && draftPrice > 0) && !(r.price_usdc != null && r.price_usdc > 0)) {
+                  setRowError(prev => ({ ...prev, [r.id]: 'Set a price before publishing this serial' }));
+                  return;
+                }
+                // If the price was edited but not yet saved, send both in one PATCH.
+                if (draftPrice != null && draftPrice !== r.price_usdc) {
+                  await patchRow(r.id, { price_usdc: draftPrice, available: true });
+                  return;
+                }
+              }
+              await patchRow(r.id, { available: nextAvailable });
+            }
+
+            return (
+              <div key={r.id} style={{ ...surface({ pad: '12px 16px' }), display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: S[1] }}>
+                    <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                    <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>SN: {r.serial_number}{r.category ? ` · ${r.category}` : ''}</div>
+                  </div>
+                  <span style={r.available ? badge('success') : badge('default')}>{r.available ? 'LIVE' : 'PENDING'}</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+                  <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', ...t('body'), color: 'var(--text-muted)' }}>$</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={draft}
+                      disabled={busy}
+                      onChange={e => setPriceDrafts(prev => ({ ...prev, [r.id]: e.target.value }))}
+                      onBlur={commitPrice}
+                      placeholder="Price (USD)"
+                      style={{ ...input(), padding: '10px 12px 10px 24px', fontSize: 14 }}
+                    />
+                  </div>
+                  <Toggle on={r.available} onToggle={togglePublish} disabled={busy} />
+                </div>
+
+                {rowErr && <div style={{ ...t('meta'), color: 'var(--danger)' }}>{rowErr}</div>}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────
 // PAGE
 // ─────────────────────────────────────────────────────────────
 export default function SellerDashboardPage() {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, getAccessToken } = usePrivy();
   const { address: wallet } = useVisbWallet();
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('mint');
+  const [isBusiness, setIsBusiness] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const res = await fetch('/api/kyc/status', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const j = await res.json();
+        if (!cancelled) setIsBusiness(j.account_type === 'business');
+      } catch { /* best-effort — tab just stays hidden */ }
+    })();
+    return () => { cancelled = true; };
+  }, [getAccessToken, authenticated]);
 
   if (ready && !authenticated) {
     router.replace('/login');
@@ -486,6 +747,7 @@ export default function SellerDashboardPage() {
           {([
             { id: 'mint'   as Mode, label: 'Mint New' },
             { id: 'resell' as Mode, label: 'Relist'   },
+            ...(isBusiness ? [{ id: 'bulk' as Mode, label: 'Bulk log' }] : []),
           ]).map(tab => (
             <button key={tab.id} onClick={() => setMode(tab.id)}
               style={{ ...tabSlider().item, ...(mode === tab.id ? tabSlider().itemActive : null) }}>
@@ -494,8 +756,9 @@ export default function SellerDashboardPage() {
           ))}
         </div>
 
-        {mode === 'mint'   && <MintForm    wallet={wallet} />}
-        {mode === 'resell' && <RelistPanel wallet={wallet} />}
+        {mode === 'mint'   && <MintForm     wallet={wallet} />}
+        {mode === 'resell' && <RelistPanel  wallet={wallet} />}
+        {mode === 'bulk' && isBusiness && <BulkLogPanel wallet={wallet} />}
       </div>
 
       <style>{`

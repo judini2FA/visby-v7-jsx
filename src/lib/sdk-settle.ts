@@ -7,6 +7,7 @@ import { deliverSdkWebhook, buildSdkWebhookEvent, scheduleAfterFailure } from '@
 import { emailWallet } from '@/lib/email';
 import { sdkOrderCompletedBuyer } from '@/lib/email-templates';
 import { captureError, captureMessage } from '@/lib/monitoring';
+import { solUsd } from '@/lib/price-oracle';
 
 // Shared SDK-order settlement: verify the cleared payment, atomically claim the order (exactly-once), mint
 // the provenance NFT, and fire the merchant webhook. Used by the manual card flow (/api/sdk/settle), the
@@ -144,14 +145,9 @@ export async function finalizeSdkOrder(
 }
 
 async function getSolPrice(): Promise<number | null> {
-  try {
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    if (!r.ok) return null;
-    const d = await r.json();
-    return d.solana?.usd ?? null;
-  } catch {
-    return null;
-  }
+  // Fund-moving (slippage check): always a fresh multi-source read — see price-oracle.ts.
+  const p = await solUsd({ fresh: true });
+  return p > 0 ? p : null;
 }
 
 // ── Crypto settlement: the payment is an on-chain SOL transfer the buyer signed to the treasury. ──

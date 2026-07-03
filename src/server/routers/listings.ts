@@ -52,6 +52,24 @@ export const listingsRouter = createTRPCRouter({
       const kyc = await requireKycForSaleAny(ctx.wallets);
       if (!kyc.ok) throw new TRPCError({ code: 'FORBIDDEN', message: 'kyc_required' });
       const supabase = createServiceClient();
+
+      // Counterfeit-takedown enforcement: a moderator-suspended account cannot (re)list inventory.
+      // Fail-safe: a DB read error is logged and treated as not-flagged (fail open on outages);
+      // only an explicit is_flagged=true blocks.
+      {
+        const suspendCheckWallets = Array.from(new Set([...ctx.wallets, input.seller_wallet].filter(Boolean)));
+        const { data: flaggedRows, error: flagErr } = await supabase
+          .from('profiles')
+          .select('wallet')
+          .eq('is_flagged', true)
+          .in('wallet', suspendCheckWallets);
+        if (flagErr) {
+          console.error('[listings.listForSale] is_flagged check failed (failing open):', flagErr.message);
+        } else if ((flaggedRows ?? []).length > 0) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'account_suspended' });
+        }
+      }
+
       const { data, error } = await supabase
         .from('items')
         .update({ is_listed: true, price_usdc: input.price_usdc, listed_at: new Date().toISOString() })
@@ -156,6 +174,48 @@ export const listingsRouter = createTRPCRouter({
       }
       if (error) throw new Error(error.message);
       return await withOwners(data ?? []);
+    }),
+
+  // Available (unminted) business inventory — pending_serials rows a business has toggled on-sale.
+  // Powers the main marketplace grid (mixed in alongside minted listings) and a business's public
+  // storefront section when `wallet` is passed. Buying happens on /business-item/[id] (owned elsewhere);
+  // this just needs to surface + shape the rows for cards that link there.
+  getAvailablePending: publicProcedure
+    .input(z.object({ wallet: z.string().optional(), limit: z.number().default(80) }))
+    .query(async ({ input }) => {
+      const supabase = createServiceClient();
+      let q = supabase
+        .from('pending_serials')
+        .select('id, business_wallet, name, category, condition, image_url, price_usdc, status, available, created_at')
+        .eq('status', 'pending')
+        .eq('available', true)
+        .gt('price_usdc', 0)
+        .order('created_at', { ascending: false })
+        .limit(input.limit);
+      if (input.wallet) q = q.eq('business_wallet', input.wallet);
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      let rows = data ?? [];
+
+      // Reuse the same flagged-seller exclusion the minted-listings path uses — a suspended business's
+      // pending inventory shouldn't surface in browse/storefront either. dropFlaggedOwners keys off
+      // `current_owner_wallet`, so alias business_wallet into that shape for the check, then unwrap.
+      const aliased = rows.map((r: any) => ({ ...r, current_owner_wallet: r.business_wallet }));
+      const visible = await dropFlaggedOwners(supabase, aliased);
+      const visibleIds = new Set(visible.map((r: any) => r.id));
+      rows = rows.filter((r: any) => visibleIds.has(r.id));
+
+      return rows.map((r: any) => ({
+        kind: 'pending' as const,
+        id: r.id,
+        name: r.name,
+        image_url: r.image_url ?? null,
+        price_usdc: r.price_usdc,
+        category: r.category ?? null,
+        condition: r.condition ?? null,
+        business_wallet: r.business_wallet,
+      }));
     }),
 
   // All items owned by a wallet (listed or not)

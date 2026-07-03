@@ -5,20 +5,16 @@ import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
 import { createOrder } from '@/lib/orders';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { captureError, captureMessage } from '@/lib/monitoring';
+import { solUsd } from '@/lib/price-oracle';
 
 const TREASURY = process.env.MINT_AUTHORITY_ADDRESS!;
 // Allow up to 2% slippage from quoted price at time of payment
 const SLIPPAGE_TOLERANCE = 0.02;
 
 async function getSolPrice(): Promise<number | null> {
-  try {
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    if (!r.ok) return null;
-    const d = await r.json();
-    return d.solana?.usd ?? null;
-  } catch {
-    return null;
-  }
+  // Fund-moving (slippage check): always a fresh multi-source read — see price-oracle.ts.
+  const p = await solUsd({ fresh: true });
+  return p > 0 ? p : null;
 }
 
 export async function POST(req: Request) {

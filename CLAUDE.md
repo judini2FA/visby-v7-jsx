@@ -1,5 +1,11 @@
 # Visby — Claude Code Context
 
+## ON SESSION START — read blueprint.md FIRST (non-negotiable)
+1. **Fully read `blueprint.md`** (repo root) before any work — it is the master checklist and the single source of what to do next and in what order. Work top-to-bottom in the current phase; a phase advances only when its Gate clears.
+2. `memory.md` (repo root) holds everything else: current-state evidence, locked decisions, Judah's action items, and the append-only command log.
+3. **Update protocol:** when Judah gives a new build command mid-work, ask *"update blueprint.md with this?"* — yes → update blueprint.md AND memory.md; no → memory.md only. **Everything always goes to memory.md.** Check items off in blueprint.md the moment they're done, with evidence noted in memory.md.
+4. `design.md` is the canonical visual + UX spec — read it before styling anything.
+
 ## What this project is
 Visby is a mobile-first Next.js marketplace for buying/selling physical luxury goods (sneakers, watches, bags, etc.) with NFT provenance on Solana. Each item gets minted as an NFT so ownership history is chain-verified. Users log in with Privy (email-based MPC wallets — no seed phrase). Payments go through Stripe.
 

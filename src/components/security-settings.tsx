@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { S, t, T, surface, btn } from '@/lib/ui';
+import { S, t, T, surface, btn, input } from '@/lib/ui';
 import { isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
+import { useVisbWallet } from '@/lib/wallet';
 
 type Session = {
   session_id: string;
@@ -86,6 +87,117 @@ export default function SecuritySettings() {
     } finally { setBusy(null); }
   }
 
+  const { address: wallet } = useVisbWallet();
+  const [hasPassword, setHasPassword] = useState(false);
+  const [showPwForm, setShowPwForm] = useState(false);
+  const [pwMode, setPwMode] = useState<'set' | 'change' | 'forgot'>('set');
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [pwMsg, setPwMsg] = useState('');
+  const [pwErr, setPwErr] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const authHeaders = useCallback(async () => {
+    const token = await getAccessToken();
+    return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  }, [getAccessToken]);
+
+  const loadPasswordStatus = useCallback(async () => {
+    if (!wallet) return;
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/account/security?wallet=${encodeURIComponent(wallet)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return;
+      const j = await res.json();
+      setHasPassword(!!j.hasPassword);
+    } catch { /* non-fatal */ }
+  }, [wallet, getAccessToken]);
+  useEffect(() => { loadPasswordStatus(); }, [loadPasswordStatus]);
+
+  function resetPwForm() {
+    setCurrentPw(''); setNewPw(''); setConfirmPw(''); setResetCode(''); setPwMsg(''); setPwErr('');
+  }
+  function openPwForm() {
+    resetPwForm();
+    setPwMode(hasPassword ? 'change' : 'set');
+    setShowPwForm(true);
+  }
+  function closePwForm() {
+    setShowPwForm(false);
+    resetPwForm();
+  }
+
+  async function submitSetPassword() {
+    setPwErr(''); setPwMsg('');
+    if (newPw !== confirmPw) { setPwErr('Passwords don’t match.'); return; }
+    setPwBusy(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/account/password/set', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ wallet, new_password: newPw, ...(hasPassword ? { current_password: currentPw } : {}) }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPwErr(j.error === 'wrong_password' ? 'Current password is incorrect.' : (j.error || 'Couldn’t save password — try again.'));
+        return;
+      }
+      setHasPassword(true);
+      setPwMsg(hasPassword ? 'Password changed.' : 'Password set.');
+      setTimeout(closePwForm, 900);
+    } catch {
+      setPwErr('Couldn’t save password — try again.');
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  async function requestReset() {
+    setPwErr(''); setPwMsg('');
+    setPwBusy(true);
+    try {
+      const headers = await authHeaders();
+      await fetch('/api/account/password/reset/request', { method: 'POST', headers, body: JSON.stringify({ wallet }) });
+      setPwMode('forgot');
+      setPwMsg('Check your email for a reset code.');
+    } catch {
+      setPwErr('Couldn’t send a reset code — try again.');
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  async function submitResetConfirm() {
+    setPwErr(''); setPwMsg('');
+    if (newPw !== confirmPw) { setPwErr('Passwords don’t match.'); return; }
+    setPwBusy(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/account/password/reset/confirm', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ wallet, token: resetCode, new_password: newPw }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPwErr(j.error === 'bad_or_expired_token' ? 'That code is invalid or expired.' : (j.error || 'Couldn’t reset password — try again.'));
+        return;
+      }
+      setHasPassword(true);
+      setPwMsg('Password reset.');
+      setTimeout(closePwForm, 900);
+    } catch {
+      setPwErr('Couldn’t reset password — try again.');
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
   // Privy raises its own modal for these; both require MFA/passkeys enabled in the Privy dashboard.
   async function manage2fa() {
     setErr('');
@@ -108,6 +220,43 @@ export default function SecuritySettings() {
         sublabel={mfaMethods.length ? `On — ${mfaMethods.join(', ')}` : 'Authenticator-app code, required to sign in'}
         right={<button onClick={manage2fa} style={{ ...btn('secondary', { pill: false }), padding: '7px 14px', color: T.textMuted }}>{mfaMethods.length ? 'Manage' : 'Set up'}</button>}
       />
+      <SecRow
+        icon={<svg width="16" height="16" viewBox="0 0 24 24" {...stroke}><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><circle cx="12" cy="15" r="1.4" fill="var(--text-muted)" stroke="none" /></svg>}
+        label="Password"
+        sublabel={hasPassword ? 'On' : 'Add a password to your account'}
+        right={<button onClick={openPwForm} style={{ ...btn('secondary', { pill: false }), padding: '7px 14px', color: T.textMuted }}>{hasPassword ? 'Change' : 'Set up'}</button>}
+      />
+      {showPwForm && (
+        <div style={{ padding: '4px 16px 14px', display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          {pwMode === 'change' && (
+            <>
+              <input type="password" placeholder="Current password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} style={input()} autoComplete="current-password" />
+              <button onClick={requestReset} disabled={pwBusy} style={{ ...btn('text'), fontSize: 12, alignSelf: 'flex-start', padding: '4px 0' }}>Forgot password?</button>
+            </>
+          )}
+          {pwMode === 'forgot' && (
+            <input type="text" placeholder="Emailed code" value={resetCode} onChange={(e) => setResetCode(e.target.value)} style={input()} autoComplete="one-time-code" />
+          )}
+          {(pwMode === 'set' || pwMode === 'change' || pwMode === 'forgot') && (
+            <>
+              <input type="password" placeholder="New password" value={newPw} onChange={(e) => setNewPw(e.target.value)} style={input()} autoComplete="new-password" />
+              <input type="password" placeholder="Confirm password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} style={input()} autoComplete="new-password" />
+            </>
+          )}
+          {pwErr && <div style={{ ...t('meta'), color: 'var(--danger)' }}>{pwErr}</div>}
+          {pwMsg && !pwErr && <div style={{ ...t('meta'), color: 'var(--ok)' }}>{pwMsg}</div>}
+          <div style={{ display: 'flex', gap: S[2], marginTop: S[1] }}>
+            <button
+              onClick={pwMode === 'forgot' ? submitResetConfirm : submitSetPassword}
+              disabled={pwBusy || !newPw || !confirmPw || (pwMode === 'forgot' && !resetCode) || (pwMode === 'change' && !currentPw)}
+              style={{ ...btn('primary'), flex: 1, fontSize: 13, opacity: pwBusy ? 0.7 : 1 }}
+            >
+              {pwBusy ? 'Saving…' : pwMode === 'forgot' ? 'Reset password' : hasPassword ? 'Change password' : 'Set password'}
+            </button>
+            <button onClick={closePwForm} style={{ ...btn('secondary'), fontSize: 13 }}>Cancel</button>
+          </div>
+        </div>
+      )}
       <SecRow
         icon={<svg width="16" height="16" viewBox="0 0 24 24" {...stroke}><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" /></svg>}
         label="Passkeys"
