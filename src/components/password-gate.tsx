@@ -35,8 +35,12 @@ function clearSessionOk(wallet: string): void {
 type GateStatus = 'checking' | 'needs-create' | 'needs-verify' | 'clear';
 
 export function PasswordGate({ children }: { children: React.ReactNode }) {
-  const { ready, authenticated, getAccessToken, logout } = usePrivy();
+  const { ready, authenticated, getAccessToken, logout, user } = usePrivy();
   const { address: wallet, ready: walletReady } = useVisbWallet();
+
+  // The email Privy already verified for this session — shown on the gate so signing in reads as a
+  // proper "email + password" login, not a bare password prompt.
+  const email = user?.email?.address ?? (typeof user?.google?.email === 'string' ? user.google.email : null) ?? null;
 
   const [status, setStatus] = useState<GateStatus>('checking');
   const loadedForWallet = useRef<string | null>(null);
@@ -115,6 +119,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
       <GateOverlay
         status={status}
         wallet={wallet}
+        email={email}
         authHeaders={authHeaders}
         onUnlocked={handleUnlocked}
         onSignOut={handleSignOut}
@@ -130,15 +135,34 @@ const LockIcon = () => (
   </svg>
 );
 
+// The account's email, shown read-only above the password field so the gate reads as an "email +
+// password" login (Privy already verified the email for this session, so it isn't re-entered).
+function EmailField({ email }: { email: string | null }) {
+  if (!email) return null;
+  return (
+    <input
+      type="email"
+      value={email}
+      readOnly
+      aria-label="Email"
+      autoComplete="username"
+      tabIndex={-1}
+      style={{ ...input(), width: '100%', color: 'var(--text-muted)', cursor: 'default' }}
+    />
+  );
+}
+
 function GateOverlay({
   status,
   wallet,
+  email,
   authHeaders,
   onUnlocked,
   onSignOut,
 }: {
   status: GateStatus;
   wallet: string;
+  email: string | null;
   authHeaders: () => Promise<Record<string, string>>;
   onUnlocked: () => void;
   onSignOut: () => void;
@@ -162,10 +186,10 @@ function GateOverlay({
           <div style={{ ...t('body'), color: T.textMuted, marginTop: S[4] }}>Loading…</div>
         )}
         {status === 'needs-create' && (
-          <CreatePasswordForm wallet={wallet} authHeaders={authHeaders} onDone={onUnlocked} onSignOut={onSignOut} />
+          <CreatePasswordForm wallet={wallet} email={email} authHeaders={authHeaders} onDone={onUnlocked} onSignOut={onSignOut} />
         )}
         {status === 'needs-verify' && (
-          <EnterPasswordForm wallet={wallet} authHeaders={authHeaders} onDone={onUnlocked} onSignOut={onSignOut} />
+          <EnterPasswordForm wallet={wallet} email={email} authHeaders={authHeaders} onDone={onUnlocked} onSignOut={onSignOut} />
         )}
       </div>
     </div>
@@ -174,11 +198,13 @@ function GateOverlay({
 
 function CreatePasswordForm({
   wallet,
+  email,
   authHeaders,
   onDone,
   onSignOut,
 }: {
   wallet: string;
+  email: string | null;
   authHeaders: () => Promise<Record<string, string>>;
   onDone: () => void;
   onSignOut: () => void;
@@ -215,11 +241,12 @@ function CreatePasswordForm({
 
   return (
     <>
-      <div style={{ ...t('title'), color: T.textStrong, marginTop: S[4] }}>Create your password</div>
+      <div style={{ ...t('title'), color: T.textStrong, marginTop: S[4] }}>Set your password</div>
       <div style={{ ...t('body'), color: T.textMuted, marginTop: S[2], marginBottom: S[5] }}>
-        This keeps your account secure. You'll use it to sign in from now on.
+        You'll sign in with your email and this password from now on.
       </div>
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: S[2] }}>
+        <EmailField email={email} />
         <input
           type="password"
           placeholder="New password"
@@ -258,11 +285,13 @@ type VerifyStep = 'enter' | 'forgot-request' | 'forgot-confirm';
 
 function EnterPasswordForm({
   wallet,
+  email,
   authHeaders,
   onDone,
   onSignOut,
 }: {
   wallet: string;
+  email: string | null;
   authHeaders: () => Promise<Record<string, string>>;
   onDone: () => void;
   onSignOut: () => void;
@@ -348,20 +377,23 @@ function EnterPasswordForm({
   if (step === 'enter') {
     return (
       <>
-        <div style={{ ...t('title'), color: T.textStrong, marginTop: S[4] }}>Enter your Visby password</div>
+        <div style={{ ...t('title'), color: T.textStrong, marginTop: S[4] }}>Welcome back</div>
         <div style={{ ...t('body'), color: T.textMuted, marginTop: S[2], marginBottom: S[5] }}>
-          This keeps your account secure.
+          Sign in with your email and password.
         </div>
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{ ...input(), width: '100%' }}
-          autoComplete="current-password"
-          autoFocus
-          onKeyDown={(e) => { if (e.key === 'Enter') submitVerify(); }}
-        />
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          <EmailField email={email} />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ ...input(), width: '100%' }}
+            autoComplete="current-password"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter') submitVerify(); }}
+          />
+        </div>
         {err && <div style={{ ...t('meta'), color: 'var(--danger)', marginTop: S[3] }}>{err}</div>}
         <button
           onClick={submitVerify}
