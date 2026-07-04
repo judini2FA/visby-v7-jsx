@@ -1,7 +1,7 @@
 // background.js — MV3 service worker
 // config.js is NOT imported here (service workers can't share scripts with content).
 // Duplicate the origin constant here so the service worker is self-contained.
-const VISBY_ORIGIN_BG = 'https://app.visby.me';
+const VISBY_ORIGIN_BG = 'https://visby.me';
 
 // ── Partner-check with session-cache ─────────────────────────────────────────
 
@@ -69,4 +69,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   return false;
+});
+
+// ── External auth relay (blueprint 5.4) ─────────────────────────────────────────
+// The web page at VISBY_ORIGIN/extension-auth relays the user's Privy session token here after they
+// sign in (Privy's web SDK can't run in an MV3 popup). Only origins in the manifest's
+// `externally_connectable.matches` can reach this listener; we additionally verify the sender origin
+// as defense-in-depth before trusting a relayed token.
+const ALLOWED_AUTH_ORIGINS = ['https://app.visby.me', 'https://visby.me', 'http://localhost:3000'];
+
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  const origin = sender && sender.origin;
+  if (!origin || !ALLOWED_AUTH_ORIGINS.includes(origin)) { sendResponse({ ok: false }); return false; }
+  if (!msg || msg.type !== 'visbyAuth' || !msg.payload || typeof msg.payload.token !== 'string') {
+    sendResponse({ ok: false });
+    return false;
+  }
+  setAuth(msg.payload).then(() => sendResponse({ ok: true }));
+  return true; // async sendResponse
 });

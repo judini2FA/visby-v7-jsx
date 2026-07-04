@@ -13,7 +13,9 @@
     chrome.tabs.create({ url });
   }
 
-  signinBtn.addEventListener('click', () => openTab(VISBY_ORIGIN + '/login'));
+  // Blueprint 5.4 — sign in through the auth-relay page, passing this extension's id so the page can
+  // hand the Privy session token back to the extension after login (Privy can't run in the popup).
+  signinBtn.addEventListener('click', () => openTab(VISBY_ORIGIN + '/extension-auth?ext=' + encodeURIComponent(chrome.runtime.id)));
   openVisbytBtn.addEventListener('click', () => openTab(VISBY_ORIGIN));
 
   // ── Auth state ─────────────────────────────────────────────────────────────
@@ -75,12 +77,23 @@
   }
 
   // Ask the background for auth state, then try to load methods.
-  chrome.runtime.sendMessage({ type: 'getAuth' }, (authPayload) => {
-    if (chrome.runtime.lastError || !authPayload) {
-      renderSignedOut();
-      return;
-    }
-    loadMethods(authPayload);
-  });
+  function checkAuth() {
+    chrome.runtime.sendMessage({ type: 'getAuth' }, (authPayload) => {
+      if (chrome.runtime.lastError || !authPayload) {
+        renderSignedOut();
+        return;
+      }
+      loadMethods(authPayload);
+    });
+  }
+
+  // Re-render live when the auth-relay page (5.4) drops a token into storage while this popup is open.
+  if (chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.visbyAuth) checkAuth();
+    });
+  }
+
+  checkAuth();
 
 })();
