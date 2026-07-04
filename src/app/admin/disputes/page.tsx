@@ -346,6 +346,11 @@ function DisputeCard({
       {/* evidence + proof of delivery */}
       <EvidenceViewer disputeId={dispute.id} wallet={wallet} token={token} />
 
+      {/* 6.6 — compile the printable chargeback evidence bundle for this order */}
+      <Link href={`/admin/chargeback/${dispute.order_id}`} style={{ ...btn('text'), padding: `${S[1]}px ${S[2]}px`, alignSelf: 'flex-start' }}>
+        Chargeback bundle →
+      </Link>
+
       {error && (
         <div style={{ ...surface({ pad: S[3], radius: 'var(--r-sm)' }), borderColor: 'var(--danger-soft)' }}>
           <p style={{ ...t('body'), color: C.red, margin: 0 }}>{error}</p>
