@@ -93,12 +93,12 @@
 - [ ] 7.2 Empty + error states sweep: every screen has a helpful next action
 - [ ] 7.3 Offers flow: preset offer slider → real accept → checkout at offered price
 - [ ] 7.4 Address book (saved shipping addresses)
-- [ ] 7.5 Order-tracking timeline UX
+- [x] 7.5 Order-tracking timeline UX — ALREADY BUILT (verified 2026-07-04). `src/app/order/[itemId]/page.tsx` renders a polished vertical timeline: STEPS (Paid → Shipped → Delivered) with a connected spine, step-circle icons, done/current/pending states, a pulse dot on the current step, per-step timestamps (created_at/shipped_at/delivered_at), Done/Pending badges, and tracking carrier + number. Nothing to add.
 - [ ] 7.6 Help center: FAQ + contact-support flow wired to order state machine (self-heal email triage, injection-guarded)
 - [ ] 7.7 Self-serve returns/refund request flow (feeds disputes; refund reflects on Tally provenance)
 - [ ] 7.8 Notification preferences center (email/push toggles)
-- [ ] 7.9 Seller analytics (views, likes, conversion) on seller dashboard
-- [ ] 7.10 SEO/sharing: OG images for items + profiles
+- [x] 7.9 Seller analytics (views, likes, conversion) on seller dashboard — ALREADY BUILT (verified 2026-07-04). `src/components/seller-analytics.tsx` (`<SellerAnalytics>`) is wired into the wallet page and shows Gross revenue, Total views, Total likes, and per-item view/like breakdown. Nothing to add.
+- [x] 7.10 SEO/sharing: OG images for items + profiles — DONE 2026-07-04. Dynamic `next/og` `ImageResponse` handlers: `src/app/item/[id]/opengraph-image.tsx` (1200×630 branded card: item photo + brand + name + price + "Authenticity verified on-chain" + VISBY gradient wordmark; fetches the item server-side, falls back to a generic branded card) and `src/app/p/[wallet]/opengraph-image.tsx` (seller avatar/initial + name + handle + business badge + bio). Next auto-wires the og:image meta. Verified generating real PNGs: fallback 75KB, real item 82KB (photo loaded), profile 94KB, all 200 image/png. tsc clean; deployed.
 - [x] 7.11 Fee transparency: seller sees 9% + shipping math before listing; buyer always sees final total before confirming — DONE 2026-07-04. Buyer side already covered (checkout modal shows the full "You pay" total incl. the 4.9 sales-tax line + a tax-inclusive pay button). Seller side: the relist/edit-price flow (dashboard/seller) already showed feeBreakdown ("Visby fee (9%) −$X · You net ~$Y"); ADDED the same to the MINT page's "Mint & List" flow — a live "Visby fee (9%) −$X · You net ~$Y before shipping" line under the price input when listing. tsc clean; /mint compiles; deployed.
 - **Gate:** a first-time non-crypto user completes signup → browse → buy → track without help or jargon.
 
