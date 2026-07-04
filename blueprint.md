@@ -89,7 +89,7 @@
 - **Gate:** unverified users can buy but not sell; sanctioned wallets blocked; a dispute carries evidence an issuer would accept; a banned account is locked out and a suspended one can't sell.
 
 ## Phase 7 — UX & "toddler-proof" experience
-- [ ] 7.1 First-run onboarding walkthrough (what Visby is, what a Tally is, how paying works — zero jargon)
+- [x] 7.1 First-run onboarding walkthrough (what Visby is, what a Tally is, how paying works — zero jargon) — DONE 2026-07-04. `src/components/first-run-onboarding.tsx`: a one-time 3-slide plain-English intro (Welcome / "Every item has a Tally" [tamper-proof authenticity cert, NO crypto jargon] / "Pay your way" [card/bank/instant, always see the full price]) with gradient SVG icons, progress dots, Next + Skip. localStorage-gated (visby-onboarding-seen-v1) → shows once per device, fully skippable, dismiss-on-backdrop. Rendered on the home page. Verified in preview: renders on first visit, home hydrates behind it, Skip/Start-browsing dismisses + persists the flag (won't re-show). tsc clean; deployed.
 - [ ] 7.2 Empty + error states sweep: every screen has a helpful next action
 - [ ] 7.3 Offers flow: preset offer slider → real accept → checkout at offered price
 - [ ] 7.4 Address book (saved shipping addresses)

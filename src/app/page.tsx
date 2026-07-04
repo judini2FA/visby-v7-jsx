@@ -12,6 +12,7 @@ import { ListingCard } from '@/components/listing-card';
 import { PendingSerialCard } from '@/components/pending-serial-card';
 import { useCurrency } from '@/lib/currency';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { FirstRunOnboarding } from '@/components/first-run-onboarding';
 
 const C = {
   navy: 'transparent',
@@ -206,6 +207,8 @@ export default function HomePage() {
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
+
+      <FirstRunOnboarding />
 
       {/* ── Top nav ──────────────────────────────────────── */}
       <nav style={{
