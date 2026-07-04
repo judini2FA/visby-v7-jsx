@@ -99,7 +99,7 @@
 - [ ] 7.8 Notification preferences center (email/push toggles)
 - [ ] 7.9 Seller analytics (views, likes, conversion) on seller dashboard
 - [ ] 7.10 SEO/sharing: OG images for items + profiles
-- [ ] 7.11 Fee transparency: seller sees 9% + shipping math before listing; buyer always sees final total before confirming
+- [x] 7.11 Fee transparency: seller sees 9% + shipping math before listing; buyer always sees final total before confirming — DONE 2026-07-04. Buyer side already covered (checkout modal shows the full "You pay" total incl. the 4.9 sales-tax line + a tax-inclusive pay button). Seller side: the relist/edit-price flow (dashboard/seller) already showed feeBreakdown ("Visby fee (9%) −$X · You net ~$Y"); ADDED the same to the MINT page's "Mint & List" flow — a live "Visby fee (9%) −$X · You net ~$Y before shipping" line under the price input when listing. tsc clean; /mint compiles; deployed.
 - **Gate:** a first-time non-crypto user completes signup → browse → buy → track without help or jargon.
 
 ## Phase 8 — Compliance & legal plumbing

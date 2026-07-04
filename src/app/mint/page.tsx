@@ -8,6 +8,7 @@ import { useVisbWallet } from '@/lib/wallet';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, card, surface, btn, sectionLabel, input, T } from '@/lib/ui';
 import { explorerTx } from '@/lib/explorer';
+import { feeBreakdown } from '@/lib/fees';
 
 const C = {
   green: 'var(--ok)', red: 'var(--danger)',
@@ -312,6 +313,17 @@ export default function MintPage() {
               <div style={{ position: 'absolute', right: S[4], top: '50%', transform: 'translateY(-50%)', ...t('meta'), color: 'var(--text-muted)' }}>USDC</div>
             </div>
           )}
+          {/* 7.11 fee transparency — show the seller their net after the 9% fee before they list */}
+          {listNow && parseFloat(price) > 0 && (() => {
+            const bd = feeBreakdown(parseFloat(price));
+            return (
+              <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[2], lineHeight: 1.6 }}>
+                Visby fee (9%) −${bd.platform_fee_usd.toFixed(2)} · shipping is deducted at sale
+                <br />
+                <span style={{ color: 'var(--text-strong)', fontWeight: 700 }}>You net ~${bd.seller_net_usd.toFixed(2)}</span> before shipping
+              </div>
+            );
+          })()}
         </div>
 
         {/* Error */}
