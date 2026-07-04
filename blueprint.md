@@ -54,8 +54,8 @@
 - **Gate:** a test order ships with a real label and the delivery webhook auto-fires review email + payout. (Webhook code done; end-to-end live test pending AtoShip dashboard config.)
 
 ## Phase 4 — Money rails completion (non-custodial always)
-- [~] 4.1 Stripe Financial Connections — SERVER FOUNDATION done 2026-07-03 (Stripe acct operational: FC-capable). migration_linked_bank_accounts (live) + /api/bank/{create-session,complete,list,disconnect} (authed + wallet-owned; complete verifies FC-session ownership; SDK v16.12 native FC types). Adversarially verified GO. REMAINING: wallet-page UI (Stripe.js collectFinancialConnectionsAccounts) to replace the dead Plaid tile + a live bank-link test.
-- [ ] 4.2 Remove Plaid + SnapTrade (code, tables, keys)
+- [x] 4.1 Stripe Financial Connections — DONE 2026-07-03. migration_linked_bank_accounts (live) + /api/bank/{create-session,complete,list,disconnect} (authed+wallet-owned; FC-session ownership verified) + wallet-page UI (payment-methods-manager.tsx: Stripe.js collectFinancialConnectionsAccounts flow, replaced the Plaid tile). tsc clean, verified GO. REMAINING: a live bank-link test (Judah, real bank via the Stripe widget).
+- [x] 4.2 Remove Plaid + SnapTrade — DONE 2026-07-03. Deleted src/app/api/plaid/* + src/app/api/snaptrade/* + src/lib/plaid.ts + src/lib/snaptrade.ts; dropped tables plaid_items + snaptrade_users (live); removed 'plaid_items' from RLS-sweep arrays; uninstalled plaid/react-plaid-link/snaptrade-typescript-sdk; removed PLAID_*/SNAPTRADE_* from .env.local; kept secret-crypto.ts. tsc clean.
 - [ ] 4.3 Fiat payouts: Stripe Connect transfer to seller bank when bank = Primary method
 - [ ] 4.4 ACH pay-in
 - [ ] 4.5 Multi-currency auto-conversion: seller receives their preferred currency on payout

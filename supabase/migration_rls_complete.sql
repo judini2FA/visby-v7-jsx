@@ -8,7 +8,7 @@
 do $$
 declare t text;
 begin
-  foreach t in array array['items','orders','ownership_history','stripe_customers','plaid_items','sdk_orders','order_addresses','transfers']
+  foreach t in array array['items','orders','ownership_history','stripe_customers','sdk_orders','order_addresses','transfers']
   loop
     if exists (select 1 from pg_tables where schemaname = 'public' and tablename = t) then
       execute format('alter table public.%I enable row level security', t);

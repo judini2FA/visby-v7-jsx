@@ -5,7 +5,6 @@ import { usePrivy } from '@privy-io/react-auth';
 import Link from 'next/link';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { usePlaidLink } from 'react-plaid-link';
 import { useTheme } from '@/lib/theme';
 import { t, S, surface, btn, input } from '@/lib/ui';
 import { solscanAccount } from '@/lib/explorer';
@@ -21,10 +20,6 @@ import { trpc } from '@/lib/trpc/client';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 const RED = 'var(--danger)';
-// Bank linking (Plaid) is parked for MVP — the "Connect a bank" entry point and the balance-tile
-// fetch stay hidden until NEXT_PUBLIC_BANK_LINKING=1. Fail-closed: off by default. The routes/lib
-// stay dormant (park, not remove).
-const BANK_LINKING_ENABLED = process.env.NEXT_PUBLIC_BANK_LINKING === '1';
 const ORDER_KEY = 'visby-payment-order';
 const GRAD = 'linear-gradient(135deg,#25CDB8,#2A8AED 50%,#BC2DE6)';   // saturated — icon + amount text
 const BOX_GRAD = 'var(--grad-brand)';                                // lighter pastel — the primary slot box
@@ -41,16 +36,15 @@ function readConnWallets(): ConnWallet[] {
   try { const v = JSON.parse(localStorage.getItem(CW_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
 }
 
-type Kind = 'wallet' | 'card' | 'bank' | 'brokerage';
+type Kind = 'wallet' | 'card' | 'bank';
 type Method = {
-  id: string;            // 'wallet' | stripe pm id
+  id: string;            // 'wallet' | stripe pm id | linked_bank_accounts.id
   kind: Kind;
   currency: string;      // 'SOL' | 'USD'
-  amount: string | null; // '3.520' | null (cards show currency only)
-  name: string;          // 'Solana wallet' | brand
+  amount: string | null; // '3.520' | null (cards/banks show currency only)
+  name: string;          // 'Solana wallet' | brand | institution name
   masked: string;        // 'HTLB37…' | '···· 4242'
   address?: string;      // wallet only
-  item_id?: string;      // bank only (Plaid item, for disconnect)
 };
 
 function brandLabel(b: string): string {
@@ -90,7 +84,6 @@ function KindIcon({ kind }: { kind: Kind }) {
   const p = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: '#fff', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   if (kind === 'wallet') return <svg {...p}><rect x="2.5" y="6" width="19" height="13" rx="3" /><path d="M16 12.5h.02M2.5 10.5h19" /></svg>;
   if (kind === 'bank') return <svg {...p}><path d="M3 21h18M5 10h14M6 10v8M10 10v8M14 10v8M18 10v8M5 10l7-5 7 5" /></svg>;
-  if (kind === 'brokerage') return <svg {...p}><path d="M3 17l5-5 4 4 8-8M15 8h6v6" /></svg>;
   return <svg {...p}><rect x="2" y="5" width="20" height="14" rx="2.5" /><path d="M2 10h20" /></svg>;
 }
 
@@ -113,10 +106,7 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
     items.push({ a: 'remove', label: 'Remove', danger: true });
   }
   if (m.kind === 'card') items.push({ a: 'remove', label: 'Remove', danger: true });
-  if (m.kind === 'bank' || m.kind === 'brokerage') {
-    items.push({ a: 'openapp', label: m.kind === 'brokerage' ? 'Open Robinhood' : 'Open bank app' });
-    items.push({ a: 'disconnect', label: 'Disconnect', danger: true });
-  }
+  if (m.kind === 'bank') items.push({ a: 'disconnect', label: 'Disconnect', danger: true });
 
   const whiteRef = useRef<HTMLDivElement>(null);
 
@@ -228,42 +218,35 @@ function AddCardForm({ wallet, onAdded, onCancel }: { wallet: string; onAdded: (
   );
 }
 
-// "Connect a bank" via Plaid Link. Fetches a link_token on click, opens Plaid's secure flow,
-// then exchanges the returned public_token server-side and refreshes the bank tiles.
+// "Connect a bank" via Stripe Financial Connections. Starts a Session server-side, hands the
+// client_secret to Stripe.js's hosted modal (collectFinancialConnectionsAccounts), then persists
+// whichever accounts the user picked by posting the session_id back to the server.
 function ConnectBankButton({ wallet, onConnected, onCancel }: { wallet: string; onConnected: () => void; onCancel: () => void }) {
   const { getAccessToken } = usePrivy();
-  const [linkToken, setLinkToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-
-  const onSuccess = useCallback(async (public_token: string, metadata: any) => {
-    setBusy(true); setErr('');
-    try {
-      const token = await getAccessToken();
-      const r = await fetch('/api/plaid/exchange', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet, public_token, institution_name: metadata?.institution?.name }) });
-      const d = await r.json();
-      if (!r.ok || d.error) throw new Error(d.error ?? 'Could not link bank');
-      onConnected();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Could not link bank'); setBusy(false);
-    }
-  }, [wallet, getAccessToken, onConnected]);
-
-  const { open, ready } = usePlaidLink({ token: linkToken, onSuccess, onExit: () => setBusy(false) });
-
-  useEffect(() => { if (linkToken && ready) open(); }, [linkToken, ready, open]);
 
   async function start() {
     setBusy(true); setErr('');
     try {
       const token = await getAccessToken();
-      const r = await fetch('/api/plaid/link-token', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet }) });
-      const d = await r.json();
-      if (!r.ok || !d.link_token) throw new Error(d.error ?? 'Bank connection unavailable');
-      setLinkToken(d.link_token);
+      const sessionRes = await fetch('/api/bank/create-session', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet }) });
+      const sessionData = await sessionRes.json();
+      if (!sessionRes.ok || !sessionData.client_secret) throw new Error(sessionData.error ?? 'Bank connection unavailable');
+
+      const stripe = await stripePromise;
+      if (!stripe) throw new Error('Bank connection unavailable');
+      const result = await stripe.collectFinancialConnectionsAccounts({ clientSecret: sessionData.client_secret });
+      if (result.error) throw new Error(result.error.message ?? 'Could not link bank');
+      if (!result.financialConnectionsSession.accounts?.length) throw new Error('No account was selected');
+
+      const completeRes = await fetch('/api/bank/complete', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet, session_id: sessionData.session_id }) });
+      const completeData = await completeRes.json();
+      if (!completeRes.ok || completeData.error) throw new Error(completeData.error ?? 'Could not save linked bank');
+      onConnected();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Bank connection unavailable'); setBusy(false);
-    }
+      setErr(e instanceof Error ? e.message : 'Could not link bank');
+    } finally { setBusy(false); }
   }
 
   return (
@@ -279,59 +262,15 @@ function ConnectBankButton({ wallet, onConnected, onCancel }: { wallet: string; 
   );
 }
 
-// "Connect a brokerage" via SnapTrade. Opens SnapTrade's hosted connection portal in a popup;
-// when the user finishes there and returns, we refresh the brokerage tiles.
-function ConnectBrokerageButton({ wallet, onConnected, onCancel }: { wallet: string; onConnected: () => void; onCancel: () => void }) {
-  const { getAccessToken } = usePrivy();
-  const [busy, setBusy] = useState(false);
-  const [opened, setOpened] = useState(false);
-  const [err, setErr] = useState('');
-
-  // Once the portal is open, refreshing on window-focus catches the user returning after linking.
-  useEffect(() => {
-    if (!opened) return;
-    const onFocus = () => onConnected();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [opened, onConnected]);
-
-  async function start() {
-    setBusy(true); setErr('');
-    try {
-      const token = await getAccessToken();
-      const r = await fetch('/api/snaptrade/connect', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet }) });
-      const d = await r.json();
-      if (!r.ok || !d.redirectURI) throw new Error(d.error ?? 'Brokerage connection unavailable');
-      window.open(d.redirectURI, 'snaptrade', 'width=480,height=720');
-      setOpened(true);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Brokerage connection unavailable');
-    } finally { setBusy(false); }
-  }
-
-  return (
-    <div style={{ ...surface({ pad: `${S[4]}px` }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
-      <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>Connect a brokerage</div>
-      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Link Robinhood and others through SnapTrade's secure portal — Visby never sees your brokerage login.</div>
-      {err && <div style={{ ...t('meta'), color: RED }}>{err}</div>}
-      <div style={{ display: 'flex', gap: S[2] }}>
-        <button type="button" onClick={onCancel} disabled={busy} style={{ ...btn('secondary'), flex: 1 }}>{opened ? 'Close' : 'Cancel'}</button>
-        <button type="button" onClick={opened ? onConnected : start} disabled={busy} style={{ ...btn('primary'), flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: S[2], opacity: busy ? 0.7 : 1 }}>{busy ? <><Spinner /> Opening…</> : opened ? "I'm done" : 'Continue'}</button>
-      </div>
-    </div>
-  );
-}
-
 export default function PaymentMethodsManager({ wallet, onExportWallet, previewMethods }: { wallet: string; onExportWallet?: () => void; previewMethods?: Method[] }) {
   const { getAccessToken } = usePrivy();
   const [cards, setCards] = useState<{ id: string; brand: string; last4: string }[] | null>(previewMethods ? [] : null);
-  const [banks, setBanks] = useState<{ id: string; item_id: string; institution: string; mask: string; currency: string; balance: number | null }[]>([]);
-  const [brokerages, setBrokerages] = useState<{ id: string; institution: string; mask: string; currency: string; balance: number | null }[]>([]);
+  const [banks, setBanks] = useState<{ id: string; institution_name: string | null; last4: string | null }[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [order, setOrder] = useState<string[]>([]);
   const [openMenu, setOpenMenu] = useState('');
   const [dragId, setDragId] = useState('');
-  const [addMode, setAddMode] = useState<'' | 'choose' | 'card' | 'bank' | 'brokerage' | 'wallet'>('');
+  const [addMode, setAddMode] = useState<'' | 'choose' | 'card' | 'bank' | 'wallet'>('');
   const [connWallets, setConnWallets] = useState<ConnWallet[]>([]);
   const [err, setErr] = useState('');
   const upsertProfile = trpc.profiles.upsertProfile.useMutation();
@@ -413,28 +352,16 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
   useEffect(() => { loadCards(); }, [loadCards]);
 
   const loadBanks = useCallback(async () => {
-    if (!BANK_LINKING_ENABLED || previewMethods || !wallet) return;
+    if (previewMethods || !wallet) return;
     try {
       const token = await getAccessToken();
-      const r = await fetch(`/api/plaid/accounts?wallet=${wallet}`, { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/api/bank/list?wallet=${wallet}`, { headers: { Authorization: `Bearer ${token}` } });
       const d = await r.json();
-      setBanks(r.ok ? (d.banks ?? []) : []);
+      setBanks(r.ok ? (d.accounts ?? []) : []);
     } catch { setBanks([]); }
   }, [wallet, getAccessToken, previewMethods]);
 
   useEffect(() => { loadBanks(); }, [loadBanks]);
-
-  const loadBrokerages = useCallback(async () => {
-    if (previewMethods || !wallet) return;
-    try {
-      const token = await getAccessToken();
-      const r = await fetch(`/api/snaptrade/accounts?wallet=${wallet}`, { headers: { Authorization: `Bearer ${token}` } });
-      const d = await r.json();
-      setBrokerages(r.ok ? (d.brokerages ?? []) : []);
-    } catch { setBrokerages([]); }
-  }, [wallet, getAccessToken, previewMethods]);
-
-  useEffect(() => { loadBrokerages(); }, [loadBrokerages]);
 
   useEffect(() => {
     if (previewMethods || !wallet) return;
@@ -449,14 +376,13 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
     if (wallet) live.push({ id: 'wallet', kind: 'wallet', currency: 'SOL', amount: balance != null ? balance.toFixed(3) : null, name: 'Solana wallet', masked: shortAddr(wallet), address: wallet });
     connWallets.forEach(w => live.push({ id: `cw:${w.id}`, kind: 'wallet', currency: CHAIN_META[w.chain].sym, amount: null, name: w.label || `${CHAIN_META[w.chain].label} wallet`, masked: shortAddr(w.address), address: w.address }));
     (cards ?? []).forEach(c => live.push({ id: c.id, kind: 'card', currency: 'USD', amount: null, name: brandLabel(c.brand), masked: `···· ${c.last4}` }));
-    banks.forEach(b => live.push({ id: b.id, kind: 'bank', currency: b.currency, amount: b.balance != null ? fmtMoney(b.balance) : null, name: b.institution, masked: b.mask ? `···· ${b.mask}` : '', item_id: b.item_id }));
-    brokerages.forEach(b => live.push({ id: b.id, kind: 'brokerage', currency: b.currency, amount: b.balance != null ? fmtMoney(b.balance) : null, name: b.institution, masked: b.mask ? `···· ${b.mask}` : '' }));
+    banks.forEach(b => live.push({ id: b.id, kind: 'bank', currency: 'USD', amount: null, name: b.institution_name || 'Bank', masked: b.last4 ? `···· ${b.last4}` : '' }));
     const byId = new Map(live.map(m => [m.id, m]));
     const ordered = order.map(id => byId.get(id)).filter(Boolean) as Method[];
     const seen = new Set(ordered.map(m => m.id));
     live.forEach(m => { if (!seen.has(m.id)) ordered.push(m); });
     return ordered;
-  }, [wallet, balance, cards, banks, brokerages, connWallets, order, previewMethods]);
+  }, [wallet, balance, cards, banks, connWallets, order, previewMethods]);
 
   function reorder(ids: string[]) { persistOrder(ids); }
   function idsOf() { return methods.map(m => m.id); }
@@ -486,25 +412,13 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
 
   async function disconnectBank(m: Method) {
     setOpenMenu(''); setErr('');
-    if (!m.item_id) return;
     try {
       const token = await getAccessToken();
-      const r = await fetch('/api/plaid/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet, item_id: m.item_id }) });
+      const r = await fetch('/api/bank/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet, id: m.id }) });
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error ?? 'Could not disconnect bank');
-      setBanks(b => b.filter(x => x.item_id !== m.item_id));
+      setBanks(b => b.filter(x => x.id !== m.id));
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : 'Could not disconnect bank'); }
-  }
-
-  async function disconnectBrokerage() {
-    setOpenMenu(''); setErr('');
-    try {
-      const token = await getAccessToken();
-      const r = await fetch('/api/snaptrade/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ wallet }) });
-      const d = await r.json();
-      if (!r.ok || d.error) throw new Error(d.error ?? 'Could not disconnect brokerage');
-      setBrokerages([]);
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : 'Could not disconnect brokerage'); }
   }
 
   function removeWallet(m: Method) {
@@ -519,9 +433,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
     if (a === 'remove') return m.kind === 'wallet' ? removeWallet(m) : removeCard(m.id);
     if (a === 'export') { setOpenMenu(''); onExportWallet?.(); return; }
     if (a === 'explorer') { setOpenMenu(''); if (m.address) window.open(solscanAccount(m.address), '_blank', 'noopener'); return; }
-    if (a === 'disconnect') return m.kind === 'brokerage' ? disconnectBrokerage() : disconnectBank(m);
-    // openapp = deep-link out to the bank/Robinhood app — wired per-institution later (brokerage = SnapTrade).
-    if (a === 'openapp') { setOpenMenu(''); return; }
+    if (a === 'disconnect') return disconnectBank(m);
   }
 
   const loading = !previewMethods && cards === null;
@@ -556,16 +468,13 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
         </Elements>
       ) : addMode === 'bank' ? (
         <ConnectBankButton wallet={wallet} onConnected={() => { setAddMode(''); loadBanks(); }} onCancel={() => setAddMode('')} />
-      ) : addMode === 'brokerage' ? (
-        <ConnectBrokerageButton wallet={wallet} onConnected={() => { setAddMode(''); loadBrokerages(); }} onCancel={() => setAddMode('')} />
       ) : addMode === 'wallet' ? (
         <ConnectWalletForm existing={connWallets} onAdd={w => { saveConnWallets([...connWallets, w]); setAddMode(''); }} onCancel={() => setAddMode('')} />
       ) : addMode === 'choose' ? (
         <div style={{ ...surface({ pad: `${S[2]}px` }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
           <AddRow kind="card" label="Add a card" onClick={() => setAddMode('card')} />
           <AddRow kind="wallet" label="Connect a wallet" onClick={() => setAddMode('wallet')} />
-          {BANK_LINKING_ENABLED && <AddRow kind="bank" label="Connect a bank" onClick={() => setAddMode('bank')} />}
-          <AddRow kind="brokerage" label="Connect a brokerage" onClick={() => setAddMode('brokerage')} />
+          <AddRow kind="bank" label="Connect a bank" onClick={() => setAddMode('bank')} />
           <button onClick={() => setAddMode('')} style={{ ...t('meta'), color: 'var(--text-muted)', background: 'none', border: 0, cursor: 'pointer', padding: `${S[2]}px 0 ${S[1]}px`, textAlign: 'center' }}>Cancel</button>
         </div>
       ) : (
