@@ -9,7 +9,7 @@
 // !!! VERIFY EVERY chain id + token/USDC address against Li.Fi's live token list before enabling on
 // mainnet. These are canonical mainnet addresses but must not be trusted blind for real settlement.
 
-export type PayKind = 'card' | 'sol' | 'usdc' | 'swap';
+export type PayKind = 'card' | 'ach' | 'sol' | 'usdc' | 'swap';
 
 // Quote-only routing for a 'swap' token (Li.Fi estimates a route to USDC). fromAddress/toAddress are
 // placeholder addresses Li.Fi needs to estimate gas — nothing is ever signed with them here.
@@ -58,6 +58,10 @@ function sameChain(chain: number, fromToken: string): SwapRoute {
 
 export const PAYABLE_TOKENS: PayableToken[] = [
   { symbol: 'CARD', label: 'Card', kind: 'card' },
+  // ACH bank-debit pay-in (4.4). Settles asynchronously (1–3 business days) so the item is fulfilled
+  // only on payment_intent.succeeded — see /api/stripe/ach-payment-intent. Hidden until
+  // NEXT_PUBLIC_ACH_ENABLED === '1' (dark launch until a live ACH test passes).
+  { symbol: 'ACH', label: 'Bank', kind: 'ach' },
   { symbol: 'SOL', label: 'SOL', kind: 'sol', cgId: 'solana', dp: 4 },
   { symbol: 'ETH', label: 'ETH', kind: 'swap', cgId: 'ethereum', decimals: 18, dp: 5, route: sameChain(ETH, NATIVE) },
   {
@@ -82,9 +86,20 @@ export function multiCryptoEnabled(): boolean {
   return process.env.NEXT_PUBLIC_MULTICRYPTO_ENABLED === '1';
 }
 
-// Tokens the buyer may currently choose — the gated set only appears once multi-crypto is enabled.
+// ACH bank-debit is dark-launched behind its own flag (separate from the multi-crypto gate) so it
+// stays hidden until a live ACH pay-in test passes.
+export function achEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_ACH_ENABLED === '1';
+}
+
+// Tokens the buyer may currently choose — the gated set only appears once multi-crypto is enabled, and
+// ACH only once its own flag is on.
 export function visibleTokens(): PayableToken[] {
-  return PAYABLE_TOKENS.filter((t) => !t.gated || multiCryptoEnabled());
+  return PAYABLE_TOKENS.filter((t) => {
+    if (t.gated && !multiCryptoEnabled()) return false;
+    if (t.kind === 'ach' && !achEnabled()) return false;
+    return true;
+  });
 }
 
 export function getToken(symbol: string): PayableToken | undefined {

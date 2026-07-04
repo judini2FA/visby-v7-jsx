@@ -110,7 +110,9 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   const [currency, setCurrency] = useState<Currency>(isPending ? 'SOL' : 'CARD');
   const [quotes,   setQuotes]   = useState<Quotes | null>(null);
   const [piSecret, setPiSecret] = useState<string | null>(null);
-  const [status,   setStatus]   = useState<'idle'|'paying'|'done'|'error'>('idle');
+  const [status,   setStatus]   = useState<'idle'|'paying'|'done'|'ach_processing'|'error'>('idle');
+  const [achBanks, setAchBanks] = useState<{ fc_account_id: string; institution_name: string | null; last4: string | null }[] | null>(null);
+  const [achBank,  setAchBank]  = useState<{ institution_name: string | null; last4: string | null } | null>(null);
   const [errMsg,   setErrMsg]   = useState('');
   const [swapQuote,   setSwapQuote]   = useState<any | null>(null);
   const [swapLoading, setSwapLoading] = useState(false);
@@ -175,6 +177,20 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
       .catch(() => {});
   }, [currency, buyerWallet]);
 
+  // Load the buyer's linked bank accounts when the ACH tab opens, so we can show which bank will be
+  // debited (or prompt them to link one).
+  useEffect(() => {
+    if (currency !== 'ACH' || !buyerWallet || achBanks) return;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const r = await fetch(`/api/bank/list?wallet=${buyerWallet}`, { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json();
+        setAchBanks(Array.isArray(d.accounts) ? d.accounts : []);
+      } catch { setAchBanks([]); }
+    })();
+  }, [currency, buyerWallet, achBanks, getAccessToken]);
+
   // Fetch a real Li.Fi route when a crypto-swap tab opens (ETH/BTC, plus the gated expanded set).
   // Unreachable in pending mode (only the SOL tab is offered) but guarded defensively anyway.
   useEffect(() => {
@@ -236,6 +252,22 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
       if (data.ok) { setStatus('done'); onSuccess(itemId); }
       else { setErrMsg(data.error ?? (data.pending ? 'Payment is processing — check your orders shortly.' : 'Payment failed')); setStatus('error'); }
     } catch (err: any) { setErrMsg(err.message ?? 'Payment failed'); setStatus('error'); }
+  }
+
+  // ACH bank-debit (4.4, gated). Initiates an async debit from the buyer's linked bank — nothing is
+  // minted here; the item transfers later (webhook, on payment_intent.succeeded) once the debit clears.
+  async function payWithAch() {
+    setStatus('paying'); setErrMsg('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/stripe/ach-payment-intent', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ item_id: itemId, buyer_wallet: buyerWallet }),
+      });
+      const data = await res.json();
+      if (data.ok) { setAchBank(data.bank ?? null); setStatus('ach_processing'); }
+      else { setErrMsg(data.error ?? 'Could not start the bank payment.'); setStatus('error'); }
+    } catch (err: any) { setErrMsg(err.message ?? 'Could not start the bank payment.'); setStatus('error'); }
   }
 
   async function payWithSol() {
@@ -334,7 +366,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>You pay</span>
             <span style={{ fontSize: 22, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: "'Quicksand',sans-serif" }}>
-              {currency === 'CARD' || currency === 'USDC'
+              {currency === 'CARD' || currency === 'USDC' || currency === 'ACH'
                 ? `$${priceUsdc.toFixed(2)}`
                 : isSwapToken(currency)
                   ? (swapQuote?.from_amount_display ?? '…')
@@ -416,6 +448,19 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             </div>
             <div style={{ fontSize: 16, fontWeight: 800, color: C.green, fontFamily: "'Quicksand',sans-serif" }}>Purchase complete!</div>
             <div style={{ fontSize: 12, color: C.muted }}>NFT ownership transferred on Solana</div>
+          </div>
+        ) : status === 'ach_processing' ? (
+          <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--glass-bg-strong)', border: `2px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-strong)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-strong)', fontFamily: "'Quicksand',sans-serif" }}>Bank payment started</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
+              We&apos;re collecting ${priceUsdc.toFixed(2)}{achBank?.last4 ? ` from your ${achBank.institution_name ?? 'bank'} ••${achBank.last4}` : ' from your bank'}. Bank transfers take about 1–3 business days to clear — your item transfers to you automatically once it does, and we&apos;ll email you.
+            </div>
+            <button onClick={onClose} style={{ marginTop: 6, width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '13px 20px', fontWeight: 800, fontSize: 15, color: '#fff', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif" }}>
+              Done
+            </button>
           </div>
         ) : (hasShip && !editingAddr) ? (
           <>
@@ -529,6 +574,47 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                   {status === 'paying' ? <><Spinner />Processing…</> : `Pay ${priceUsdc.toFixed(2)} USDC`}
                 </button>
               </div>
+            )}
+
+            {/* ── ACH bank debit (gated) ── */}
+            {currency === 'ACH' && (
+              achBanks === null ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: C.muted, fontSize: 13 }}><Spinner />Loading your banks…</div>
+              ) : achBanks.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '16px' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6, fontFamily: "'Quicksand',sans-serif" }}>Link a bank to pay by transfer</div>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
+                      Connect your bank once in your wallet, then pay directly from it. Bank transfers clear in 1–3 business days — or pay instantly with Card.
+                    </div>
+                  </div>
+                  <a href="/profile" style={{ width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+                    Link a bank account
+                  </a>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Pay from</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Manrope',sans-serif" }}>
+                        {(achBanks[0].institution_name ?? 'Bank')}{achBanks[0].last4 ? ` ••${achBanks[0].last4}` : ''}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
+                      <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Amount</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-strong)', fontWeight: 600, fontFamily: "'Quicksand',sans-serif" }}>${priceUsdc.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, fontFamily: "'Manrope',sans-serif" }}>
+                    Bank transfers take about 1–3 business days to clear. Your item transfers to you automatically once it does — we&apos;ll email you.
+                  </div>
+                  <button onClick={payWithAch} disabled={status === 'paying'}
+                    style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                    {status === 'paying' ? <><Spinner />Starting…</> : `Pay $${priceUsdc.toFixed(2)} from bank`}
+                  </button>
+                </div>
+              )
             )}
           </>
         ) : null}

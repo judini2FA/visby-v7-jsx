@@ -169,6 +169,14 @@ export function refundIssuedBuyer(i: { itemId: string; priceUsd: number | null }
   };
 }
 
+export function achPaymentFailedBuyer(i: { itemId: string }): EmailMsg {
+  return {
+    subject: 'Your bank payment didn’t go through',
+    html: layout({ heading: 'Bank payment failed', lines: ['Your bank declined or returned the transfer, so your purchase wasn’t completed.', 'No item was transferred and you have not been charged. You can try again with another payment method.'], cta: { label: 'View item', href: itemLink(i.itemId) }, note: DEVNET_NOTE }),
+    text: text(['Your bank declined or returned the transfer, so your purchase wasn’t completed. No item was transferred and you have not been charged.', `Try again: ${itemLink(i.itemId)}`], DEVNET_NOTE),
+  };
+}
+
 export function sdkOrderCompletedBuyer(i: { productName: string | null; amountUsd: number | null; minted: boolean; nftAddress: string | null }): EmailMsg {
   const name = i.productName ? esc(i.productName) : 'your purchase';
   const prov = i.minted
