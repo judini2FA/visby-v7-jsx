@@ -7,6 +7,7 @@ import { ThemeToggle, useTheme } from '@/lib/theme';
 import { CURRENCIES, useCurrency } from '@/lib/currency';
 import { S, t, surface, btn, sectionLabel, T } from '@/lib/ui';
 import ShipToSettings from '@/components/ship-to-settings';
+import AddressBook from '@/components/address-book';
 import SecuritySettings from '@/components/security-settings';
 import { HeaderMenu } from '@/components/layout/header-menu';
 
@@ -131,6 +132,15 @@ export default function SettingsPage() {
           <Section title="Shipping">
             <div style={{ padding: '14px 16px' }}>
               <ShipToSettings wallet={solanaWallets[0].address} />
+            </div>
+          </Section>
+        )}
+
+        {/* Address book */}
+        {solanaWallets[0]?.address && (
+          <Section title="Address Book">
+            <div style={{ padding: '14px 16px' }}>
+              <AddressBook wallet={solanaWallets[0].address} />
             </div>
           </Section>
         )}
