@@ -50,6 +50,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Missing metadata' }, { status: 400 });
       }
 
+      // 4.9 Stripe Tax: finalize the tax transaction from the calculation so it's reported/remitted.
+      // Only fires when the PI carried a tax_calc_id (i.e. tax was enabled at checkout). Best-effort and
+      // idempotent by reference — a failure here must never block fulfillment.
+      if (pi.metadata?.tax_calc_id) {
+        try {
+          await stripe.tax.transactions.createFromCalculation({ calculation: pi.metadata.tax_calc_id, reference: `order:${pi.id}` });
+        } catch (taxErr) {
+          captureError(taxErr, { stage: 'tax.createFromCalculation', pi: pi.id });
+        }
+      }
+
       if (pi.metadata?.pay_method === 'ach') {
         // ACH funds have now cleared (this fires days after the debit). Fulfill; but if the 1-of-1 sold
         // to an instant card/crypto buyer during the settle window, the buyer can't get it — refund the

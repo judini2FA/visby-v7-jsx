@@ -54,10 +54,13 @@ function Spinner() {
 }
 
 // ── Embedded card form — uses CardElement (no Link, no email, no branding) ──
-function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
-  priceUsdc: number; clientSecret: string;
+function CardPayForm({ priceUsdc, payAmount, clientSecret, onSuccess, onError }: {
+  priceUsdc: number; payAmount?: number; clientSecret: string;
   onSuccess: () => void; onError: (msg: string) => void;
 }) {
+  // The button must promise the ACTUAL charged total (item price + tax when Stripe Tax is on), not the
+  // tax-exclusive item price — otherwise the buyer authorizes one number and is charged a higher one.
+  const chargeUsd = payAmount ?? priceUsdc;
   const stripe   = useStripe();
   const elements = useElements();
   const { mode } = useTheme();
@@ -94,7 +97,7 @@ function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
       </div>
       <button type="submit" disabled={paying || !stripe}
         style={{ width: '100%', background: paying ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: paying ? 'not-allowed' : 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-        {paying ? <><Spinner /> Processing…</> : `Pay $${priceUsdc.toFixed(2)}`}
+        {paying ? <><Spinner /> Processing…</> : `Pay $${chargeUsd.toFixed(2)}`}
       </button>
     </form>
   );
@@ -110,6 +113,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   const [currency, setCurrency] = useState<Currency>(isPending ? 'SOL' : 'CARD');
   const [quotes,   setQuotes]   = useState<Quotes | null>(null);
   const [piSecret, setPiSecret] = useState<string | null>(null);
+  const [taxCents, setTaxCents] = useState(0);
   const [status,   setStatus]   = useState<'idle'|'paying'|'done'|'ach_processing'|'error'>('idle');
   const [achBanks, setAchBanks] = useState<{ fc_account_id: string; institution_name: string | null; last4: string | null }[] | null>(null);
   const [achBank,  setAchBank]  = useState<{ institution_name: string | null; last4: string | null } | null>(null);
@@ -162,7 +166,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     })
       .then(r => r.json())
       .then(d => {
-        if (d.client_secret) setPiSecret(d.client_secret);
+        if (d.client_secret) { setPiSecret(d.client_secret); setTaxCents(d.tax_cents ?? 0); }
         else setErrMsg(d.error ?? 'Could not start checkout');
       })
       .catch(() => setErrMsg('Network error — could not load checkout'));
@@ -366,7 +370,9 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>You pay</span>
             <span style={{ fontSize: 22, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: "'Quicksand',sans-serif" }}>
-              {currency === 'CARD' || currency === 'USDC' || currency === 'ACH'
+              {currency === 'CARD' && taxCents > 0
+                ? `$${(priceUsdc + taxCents / 100).toFixed(2)}`
+                : currency === 'CARD' || currency === 'USDC' || currency === 'ACH'
                 ? `$${priceUsdc.toFixed(2)}`
                 : isSwapToken(currency)
                   ? (swapQuote?.from_amount_display ?? '…')
@@ -391,6 +397,12 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Transfer fee</span>
             <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>{transferFeeNote}</span>
           </div>
+          {currency === 'CARD' && taxCents > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Sales tax</span>
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>${(taxCents / 100).toFixed(2)}</span>
+            </div>
+          )}
         </div>
 
         {/* Shipping gate — use the saved address, or ask for one before paying */}
@@ -479,6 +491,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 <Elements stripe={stripePromise}>
                   <CardPayForm
                     priceUsdc={priceUsdc}
+                    payAmount={priceUsdc + taxCents / 100}
                     clientSecret={piSecret}
                     onSuccess={() => { setStatus('done'); onSuccess(itemId); }}
                     onError={msg => { setErrMsg(msg); setStatus('error'); }}
