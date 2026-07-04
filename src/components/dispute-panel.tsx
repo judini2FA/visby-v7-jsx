@@ -29,12 +29,210 @@ interface Dispute {
   status: 'open' | 'under_review' | 'refunded' | 'denied' | 'closed';
 }
 
+interface Evidence {
+  id: string;
+  uploaded_by: string;
+  role: 'buyer' | 'seller' | 'admin';
+  file_url: string;
+  file_type: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+interface ProofOfDelivery {
+  carrier: string | null;
+  tracking_number: string | null;
+  delivered: boolean;
+  shipped_at: string | null;
+}
+
 const FlagIcon = ({ size = 15, color = 'currentColor' }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
     <line x1="4" y1="22" x2="4" y2="15"/>
   </svg>
 );
+
+const PaperclipIcon = ({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+  </svg>
+);
+
+const TruckIcon = ({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="3" width="15" height="13"/>
+    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+    <circle cx="5.5" cy="18.5" r="2.5"/>
+    <circle cx="18.5" cy="18.5" r="2.5"/>
+  </svg>
+);
+
+function isImageType(fileType: string | null): boolean {
+  return !!fileType && fileType.startsWith('image/');
+}
+
+function roleLabel(role: Evidence['role']): string {
+  if (role === 'buyer') return 'Buyer';
+  if (role === 'seller') return 'Seller';
+  return 'Support';
+}
+
+function EvidenceSection({
+  disputeId,
+  wallet,
+  getAccessToken,
+  active,
+}: {
+  disputeId: string;
+  wallet: string;
+  getAccessToken: () => Promise<string | null>;
+  active: boolean;
+}) {
+  const [evidence, setEvidence] = useState<Evidence[]>([]);
+  const [proof, setProof] = useState<ProofOfDelivery | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const fetchEvidence = useCallback(async () => {
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(
+        `/api/disputes/evidence?dispute_id=${disputeId}&wallet=${wallet}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+      );
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      setEvidence(Array.isArray(data.evidence) ? data.evidence : []);
+      setProof(data.proof_of_delivery ?? null);
+    } catch {
+      // tolerate missing table / network errors
+    }
+  }, [disputeId, wallet, getAccessToken]);
+
+  useEffect(() => {
+    fetchEvidence();
+  }, [fetchEvidence]);
+
+  async function upload(file: File) {
+    if (busy) return;
+    setBusy(true);
+    setErr('');
+    try {
+      const fd = new FormData();
+      fd.append('dispute_id', disputeId);
+      fd.append('wallet', wallet);
+      if (note.trim()) fd.append('note', note.trim());
+      fd.append('file', file);
+      const token = await getAccessToken();
+      const res = await fetch('/api/disputes/evidence', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error ?? 'Upload failed. Please try again.');
+      }
+      setNote('');
+      await fetchEvidence();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) upload(file);
+  }
+
+  if (!active && evidence.length === 0 && !proof) return null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+      <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Evidence</span>
+
+      {proof && (proof.carrier || proof.tracking_number || proof.delivered) && (
+        <div style={{ ...surface({ pad: `${S[2]}px ${S[3]}px` }), display: 'flex', alignItems: 'center', gap: S[2] }}>
+          <TruckIcon size={14} color="var(--text-muted)" />
+          <span style={{ ...t('meta'), color: 'var(--text)' }}>
+            {proof.carrier ? `${proof.carrier} ` : ''}
+            {proof.tracking_number ? `#${proof.tracking_number} — ` : ''}
+            {proof.delivered ? 'Delivered' : 'Not yet delivered'}
+          </span>
+        </div>
+      )}
+
+      {evidence.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          {evidence.map((ev) => (
+            <a
+              key={ev.id}
+              href={ev.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ ...surface({ pad: S[2] }), display: 'flex', alignItems: 'center', gap: S[2], textDecoration: 'none' }}
+            >
+              {isImageType(ev.file_type) ? (
+                <img
+                  src={ev.file_url}
+                  alt="Evidence"
+                  style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', objectFit: 'cover', flexShrink: 0 }}
+                />
+              ) : (
+                <span style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', background: 'var(--glass-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <PaperclipIcon size={16} color="var(--text-muted)" />
+                </span>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ ...t('meta'), color: 'var(--text)' }}>{roleLabel(ev.role)} uploaded a file</span>
+                {ev.note && (
+                  <span style={{ ...t('micro'), color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {ev.note}
+                  </span>
+                )}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {active && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value.slice(0, 1000))}
+            placeholder="Optional note about this file…"
+            style={input()}
+          />
+          {err && <span style={{ ...t('meta'), color: RED }}>{err}</span>}
+          <label
+            style={{
+              ...btn('secondary'),
+              justifyContent: 'center',
+              opacity: busy ? 0.6 : 1,
+              cursor: busy ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <PaperclipIcon size={14} color="var(--text-muted)" />
+            {busy ? 'Uploading…' : 'Attach photo or document'}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+              onChange={onFileChange}
+              disabled={busy}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function DisputePanel({
   orderId,
@@ -171,6 +369,13 @@ export function DisputePanel({
             <span style={{ ...t('body'), color: 'var(--text)' }}>{dispute.reason}</span>
           )}
         </div>
+
+        <EvidenceSection
+          disputeId={dispute.id}
+          wallet={buyerWallet}
+          getAccessToken={getAccessToken}
+          active
+        />
 
         {err && <div style={{ ...t('meta'), color: RED }}>{err}</div>}
 

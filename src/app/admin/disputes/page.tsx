@@ -33,6 +33,23 @@ interface Dispute {
   created_at: string;
 }
 
+interface Evidence {
+  id: string;
+  uploaded_by: string;
+  role: 'buyer' | 'seller' | 'admin';
+  file_url: string;
+  file_type: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+interface ProofOfDelivery {
+  carrier: string | null;
+  tracking_number: string | null;
+  delivered: boolean;
+  shipped_at: string | null;
+}
+
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diffMs / 60_000);
@@ -57,6 +74,149 @@ const KIND_LABEL: Record<DisputeKind, string> = {
   return: 'Return',
   other: 'Other',
 };
+
+const PaperclipIcon = ({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+  </svg>
+);
+
+const TruckIcon = ({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="3" width="15" height="13"/>
+    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+    <circle cx="5.5" cy="18.5" r="2.5"/>
+    <circle cx="18.5" cy="18.5" r="2.5"/>
+  </svg>
+);
+
+function isImageType(fileType: string | null): boolean {
+  return !!fileType && fileType.startsWith('image/');
+}
+
+function roleLabel(role: Evidence['role']): string {
+  if (role === 'buyer') return 'Buyer';
+  if (role === 'seller') return 'Seller';
+  return 'Support';
+}
+
+// ──────────────────────────────────────────────────────────────
+// Evidence viewer — lazy-fetched per dispute card
+// ──────────────────────────────────────────────────────────────
+function EvidenceViewer({
+  disputeId,
+  wallet,
+  token,
+}: {
+  disputeId: string;
+  wallet: string;
+  token: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [evidence, setEvidence] = useState<Evidence[]>([]);
+  const [proof, setProof] = useState<ProofOfDelivery | null>(null);
+
+  async function fetchEvidence() {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/disputes/evidence?dispute_id=${disputeId}&wallet=${encodeURIComponent(wallet)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const data = await res.json().catch(() => ({}));
+      setEvidence(Array.isArray(data.evidence) ? data.evidence : []);
+      setProof(data.proof_of_delivery ?? null);
+      setLoaded(true);
+    } catch {
+      setEvidence([]);
+      setProof(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggle() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && !loaded) fetchEvidence();
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+      <button
+        style={{ ...btn('text'), fontSize: 13, color: T.textMuted, alignSelf: 'flex-start', padding: '6px 0' }}
+        onClick={toggle}
+      >
+        <PaperclipIcon size={13} color="currentColor" />
+        {expanded ? 'Hide evidence' : 'View evidence'}
+      </button>
+
+      {expanded && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          {loading && (
+            <span style={{ ...t('meta'), color: T.textMuted }}>Loading evidence…</span>
+          )}
+
+          {!loading && proof && (proof.carrier || proof.tracking_number || proof.delivered) && (
+            <div style={{ ...surface({ pad: S[2], radius: 'var(--r-sm)' }), display: 'flex', alignItems: 'center', gap: S[2] }}>
+              <TruckIcon size={13} color={T.textMuted} />
+              <span style={{ ...t('meta'), color: T.text }}>
+                {proof.carrier ? `${proof.carrier} ` : ''}
+                {proof.tracking_number ? `#${proof.tracking_number} — ` : ''}
+                {proof.delivered ? 'Delivered' : 'Not yet delivered'}
+              </span>
+            </div>
+          )}
+
+          {!loading && evidence.length === 0 && (
+            <span style={{ ...t('meta'), color: T.textMuted }}>No evidence uploaded</span>
+          )}
+
+          {!loading && evidence.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+              {evidence.map(ev => (
+                <a
+                  key={ev.id}
+                  href={ev.file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ ...surface({ pad: S[2], radius: 'var(--r-sm)' }), display: 'flex', alignItems: 'center', gap: S[2], textDecoration: 'none' }}
+                >
+                  {isImageType(ev.file_type) ? (
+                    <img
+                      src={ev.file_url}
+                      alt="Evidence"
+                      style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', objectFit: 'cover', flexShrink: 0 }}
+                    />
+                  ) : (
+                    <span style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', background: 'var(--glass-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <PaperclipIcon size={16} color={T.textMuted} />
+                    </span>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <span style={{ ...t('meta'), color: T.text }}>
+                      {roleLabel(ev.role)} — {shortWallet(ev.uploaded_by)}
+                    </span>
+                    {ev.note && (
+                      <span style={{ ...t('micro'), color: T.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {ev.note}
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ ...t('micro'), color: T.textMuted, marginLeft: 'auto', flexShrink: 0 }}>
+                    {timeAgo(ev.created_at)}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ──────────────────────────────────────────────────────────────
 // Single dispute card
@@ -182,6 +342,9 @@ function DisputeCard({
       {!active && dispute.resolution_note && (
         <span style={{ ...t('meta'), color: T.textMuted }}>{dispute.resolution_note}</span>
       )}
+
+      {/* evidence + proof of delivery */}
+      <EvidenceViewer disputeId={dispute.id} wallet={wallet} token={token} />
 
       {error && (
         <div style={{ ...surface({ pad: S[3], radius: 'var(--r-sm)' }), borderColor: 'var(--danger-soft)' }}>
