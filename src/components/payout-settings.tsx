@@ -16,6 +16,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
   const [stripeAccountId, setStripeAccountId] = useState('');
   const [cryptoWallet,    setCryptoWallet]    = useState(wallet);
   const [cryptoChain,     setCryptoChain]     = useState('solana');
+  const [payoutAsset,     setPayoutAsset]     = useState<'SOL' | 'USDC'>('SOL');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [errMsg, setErrMsg] = useState('');
 
@@ -43,6 +44,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
         setStripeAccountId(d.settings.stripe_account_id ?? '');
         setCryptoWallet(d.settings.crypto_wallet ?? wallet);
         setCryptoChain(d.settings.crypto_chain ?? 'solana');
+        setPayoutAsset(d.settings.payout_asset === 'USDC' ? 'USDC' : 'SOL');
         setSavedType(d.settings.payout_type ?? null);
         setSavedAcct(d.settings.stripe_account_id ?? '');
       })
@@ -108,6 +110,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
           stripe_account_id: undefined,
           crypto_wallet:     payoutType === 'crypto' ? cryptoWallet    : undefined,
           crypto_chain:      payoutType === 'crypto' ? cryptoChain     : undefined,
+          payout_asset:      payoutType === 'crypto' ? payoutAsset     : undefined,
         }),
       });
       const data = await res.json();
@@ -201,6 +204,24 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
                 <option value="solana">Solana (SOL / USDC)</option>
                 <option value="ethereum">Ethereum (ETH / USDC)</option>
               </select>
+            </div>
+            <div>
+              <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Receive as</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[2] }}>
+                {([['SOL', 'SOL', 'Native · price moves'], ['USDC', 'USDC', 'Stablecoin · steady $1']] as const).map(([val, label, sub]) => {
+                  const sel = payoutAsset === val;
+                  return (
+                    <button key={val} type="button" onClick={() => setPayoutAsset(val)}
+                      style={{ ...surface({ pad: '12px' }), cursor: 'pointer', textAlign: 'left', boxShadow: sel ? '0 4px 16px rgba(90,160,210,.22)' : 'var(--box-shadow-soft)' }}>
+                      <div style={{ ...t('body'), fontWeight: 700, marginBottom: 2, ...(sel ? { background: 'var(--grad-brand)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: 'var(--text-strong)' }) }}>{label}</div>
+                      <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>{sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ ...t('micro'), color: 'var(--text-muted)', marginTop: S[2] }}>
+                Paid on Solana. USDC holds a steady $1 — no price swings between sale and payout.
+              </div>
             </div>
           </>
         )}

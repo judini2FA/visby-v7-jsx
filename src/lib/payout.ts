@@ -1,5 +1,5 @@
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { sendSolFromAuthority } from '@/lib/solana-fund';
+import { sendSolFromAuthority, sendUsdcFromAuthority } from '@/lib/solana-fund';
 import { captureError } from '@/lib/monitoring';
 import { solUsd } from '@/lib/price-oracle';
 import { createServiceClient } from '@/lib/supabase/service';
@@ -74,6 +74,39 @@ async function maybeConnectPayout(order: PayoutOrder, net: number): Promise<Payo
   return { ok: res.ok, payout_tx: res.transfer_id ?? null, error: res.error };
 }
 
+// Blueprint 4.5 — seller-opt-in USDC (stablecoin) crypto payout, additive over the default SOL path.
+//
+// Returns:
+//   null              → seller is NOT on the USDC rail (crypto preference is SOL, any lookup miss/error,
+//                       or the seller prefers bank) → caller runs the unchanged SOL path.
+//   PayoutResult(ok)  → USDC sent; payout_tx = the SPL transfer signature.
+//   PayoutResult(!ok) → seller IS on the USDC rail but the transfer failed (e.g. treasury USDC float
+//                       too low). Returned as-is so the release is left retryable — we do NOT silently
+//                       downgrade a USDC-preferring seller to SOL (that would pay them a different asset
+//                       than they chose). retry-payout / reconciliation top up and re-release.
+//
+// net is already in USD; USDC is 1:1 USD, so there is NO price oracle and NO FX cap — the treasury just
+// forwards `net` USDC. (Cross-chain assets like ETH need a mainnet swap and are not offered here.)
+async function maybeUsdcPayout(order: PayoutOrder, net: number): Promise<PayoutResult | null> {
+  const supabase = createServiceClient();
+  const { data: pref, error } = await supabase
+    .from('payout_settings')
+    .select('payout_type, payout_asset')
+    .eq('seller_wallet', order.seller_wallet)
+    .maybeSingle();
+  if (error) return null;                            // can't read preference → SOL default
+  if (pref?.payout_type !== 'crypto') return null;   // bank rail (handled above) or unset → SOL default
+  if (pref?.payout_asset !== 'USDC') return null;    // SOL is the crypto default
+
+  try {
+    const sig = await sendUsdcFromAuthority(order.seller_wallet, net);
+    return { ok: true, payout_tx: sig };
+  } catch (err) {
+    captureError(err, { stage: 'maybeUsdcPayout', order_id: order.id, seller_wallet: order.seller_wallet, net });
+    return { ok: false, payout_tx: null, error: err instanceof Error ? err.message : 'USDC payout failed' };
+  }
+}
+
 export async function releasePayout(order: PayoutOrder): Promise<PayoutResult> {
   const net = Number(order.seller_net_usd);
   if (!Number.isFinite(net)) {
@@ -92,6 +125,16 @@ export async function releasePayout(order: PayoutOrder): Promise<PayoutResult> {
     if (fiat) return fiat;
   } catch (err) {
     captureError(err, { stage: 'releasePayout.fiatGate', order_id: order.id, seller_wallet: order.seller_wallet });
+  }
+
+  // Seller-opt-in USDC crypto rail (4.5). Only a crypto-rail seller who chose USDC lands here; every
+  // other case (incl. any DB error) returns null and falls through to the unchanged SOL path below. A
+  // throw in the gate must never cost a seller their payout, so it's caught → SOL default.
+  try {
+    const usdc = await maybeUsdcPayout(order, net);
+    if (usdc) return usdc;
+  } catch (err) {
+    captureError(err, { stage: 'releasePayout.usdcGate', order_id: order.id, seller_wallet: order.seller_wallet });
   }
 
   try {

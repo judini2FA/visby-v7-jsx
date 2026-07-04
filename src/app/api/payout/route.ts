@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { seller_wallet, payout_type, stripe_account_id, crypto_wallet, crypto_chain } = await req.json();
+    const { seller_wallet, payout_type, stripe_account_id, crypto_wallet, crypto_chain, payout_asset } = await req.json();
     if (!seller_wallet || !payout_type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     const ctx = await getAuthedContext(req);
     if (!ctx || !ctx.wallets.includes(seller_wallet)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from('payout_settings')
       .upsert(
-        { seller_wallet, payout_type, stripe_account_id: resolvedStripeAccountId, crypto_wallet: crypto_wallet ?? null, crypto_chain: crypto_chain ?? 'solana' },
+        { seller_wallet, payout_type, stripe_account_id: resolvedStripeAccountId, crypto_wallet: crypto_wallet ?? null, crypto_chain: crypto_chain ?? 'solana', payout_asset: payout_asset === 'USDC' ? 'USDC' : 'SOL' },
         { onConflict: 'seller_wallet' }
       )
       .select()
