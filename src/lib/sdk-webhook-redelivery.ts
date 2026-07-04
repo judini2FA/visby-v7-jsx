@@ -45,6 +45,71 @@ function merchantOf(row: DueRow): { webhook_url: string | null; webhook_secret: 
   return Array.isArray(m) ? (m[0] ?? null) : m;
 }
 
+// Blueprint 5.2 — a merchant-triggered manual re-send of ONE order's webhook (from the dashboard),
+// reusing the exact same event build + delivery + state-update path as the cron sweep. Deliberate
+// one-shot: unlike the cron it doesn't respect the auto-retry cap or re-arm webhook_next_attempt_at on
+// failure (the merchant just clicks again) — it delivers now and records the outcome. Settlement is
+// untouched; this only re-fires the notification. The caller MUST have already verified the order
+// belongs to the requesting merchant.
+export async function redeliverSdkOrderNow(orderId: string): Promise<{ ok: boolean; delivered?: boolean; error?: string; status?: number }> {
+  const supabase = createServiceClient();
+
+  const { data, error } = await supabase
+    .from('sdk_orders')
+    .select('id, status, nft_mint_address, serial_number, product_name, price_usdc, webhook_attempts, webhook_redelivery_count, webhook_delivered, merchants(webhook_url, webhook_secret)')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (error) return { ok: false, error: 'Could not load order', status: 500 };
+  if (!data) return { ok: false, error: 'Order not found', status: 404 };
+
+  const row = data as unknown as DueRow;
+  if (!['minted', 'failed'].includes(row.status)) {
+    return { ok: false, error: 'This order has not settled yet — there is no webhook to re-send.', status: 409 };
+  }
+  const merchant = merchantOf(row);
+  if (!merchant?.webhook_url) return { ok: false, error: 'No webhook URL is configured for this merchant.', status: 400 };
+
+  const minted = row.status === 'minted';
+  const event = buildSdkWebhookEvent({
+    order_id: row.id,
+    minted,
+    nft_address: minted ? row.nft_mint_address : null,
+    serial_number: row.serial_number,
+    product_name: row.product_name,
+    amount_usd: Number(row.price_usdc),
+  });
+
+  const delivery = await deliverSdkWebhook({
+    webhook_url: merchant.webhook_url,
+    webhook_secret: merchant.webhook_secret,
+    event,
+    timeoutMs: PER_ATTEMPT_TIMEOUT_MS,
+  });
+
+  const attemptIso = new Date().toISOString();
+  const newCount = row.webhook_redelivery_count + 1;
+
+  if (delivery.delivered) {
+    await supabase.from('sdk_orders').update({
+      webhook_delivered: true,
+      webhook_attempts: row.webhook_attempts + delivery.attempts,
+      webhook_redelivery_count: newCount,
+      webhook_next_attempt_at: null,
+      webhook_last_attempt_at: attemptIso,
+      webhook_last_error: null,
+    }).eq('id', row.id);
+    return { ok: true, delivered: true };
+  }
+
+  await supabase.from('sdk_orders').update({
+    webhook_attempts: row.webhook_attempts + delivery.attempts,
+    webhook_redelivery_count: newCount,
+    webhook_last_attempt_at: attemptIso,
+    webhook_last_error: 'manual re-send failed',
+  }).eq('id', row.id);
+  return { ok: true, delivered: false };
+}
+
 export async function redeliverPendingSdkWebhooks(opts?: { limit?: number }): Promise<RedeliverySummary> {
   const supabase = createServiceClient();
   const limit = opts?.limit ?? DEFAULT_BATCH;

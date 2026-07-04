@@ -67,9 +67,9 @@
 - **Gate:** money moves and settles across all rails without Visby taking custody; every rail reconciles.
 
 ## Phase 5 — SDK & merchant experience
-- [ ] 5.1 Merchant dashboard: orders/settlements list
-- [ ] 5.2 Merchant dashboard: webhook delivery log + manual re-send
-- [ ] 5.3 Merchant dashboard: revenue/fee breakdown
+- [x] 5.1 Merchant dashboard: orders/settlements list — DONE 2026-07-04. New `/api/merchant/orders` (Privy-authed, merchant-owned) returns the merchant's `sdk_orders` (product, price, status, buyer, pay_method, fee_bps, platform_fee_usd, merchant_net_usd, dates, webhook state) newest-first + an all-orders summary. `merchant/page.tsx` renders an OrdersCard with a per-order status badge + price + your-net + date + webhook indicator. tsc clean; /merchant hydrates clean.
+- [x] 5.2 Merchant dashboard: webhook delivery log + manual re-send — DONE 2026-07-04. Log already existed; added a MERCHANT-scoped manual re-send: `redeliverSdkOrderNow(orderId)` in sdk-webhook-redelivery.ts (reuses the canonical buildEvent+deliver+state-update path; deliberate one-shot, no auto-retry-cap/reschedule) + `/api/merchant/redeliver` (Privy-authed, verifies the order belongs to the caller's merchant in one query, rate-limited) — the cron redeliver stays CRON_SECRET-gated/batch-wide. Per-order "Re-send webhook" button on undelivered terminal orders; flips the badge only on actual delivery.
+- [x] 5.3 Merchant dashboard: revenue/fee breakdown — DONE 2026-07-04. `/api/merchant/orders` summary aggregates gross_usd / platform_fee_usd / merchant_net_usd over settled (paid+minted) orders + by-status counts (all from the fee fields already stored per order at checkout). RevenueCard on the dashboard shows Gross / Platform fees / Your net (emphasized) + the status breakdown.
 - [ ] 5.4 Extension: real Privy auth in popup
 - [ ] 5.5 Extension-initiated partner checkout session
 - [ ] 5.6 Merchant payout settlement wiring

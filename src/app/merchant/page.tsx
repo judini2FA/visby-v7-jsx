@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
-import { t, S, card, surface, btn, badge, input, sectionLabel, T } from '@/lib/ui';
+import { t, S, card, surface, btn, badge, input, sectionLabel, price, T } from '@/lib/ui';
 
 const GREEN = 'var(--ok)';
 const RED   = 'var(--danger)';
@@ -417,6 +417,203 @@ function SalesCard({ merchant, wallet }: { merchant: Merchant; wallet: string })
   );
 }
 
+// ───────────────────────── orders + revenue (blueprint 5.1 / 5.2 / 5.3) ─────────────────────────
+type StatusCounts = { paid: number; minted: number; failed: number; pending: number; cancelled: number };
+
+type Summary = {
+  gross_usd: number;
+  platform_fee_usd: number;
+  merchant_net_usd: number;
+  count: number;
+  by_status: StatusCounts;
+};
+
+type Order = {
+  id: string;
+  product_name: string;
+  price_usdc: number;
+  currency: string;
+  status: 'pending' | 'paid' | 'minted' | 'failed' | 'cancelled';
+  buyer_wallet: string | null;
+  pay_method: string | null;
+  fee_bps: number | null;
+  platform_fee_usd: number | null;
+  merchant_net_usd: number | null;
+  created_at: string;
+  paid_at: string | null;
+  minted_at: string | null;
+  webhook_delivered: boolean;
+  webhook_last_error: string | null;
+  nft_mint_address: string | null;
+  serial_number: string | null;
+};
+
+function money(n: number | null | undefined): string {
+  return `$${(n ?? 0).toFixed(2)}`;
+}
+
+function StatIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /><line x1="6" y1="20" x2="6" y2="16" />
+    </svg>
+  );
+}
+
+function StatTile({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
+  return (
+    <div style={{ ...surface({ pad: '12px 14px' }), display: 'flex', flexDirection: 'column', gap: S[1], flex: 1, minWidth: 0 }}>
+      <div style={sectionLabel()}>{label}</div>
+      {emphasize ? (
+        <div style={{ ...price('sm') }}>{value}</div>
+      ) : (
+        <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+      )}
+    </div>
+  );
+}
+
+function RevenueCard({ summary }: { summary: Summary | null }) {
+  return (
+    <div style={{ ...card({ pad: S[5] }), display: 'flex', flexDirection: 'column', gap: S[4] }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+        <span style={{ color: 'var(--text-muted)' }}><StatIcon /></span>
+        <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Revenue</div>
+      </div>
+
+      {summary === null ? (
+        <div style={{ height: 84, background: 'var(--glass-bg)', borderRadius: 'var(--r)', animation: 'pulse 2s infinite' }} />
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+            <StatTile label="Gross (GMV)" value={money(summary.gross_usd)} />
+            <StatTile label="Platform fees" value={money(summary.platform_fee_usd)} />
+            <StatTile label="Your net" value={money(summary.merchant_net_usd)} emphasize />
+          </div>
+          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+            {summary.count} settled order{summary.count === 1 ? '' : 's'} · {summary.by_status.minted} minted · {summary.by_status.paid} paid · {summary.by_status.pending} pending · {summary.by_status.failed} failed · {summary.by_status.cancelled} cancelled
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function statusBadgeVariant(status: Order['status']): 'success' | 'danger' | 'default' {
+  if (status === 'minted') return 'success';
+  if (status === 'failed') return 'danger';
+  return 'default';
+}
+
+function webhookLabel(o: Order): { text: string; variant: 'success' | 'danger' | 'default' } {
+  if (o.webhook_delivered) return { text: 'Delivered', variant: 'success' };
+  if (o.status === 'minted' || o.status === 'failed') {
+    const err = o.webhook_last_error ? ` · ${o.webhook_last_error.slice(0, 40)}` : '';
+    return { text: `Failed${err}`, variant: 'danger' };
+  }
+  return { text: 'Pending', variant: 'default' };
+}
+
+function OrderRow({ order, onResend }: { order: Order; onResend: (id: string) => Promise<boolean> }) {
+  const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const wh = webhookLabel(order);
+  const canResend = !order.webhook_delivered && (order.status === 'minted' || order.status === 'failed');
+
+  async function handleResend() {
+    setSendState('sending');
+    const ok = await onResend(order.id);
+    setSendState(ok ? 'sent' : 'error');
+  }
+
+  return (
+    <div style={{ ...surface({ pad: '12px 14px' }), display: 'flex', flexDirection: 'column', gap: S[2] }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ ...t('meta'), color: 'var(--text-strong)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {order.product_name}
+          </div>
+          <div style={{ ...t('micro'), color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>
+            {shortDate(order.created_at)}{order.serial_number ? ` · ${order.serial_number}` : ''}
+          </div>
+        </div>
+        <span style={badge(statusBadgeVariant(order.status))}>{order.status}</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: S[4] }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={sectionLabel()}>Price</div>
+            <div style={{ ...t('meta'), color: 'var(--text-strong)', fontWeight: 600 }}>{money(order.price_usdc)}</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={sectionLabel()}>Your net</div>
+            <div style={{ ...t('meta'), color: 'var(--text-strong)', fontWeight: 600 }}>{money(order.merchant_net_usd)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], flexWrap: 'wrap' }}>
+        <span style={{ ...badge(wh.variant), ...(wh.variant === 'default' ? { color: 'var(--text-muted)' } : {}) }}>{wh.text}</span>
+        {canResend && (
+          <button type="button" onClick={handleResend} disabled={sendState === 'sending' || sendState === 'sent'}
+            style={{ ...btn('text', { pill: false }), padding: '4px 8px', opacity: sendState === 'sending' ? 0.6 : 1 }}>
+            {sendState === 'idle' && 'Re-send webhook'}
+            {sendState === 'sending' && 'Sending…'}
+            {sendState === 'sent' && <span style={{ color: GREEN }}>Sent</span>}
+            {sendState === 'error' && <span style={{ color: RED }}>Failed — retry</span>}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OrdersCard({ merchant, wallet, orders, onRefresh }: {
+  merchant: Merchant;
+  wallet: string;
+  orders: Order[] | null;
+  onRefresh: () => void;
+}) {
+  const { getAccessToken } = usePrivy();
+
+  async function resend(order_id: string): Promise<boolean> {
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/merchant/redeliver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ owner_wallet: wallet, merchant_id: merchant.id, order_id }),
+      });
+      const data = await res.json();
+      const ok = res.ok && !data.error && !!data.delivered;
+      if (ok) onRefresh();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  return (
+    <div style={{ ...card({ pad: S[5] }), display: 'flex', flexDirection: 'column', gap: S[4] }}>
+      <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Orders</div>
+
+      {orders === null ? (
+        <div style={{ height: 96, background: 'var(--glass-bg)', borderRadius: 'var(--r)', animation: 'pulse 2s infinite' }} />
+      ) : orders.length === 0 ? (
+        <div style={{ ...surface({ pad: '28px 16px' }), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2], textAlign: 'center' }}>
+          <span style={{ color: 'var(--text-muted)' }}><StatIcon /></span>
+          <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>No orders yet</div>
+          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Orders placed through your embedded button will appear here.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          {orders.map(o => <OrderRow key={o.id} order={o} onResend={resend} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ───────────────────────────── page ─────────────────────────────
 export default function MerchantPage() {
   const { ready, authenticated, getAccessToken } = usePrivy();
@@ -425,6 +622,9 @@ export default function MerchantPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
   const [reveal, setReveal]     = useState<Reveal | null>(null);
   const [loading, setLoading]   = useState(true);
+  const [orders, setOrders]     = useState<Order[] | null>(null);
+  const [summary, setSummary]   = useState<Summary | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     if (!ready || !authenticated || !wallet) { if (ready) setLoading(false); return; }
@@ -446,6 +646,26 @@ export default function MerchantPage() {
     })();
     return () => { cancelled = true; };
   }, [ready, authenticated, wallet, getAccessToken]);
+
+  useEffect(() => {
+    if (!merchant || !wallet) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(
+          `/api/merchant/orders?owner_wallet=${encodeURIComponent(wallet)}&merchant_id=${encodeURIComponent(merchant.id)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await res.json();
+        if (!cancelled && res.ok) { setOrders(data.orders ?? []); setSummary(data.summary ?? null); }
+        else if (!cancelled) { setOrders([]); setSummary(null); }
+      } catch {
+        if (!cancelled) { setOrders([]); setSummary(null); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [merchant, wallet, getAccessToken, refreshTick]);
 
   const signedOut = ready && !authenticated;
   // Signed in but Privy hasn't surfaced the embedded wallet yet — don't render Create with an empty wallet.
@@ -478,6 +698,8 @@ export default function MerchantPage() {
           <>
             {reveal && <RevealPanel reveal={reveal} onDismiss={() => setReveal(null)} />}
             <KeysCard merchant={merchant} wallet={wallet} onMerchant={setMerchant} onReveal={setReveal} />
+            <RevenueCard summary={summary} />
+            <OrdersCard merchant={merchant} wallet={wallet} orders={orders} onRefresh={() => setRefreshTick(x => x + 1)} />
             <EmbedCard />
             <SalesCard merchant={merchant} wallet={wallet} />
           </>
