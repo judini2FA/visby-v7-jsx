@@ -26,6 +26,10 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [testMsg,    setTestMsg]    = useState('');
 
+  const [connect, setConnect] = useState<{ onboarded: boolean; payouts_enabled: boolean; charges_enabled: boolean; details_submitted: boolean } | null>(null);
+  const [connectBusy, setConnectBusy] = useState(false);
+  const [connectMsg, setConnectMsg] = useState('');
+
   useEffect(() => {
     if (!wallet) return;
     (async () => {
@@ -45,6 +49,43 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       .catch(() => {});
   }, [wallet]);
 
+  async function loadConnect() {
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/connect/status?wallet=${wallet}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const data = await res.json();
+      setConnect(data);
+    } catch { /* leave connect as-is */ }
+  }
+
+  useEffect(() => {
+    if (!wallet) return;
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const connectParam = params.get('connect');
+
+      if (connectParam === 'return') {
+        try {
+          const token = await getAccessToken();
+          const res = await fetch('/api/connect/refresh', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ wallet }),
+          });
+          if (res.ok) setConnect(await res.json());
+          window.history.replaceState({}, '', window.location.pathname);
+        } catch {
+          await loadConnect();
+        }
+      } else if (connectParam === 'refresh') {
+        window.history.replaceState({}, '', window.location.pathname);
+        await loadConnect();
+      } else {
+        await loadConnect();
+      }
+    })();
+  }, [wallet]);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setStatus('saving'); setErrMsg('');
@@ -56,7 +97,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       if (STEP_UP_ON) {
         const signer = solSigners.find(w => w.address === wallet);
         if (!signer?.signMessage) throw new Error('This wallet can’t authorize the change on this device.');
-        const proof = await createStepUpProof({ action: payoutAction(payoutType, payoutType === 'bank' ? stripeAccountId : cryptoWallet), signMessage: signer.signMessage });
+        const proof = await createStepUpProof({ action: payoutAction(payoutType, payoutType === 'bank' ? 'connect' : cryptoWallet), signMessage: signer.signMessage });
         stepUp = stepUpHeader(proof);
       }
       const res = await fetch('/api/payout', {
@@ -64,7 +105,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
         body: JSON.stringify({
           seller_wallet: wallet,
           payout_type: payoutType,
-          stripe_account_id: payoutType === 'bank'   ? stripeAccountId : undefined,
+          stripe_account_id: undefined,
           crypto_wallet:     payoutType === 'crypto' ? cryptoWallet    : undefined,
           crypto_chain:      payoutType === 'crypto' ? cryptoChain     : undefined,
         }),
@@ -77,6 +118,27 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       setTestStatus('idle'); setTestMsg('');
       setTimeout(() => setStatus('idle'), 2500);
     } catch (err: any) { setErrMsg(err.message ?? 'Save failed'); setStatus('error'); }
+  }
+
+  async function startConnectOnboarding() {
+    setConnectBusy(true); setConnectMsg('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/connect/onboard', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ wallet }),
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setConnectMsg(data.error ?? 'Could not start bank onboarding');
+      setConnectBusy(false);
+    } catch (err: any) {
+      setConnectMsg(err.message ?? 'Could not start bank onboarding');
+      setConnectBusy(false);
+    }
   }
 
   async function sendTestPayout() {
@@ -144,18 +206,57 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
         )}
 
         {payoutType === 'bank' && (
-          <div>
-            <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Payout account ID</div>
-            <input value={stripeAccountId} onChange={e => setStripeAccountId(e.target.value)} placeholder="acct_1ABC123…" style={input()} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+            {connect?.payouts_enabled ? (
+              <div style={{ ...surface({ pad: '14px 16px' }), display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  <div style={{ ...t('body'), fontWeight: 700, color: GREEN }}>Bank connected — payouts enabled</div>
+                </div>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                  Your bank is verified and ready to receive payouts.
+                </div>
+                <button type="button" onClick={startConnectOnboarding} disabled={connectBusy}
+                  style={{ ...btn('text'), alignSelf: 'flex-start', padding: 0, opacity: connectBusy ? 0.7 : 1, cursor: connectBusy ? 'not-allowed' : 'pointer' }}>
+                  {connectBusy ? 'Opening…' : 'Manage / update bank'}
+                </button>
+              </div>
+            ) : connect?.onboarded ? (
+              <div style={{ ...surface({ pad: '14px 16px' }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                  Bank setup started but not finished — Stripe still needs a few details.
+                </div>
+                <button type="button" onClick={startConnectOnboarding} disabled={connectBusy}
+                  style={{ ...btn('primary', { full: true }), opacity: connectBusy ? 0.7 : 1, cursor: connectBusy ? 'not-allowed' : 'pointer' }}>
+                  {connectBusy ? 'Opening…' : 'Finish bank setup'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ ...surface({ pad: '14px 16px' }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                  Connect your bank through Stripe to receive payouts as cash. Takes ~2 minutes.
+                </div>
+                <button type="button" onClick={startConnectOnboarding} disabled={connectBusy}
+                  style={{ ...btn('primary', { full: true }), opacity: connectBusy ? 0.7 : 1, cursor: connectBusy ? 'not-allowed' : 'pointer' }}>
+                  {connectBusy ? 'Opening…' : 'Connect bank account'}
+                </button>
+              </div>
+            )}
+            {connectMsg && <div style={{ ...t('meta'), color: RED }}>{connectMsg}</div>}
           </div>
         )}
 
         {errMsg && <div style={{ ...surface({ pad: '10px 14px' }), ...t('body'), color: RED, borderColor: 'var(--danger-soft)' }}>{errMsg}</div>}
 
-        <button type="submit" disabled={status === 'saving'}
-          style={{ ...btn(status === 'saved' ? 'secondary' : 'primary', { full: true }), opacity: status === 'saving' ? 0.7 : 1, cursor: status === 'saving' ? 'not-allowed' : 'pointer', color: status === 'saved' ? GREEN : undefined }}>
+        <button type="submit" disabled={status === 'saving' || (payoutType === 'bank' && !connect?.payouts_enabled)}
+          style={{ ...btn(status === 'saved' ? 'secondary' : 'primary', { full: true }), opacity: (status === 'saving' || (payoutType === 'bank' && !connect?.payouts_enabled)) ? 0.7 : 1, cursor: (status === 'saving' || (payoutType === 'bank' && !connect?.payouts_enabled)) ? 'not-allowed' : 'pointer', color: status === 'saved' ? GREEN : undefined }}>
           {status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save Payout Settings'}
         </button>
+        {payoutType === 'bank' && !connect?.payouts_enabled && (
+          <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: -S[2] }}>
+            Finish connecting your bank to save this as your payout method.
+          </div>
+        )}
       </form>
 
       {canTest && (

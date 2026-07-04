@@ -2,6 +2,8 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { sendSolFromAuthority } from '@/lib/solana-fund';
 import { captureError } from '@/lib/monitoring';
 import { solUsd } from '@/lib/price-oracle';
+import { createServiceClient } from '@/lib/supabase/service';
+import { getConnectStatus, payoutToConnect } from '@/lib/stripe-connect';
 
 // Escrow release. Buyer funds are held until delivery is confirmed; then the seller's net
 // (price − platform fee − shipping) is paid to their PRIMARY payout method.
@@ -34,6 +36,44 @@ async function solPriceUsd(): Promise<number | null> {
   return p > 0 ? p : null;
 }
 
+// Blueprint 4.3 — seller-opt-in FIAT payout rail (Stripe Connect), additive over the crypto default.
+//
+// Returns:
+//   null                 → seller is NOT on the fiat rail (no bank preference, onboarding incomplete,
+//                          or any lookup miss/error). The caller then runs the unchanged crypto path.
+//   PayoutResult (ok)    → fiat transfer succeeded; payout_tx = Stripe transfer id.
+//   PayoutResult (!ok)   → seller IS on the fiat rail but the transfer failed. Returned as-is so the
+//                          release is left retryable — we do NOT silently downgrade a bank-preferring
+//                          seller to a crypto payout (that would risk double-paying on a later retry).
+//
+// The gate fires only when the seller explicitly chose bank (payout_settings.payout_type === 'bank')
+// AND finished Connect onboarding (seller_connect_accounts.payouts_enabled). Any DB error → null →
+// crypto default, so this can never strand a payout by mis-reading a preference.
+//
+// Idempotency: payoutToConnect keys on the order id, so a retried release (retry-payout endpoint, or a
+// buyer-confirm + carrier-webhook double fire) can never move the money twice within Stripe's window.
+//
+// Treasury note: on a crypto-paid order the buyer's SOL sits in the treasury while USD leaves Visby's
+// Stripe balance — a deliberate FX/liquidity position, not a bug (the seller is owed `net` either way).
+async function maybeConnectPayout(order: PayoutOrder, net: number): Promise<PayoutResult | null> {
+  const wallet = order.seller_wallet;
+  const supabase = createServiceClient();
+
+  const { data: pref, error: prefErr } = await supabase
+    .from('payout_settings')
+    .select('payout_type')
+    .eq('seller_wallet', wallet)
+    .maybeSingle();
+  if (prefErr) return null;                          // can't read preference → crypto default
+  if (pref?.payout_type !== 'bank') return null;     // not opted into fiat → crypto default
+
+  const status = await getConnectStatus(wallet);
+  if (!status?.stripe_account_id || !status.payouts_enabled) return null; // onboarding incomplete → crypto default
+
+  const res = await payoutToConnect({ wallet, amountUsd: net, idempotencyKey: `connect-payout:${order.id}` });
+  return { ok: res.ok, payout_tx: res.transfer_id ?? null, error: res.error };
+}
+
 export async function releasePayout(order: PayoutOrder): Promise<PayoutResult> {
   const net = Number(order.seller_net_usd);
   if (!Number.isFinite(net)) {
@@ -42,6 +82,17 @@ export async function releasePayout(order: PayoutOrder): Promise<PayoutResult> {
   }
   if (net <= 0) return { ok: true, payout_tx: null }; // nothing owed (e.g. shipping ≥ net)
   if (!order.seller_wallet) return { ok: false, payout_tx: null, error: 'No seller wallet on file for payout.' };
+
+  // Seller-opt-in fiat rail (4.3). Only a bank-preferring, fully-onboarded seller lands here; every
+  // other case (incl. any DB error) returns null and falls through to the unchanged crypto path below.
+  // A THROW in the gate must never cost a seller their payout, so it's caught and treated as "not on
+  // the fiat rail" → crypto default.
+  try {
+    const fiat = await maybeConnectPayout(order, net);
+    if (fiat) return fiat;
+  } catch (err) {
+    captureError(err, { stage: 'releasePayout.fiatGate', order_id: order.id, seller_wallet: order.seller_wallet });
+  }
 
   try {
     const solUsd = await solPriceUsd();
