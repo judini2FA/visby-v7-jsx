@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
+import { isBanned } from '@/lib/account-status';
 import { requireStepUp } from '@/lib/step-up';
 import { payoutAction } from '@/lib/step-up-shared';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
     if (!seller_wallet || !payout_type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     const ctx = await getAuthedContext(req);
     if (!ctx || !ctx.wallets.includes(seller_wallet)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // A banned/deleted account can't (re)direct where future earnings are paid out.
+    if (await isBanned(ctx.wallets)) return NextResponse.json({ error: 'account_banned' }, { status: 403 });
     const rl = await rateLimit(`payout:${seller_wallet}`, { limit: 10, windowSec: 60 });
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
     const supabase = createServiceClient();

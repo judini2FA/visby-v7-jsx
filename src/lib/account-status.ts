@@ -24,7 +24,8 @@ export async function getWorstStatus(wallets: string[]): Promise<AccountStatus> 
     let worst: AccountStatus = 'active';
     for (const r of data ?? []) {
       const s = (r as any).account_status as string | null;
-      if (s === 'banned') return 'banned';
+      // A CCPA/GDPR-deleted account is enforced as banned (fully locked out) — no separate gate needed.
+      if (s === 'banned' || s === 'deleted') return 'banned';
       if (s === 'suspended' || (r as any).is_flagged === true) worst = 'suspended';
     }
     return worst;

@@ -3,6 +3,7 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
+import { isBanned } from '@/lib/account-status';
 import { confirmTransfer } from '@/lib/transfers';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
@@ -19,6 +20,8 @@ export async function POST(req: Request) {
 
   if (!transfer_id || !from_wallet || !tx_hash) return NextResponse.json({ error: 'transfer_id, from_wallet, tx_hash are required' }, { status: 400 });
   if (!ctx.wallets.includes(from_wallet)) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
+  // Ban/deleted accounts are locked out of the whole send flow — prepare already gates this; mirror it here.
+  if (await isBanned(ctx.wallets)) return NextResponse.json({ error: 'account_banned' }, { status: 403 });
 
   const rl = await rateLimit(`transfer-confirm:${from_wallet}`, { limit: 30, windowSec: 60 });
   if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);

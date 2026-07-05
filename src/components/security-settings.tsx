@@ -210,6 +210,66 @@ export default function SecuritySettings() {
     catch { setErr('Passkeys aren’t available yet — they’re being enabled.'); }
   }
 
+  const [dataBusy, setDataBusy] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteText, setDeleteText] = useState('');
+  const [deleteErr, setDeleteErr] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  async function downloadData() {
+    setDataBusy(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/account/export', { method: 'POST', headers });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'visby-data-export.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  function closeDeleteConfirm() {
+    setShowDeleteConfirm(false);
+    setDeleteText('');
+    setDeleteErr('');
+  }
+
+  async function confirmDelete() {
+    setDeleteErr('');
+    setDeleteBusy(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ confirm: 'DELETE' }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.ok) {
+        await privy.logout?.();
+        window.location.href = '/';
+        return;
+      }
+      if (res.status === 409 && j.error === 'has_open_obligations') {
+        setDeleteErr(j.message || 'Please resolve open orders or disputes before deleting your account.');
+        return;
+      }
+      setDeleteErr('Couldn’t delete your account — try again.');
+    } catch {
+      setDeleteErr('Couldn’t delete your account — try again.');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   const others = sessions.filter((s) => s.session_id !== current);
 
   return (
@@ -308,6 +368,40 @@ export default function SecuritySettings() {
               {busy === 'revoke_others' ? 'Logging out…' : 'Log out all other devices'}
             </button>
           )}
+        </div>
+      )}
+
+      <SecRow
+        icon={<svg width="16" height="16" viewBox="0 0 24 24" {...stroke}><path d="M12 3v12m0 0l-4-4m4 4l4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>}
+        label="Download my data"
+        sublabel="Get a copy of your Visby data as a file"
+        right={<button onClick={downloadData} disabled={dataBusy} style={{ ...btn('secondary', { pill: false }), padding: '7px 14px', color: T.textMuted, opacity: dataBusy ? 0.7 : 1 }}>{dataBusy ? 'Preparing…' : 'Download'}</button>}
+      />
+
+      <SecRow
+        border={false}
+        icon={<svg width="16" height="16" viewBox="0 0 24 24" {...stroke}><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>}
+        label="Delete account"
+        sublabel="Permanently delete your account and personal data"
+        right={<button onClick={() => setShowDeleteConfirm((s) => !s)} disabled={deleteBusy} style={{ ...btn('secondary', { pill: false }), padding: '7px 14px', color: 'var(--danger)' }}>Delete</button>}
+      />
+      {showDeleteConfirm && (
+        <div style={{ padding: '4px 16px 14px', display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          <div style={{ ...t('meta'), color: T.textMuted }}>
+            This removes your personal data and signs you out. Your purchase, transfer, and provenance history is kept as required by law, and your on-chain Tallys are permanent. This cannot be undone.
+          </div>
+          <input type="text" placeholder="Type DELETE to confirm" value={deleteText} onChange={(e) => setDeleteText(e.target.value)} style={input()} autoComplete="off" />
+          {deleteErr && <div style={{ ...t('meta'), color: 'var(--danger)' }}>{deleteErr}</div>}
+          <div style={{ display: 'flex', gap: S[2], marginTop: S[1] }}>
+            <button
+              onClick={confirmDelete}
+              disabled={deleteBusy || deleteText !== 'DELETE'}
+              style={{ ...btn('primary'), background: 'var(--danger)', flex: 1, fontSize: 13, opacity: deleteBusy ? 0.7 : 1 }}
+            >
+              {deleteBusy ? 'Deleting…' : 'Delete my account'}
+            </button>
+            <button onClick={closeDeleteConfirm} style={{ ...btn('secondary'), fontSize: 13 }}>Cancel</button>
+          </div>
         </div>
       )}
 

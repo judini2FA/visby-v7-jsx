@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
+import { isBanned } from '@/lib/account-status';
 import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
@@ -40,6 +41,8 @@ export async function POST(req: NextRequest) {
   if (!ctx || !ctx.wallets.includes(from_wallet)) {
     return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
   }
+  // A banned/deleted account can't move a Tally or mutate the provenance chain through Visby.
+  if (await isBanned(ctx.wallets)) return NextResponse.json({ error: 'account_banned' }, { status: 403 });
 
   // Step-up: a fresh MFA-gated wallet signature, bound to THIS transfer, before the asset leaves for
   // another wallet. No-op until NEXT_PUBLIC_STEP_UP_ENFORCED=1 (rollout-safe); when enforced it also
