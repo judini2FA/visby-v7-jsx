@@ -8,10 +8,10 @@ import { useAdminRole } from '@/lib/use-admin-role';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, surface, btn, glass, T } from '@/lib/ui';
 
-type Docs = { terms: string | null; privacy: string | null };
+type Docs = { terms: string | null; privacy: string | null; acceptable_use: string | null; seller_agreement: string | null };
 
 function UploadRow({ kind, label, current, wallet, token, onDone }: {
-  kind: 'terms' | 'privacy'; label: string; current: string | null;
+  kind: 'terms' | 'privacy' | 'acceptable_use' | 'seller_agreement'; label: string; current: string | null;
   wallet: string | undefined; token: string | null; onDone: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -67,7 +67,7 @@ export default function AdminLegalPage() {
   const { getAccessToken } = usePrivy();
   const { address: wallet, ready } = useVisbWallet();
   const [token, setToken] = useState<string | null>(null);
-  const [docs, setDocs] = useState<Docs>({ terms: null, privacy: null });
+  const [docs, setDocs] = useState<Docs>({ terms: null, privacy: null, acceptable_use: null, seller_agreement: null });
 
   useEffect(() => {
     if (ready && wallet) getAccessToken().then(tok => setToken(tok ?? null));
@@ -76,7 +76,7 @@ export default function AdminLegalPage() {
   const { isAdmin, loading: adminLoading } = useAdminRole();
 
   const refetch = useCallback(() => {
-    fetch('/api/legal').then(r => r.json()).then(d => setDocs({ terms: d.terms ?? null, privacy: d.privacy ?? null })).catch(() => {});
+    fetch('/api/legal').then(r => r.json()).then(d => setDocs({ terms: d.terms ?? null, privacy: d.privacy ?? null, acceptable_use: d.acceptable_use ?? null, seller_agreement: d.seller_agreement ?? null })).catch(() => {});
   }, []);
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -102,12 +102,16 @@ export default function AdminLegalPage() {
 
       <div className="visby-inner" style={{ paddingTop: S[5], paddingBottom: 120 }}>
         <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5], lineHeight: 1.6 }}>
-          Upload the finalized Terms of Service and Privacy Policy as PDFs. They publish immediately to{' '}
-          <Link href="/legal/terms" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/terms</Link> and{' '}
-          <Link href="/legal/privacy" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/privacy</Link>.
+          Upload the finalized Terms of Service, Privacy Policy, Acceptable Use Policy, and Seller Agreement as PDFs. They publish immediately to{' '}
+          <Link href="/legal/terms" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/terms</Link>,{' '}
+          <Link href="/legal/privacy" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/privacy</Link>,{' '}
+          <Link href="/legal/acceptable-use" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/acceptable-use</Link>, and{' '}
+          <Link href="/legal/seller-agreement" style={{ color: 'var(--text-strong)', textDecoration: 'underline' }}>/legal/seller-agreement</Link>.
         </div>
         <UploadRow kind="terms" label="Terms of Service" current={docs.terms} wallet={wallet} token={token} onDone={refetch} />
         <UploadRow kind="privacy" label="Privacy Policy" current={docs.privacy} wallet={wallet} token={token} onDone={refetch} />
+        <UploadRow kind="acceptable_use" label="Acceptable Use Policy" current={docs.acceptable_use} wallet={wallet} token={token} onDone={refetch} />
+        <UploadRow kind="seller_agreement" label="Seller Agreement" current={docs.seller_agreement} wallet={wallet} token={token} onDone={refetch} />
       </div>
     </div>
   );

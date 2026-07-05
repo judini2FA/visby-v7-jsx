@@ -104,9 +104,9 @@
 - **Gate:** a first-time non-crypto user completes signup → browse → buy → track without help or jargon.
 
 ## Phase 8 — Compliance & legal plumbing
-- [ ] 8.1 CCPA/GDPR data-export endpoint
-- [ ] 8.2 Account-deletion endpoint (wallet/provenance caveats explained plainly)
-- [ ] 8.3 Seller/Marketplace Agreement + Acceptable Use routes (counsel supplies content; admin PDF-upload exists)
+- [x] 8.1 CCPA/GDPR data-export endpoint
+- [x] 8.2 Account-deletion endpoint (wallet/provenance caveats explained plainly)
+- [x] 8.3 Seller/Marketplace Agreement + Acceptable Use routes (counsel supplies content; admin PDF-upload exists)
 - [ ] 8.4 Company email aliases (Resend catch-all; needs Judah's domain DNS)
 - [ ] 8.5 AML/KYC record-keeping hooks (screening results retained + exportable)
 - **Gate:** a user can export or delete their data; all four legal routes live.

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!(await isAdminRole(wallet, 'super_admin'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const kind = form.get('kind');
-  if (kind !== 'terms' && kind !== 'privacy') return NextResponse.json({ error: 'kind must be terms or privacy' }, { status: 400 });
+  if (kind !== 'terms' && kind !== 'privacy' && kind !== 'acceptable_use' && kind !== 'seller_agreement') return NextResponse.json({ error: 'kind must be terms, privacy, acceptable_use, or seller_agreement' }, { status: 400 });
 
   const file = form.get('file');
   if (!(file instanceof File)) return NextResponse.json({ error: 'No file provided' }, { status: 400 });

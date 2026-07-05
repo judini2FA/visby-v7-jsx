@@ -7,7 +7,7 @@ import { HeaderMenu } from '@/components/layout/header-menu';
 
 // Public legal page. Serves the admin-uploaded PDF (embedded + downloadable); until one is uploaded it
 // shows a "being finalized" state. The doc URL comes from the public /api/legal route.
-export function LegalShell({ kind, title }: { kind: 'terms' | 'privacy'; title: string }) {
+export function LegalShell({ kind, title }: { kind: 'terms' | 'privacy' | 'acceptable_use' | 'seller_agreement'; title: string }) {
   const [url, setUrl] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {

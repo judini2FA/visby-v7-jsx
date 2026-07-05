@@ -15,6 +15,10 @@ export function LegalFooter() {
       <Link href="/legal/terms" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none' }}>Terms</Link>
       <span style={{ ...t('meta'), color: 'var(--divider)' }}>·</span>
       <Link href="/legal/privacy" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none' }}>Privacy</Link>
+      <span style={{ ...t('meta'), color: 'var(--divider)' }}>·</span>
+      <Link href="/legal/acceptable-use" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none' }}>Acceptable Use</Link>
+      <span style={{ ...t('meta'), color: 'var(--divider)' }}>·</span>
+      <Link href="/legal/seller-agreement" style={{ ...t('meta'), color: 'var(--text-muted)', textDecoration: 'none' }}>Seller Agreement</Link>
       <span style={{ ...t('micro'), color: 'var(--text-muted)', flexBasis: '100%', textAlign: 'center', marginTop: S[1] }}>© 2026 Visby</span>
     </footer>
   );

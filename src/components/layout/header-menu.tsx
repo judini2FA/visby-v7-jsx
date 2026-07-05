@@ -25,6 +25,8 @@ const LINKS = [
   { label: 'Help',             href: '/help',                    icon: 'help' },
   { label: 'Terms of Service', href: '/legal/terms',             icon: 'doc' },
   { label: 'Privacy Policy',   href: '/legal/privacy',           icon: 'shield' },
+  { label: 'Acceptable Use',   href: '/legal/acceptable-use',    icon: 'doc' },
+  { label: 'Seller Agreement', href: '/legal/seller-agreement',  icon: 'doc' },
 ] as const;
 
 // The three-line menu button + its bottom-sheet, fully self-contained. Drop it into any page header.
