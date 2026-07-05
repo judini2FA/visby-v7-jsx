@@ -654,7 +654,7 @@ export default function PayRequest({ wallet, onDone, fixedRecipient }: { wallet:
         <>
           <div
             onClick={() => { if (!inFlight) setConfirmOpen(false); }}
-            style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }}
+            style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--modal-scrim)' }}
           />
           <div
             style={{
@@ -812,7 +812,7 @@ function RecipientPicker({ wallet, mode, onClose, onPick }: {
 
   return createPortal(
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 210, background: 'rgba(0,0,0,.5)' }} />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 210, background: 'var(--modal-scrim)' }} />
       <div
         style={{
           ...surface({ pad: S[5], radius: 'var(--r-xl)' }),

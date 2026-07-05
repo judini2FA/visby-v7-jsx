@@ -151,7 +151,7 @@ function MyItemsTab({ wallet }: { wallet: string }) {
 
       {transferItem && (
         <>
-          <div onClick={() => xfer !== 'sending' && setTransferItem(null)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }} />
+          <div onClick={() => xfer !== 'sending' && setTransferItem(null)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--modal-scrim)' }} />
           <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, padding: `0 ${S[5]}px ${S[7]}px`, maxHeight: '82vh', overflowY: 'auto' }}>
             <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `${S[4]}px auto ${S[5]}px` }} />
             <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[1] }}>Transfer Tally</div>
@@ -166,7 +166,7 @@ function MyItemsTab({ wallet }: { wallet: string }) {
                 {destsFor(transferItem).map(d => (
                   <button key={d.address} onClick={() => setDestAddr(d.address)}
                     style={{ ...surface({ pad: '12px 14px' }), display: 'flex', alignItems: 'center', gap: S[3], textAlign: 'left', cursor: 'pointer', border: destAddr === d.address ? '1.5px solid var(--text-strong)' : undefined }}>
-                    <span style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#14F195,#9945FF)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>SOL</span>
+                    <span style={{ ...surface({ radius: 8 }), width: 30, height: 30, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>SOL</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)' }}>{d.label}</div>
                       <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.address.slice(0, 6)}…{d.address.slice(-5)}</div>

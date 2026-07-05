@@ -916,7 +916,7 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
 
         {showPaySheet && typeof document !== 'undefined' && createPortal(
           <>
-            <div onClick={() => setShowPaySheet(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }} />
+            <div onClick={() => setShowPaySheet(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--modal-scrim)' }} />
             <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, borderBottom: 'none', padding: `0 ${S[5]}px ${S[7]}px`, maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: `${S[4]}px 0 ${S[4]}px` }}>
                 <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2 }} />

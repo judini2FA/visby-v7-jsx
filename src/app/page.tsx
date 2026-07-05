@@ -279,7 +279,7 @@ export default function HomePage() {
         {/* ── Filters popup ────────────────────────────── */}
         {filtersOpen && (
           <>
-            <div onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }} />
+            <div onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--modal-scrim)' }} />
             <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, borderBottom: 'none', padding: `0 ${S[5]}px ${S[6]}px`, maxHeight: '88vh', overflowY: 'auto' }}>
               <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `${S[4]}px auto ${S[5]}px` }} />
 

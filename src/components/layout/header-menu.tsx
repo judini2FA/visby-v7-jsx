@@ -57,10 +57,7 @@ export function HeaderMenu({ buttonStyle }: { buttonStyle?: React.CSSProperties 
         onClick={() => setOpen(true)}
         aria-label="Menu"
         style={{
-          background: 'var(--glass-bg)',
-          backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))',
-          border: '1px solid var(--glass-border)',
-          borderRadius: 14, padding: '9px 11px',
+          ...surface({ radius: 14, pad: '9px 11px' }),
           cursor: 'pointer', flexShrink: 0,
           display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center',
           ...buttonStyle,
@@ -71,7 +68,7 @@ export function HeaderMenu({ buttonStyle }: { buttonStyle?: React.CSSProperties 
 
       {open && typeof document !== 'undefined' && createPortal(
         <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)' }} />
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--modal-scrim)' }} />
           <div style={{ ...sheet({ radius: '30px 30px 0 0' }), position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 600, zIndex: 201, borderBottom: 'none', padding: `0 ${S[5]}px ${S[7]}px`, maxHeight: '88vh', overflowY: 'auto' }}>
             <div style={{ width: 36, height: 4, background: 'var(--divider)', borderRadius: 2, margin: `${S[4]}px auto ${S[5]}px` }} />
 

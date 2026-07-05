@@ -129,7 +129,7 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
       </div>
 
       {menuOpen && (
-        <div style={{ position: 'absolute', top: 44, right: S[3], zIndex: 20, minWidth: 168, ...surface({ pad: '6px' }), background: 'var(--glass-bg-strong)', border: '1px solid var(--glass-border)', boxShadow: 'var(--glass-shadow)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ position: 'absolute', top: 44, right: S[3], zIndex: 20, minWidth: 168, ...surface({ pad: '6px' }), display: 'flex', flexDirection: 'column' }}>
           {items.map(it => it.href ? (
             <Link key={it.a} href={it.href} style={{ ...t('body'), color: 'var(--text)', textDecoration: 'none', padding: '9px 12px', borderRadius: 'var(--r-sm)' }}>{it.label}</Link>
           ) : (

@@ -545,8 +545,8 @@ export default function BuyCryptoPage() {
         {phase !== 'idle' && (
           <div
             style={{
-              background: `${C.green}12`,
-              border: `1px solid ${C.green}44`,
+              background: 'var(--ok-soft)',
+              border: `1px solid ${C.green}`,
               borderRadius: 'var(--r-lg)',
               padding: S[5],
               display: 'flex',
@@ -561,7 +561,7 @@ export default function BuyCryptoPage() {
                 width: 52,
                 height: 52,
                 borderRadius: '50%',
-                background: `${C.green}20`,
+                background: 'var(--ok-soft)',
                 border: `2px solid ${C.green}`,
                 display: 'flex',
                 alignItems: 'center',

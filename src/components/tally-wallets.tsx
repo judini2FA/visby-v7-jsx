@@ -146,7 +146,7 @@ export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
                   </button>
                   {openMenu === w.id && (
-                    <div style={{ position: 'absolute', top: 30, right: 0, zIndex: 20, minWidth: 160, ...surface({ pad: '6px' }), background: 'var(--glass-bg-strong)', border: '1px solid var(--glass-border)', boxShadow: 'var(--glass-shadow)', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ position: 'absolute', top: 30, right: 0, zIndex: 20, minWidth: 160, ...surface({ pad: '6px' }), display: 'flex', flexDirection: 'column' }}>
                       {!isDest && <button onClick={() => { setDestination(isVisby ? '' : w.address); setOpenMenu(''); }} style={{ ...t('body'), color: 'var(--text)', background: 'none', border: 0, textAlign: 'left', cursor: 'pointer', padding: '9px 12px', borderRadius: 'var(--r-sm)' }}>Set as destination</button>}
                       {isDest && <div style={{ ...t('meta'), color: 'var(--text-muted)', padding: '9px 12px' }}>Current destination</div>}
                       {!isVisby && <button onClick={() => { remove(w); setOpenMenu(''); }} style={{ ...t('body'), color: 'var(--danger)', background: 'none', border: 0, textAlign: 'left', cursor: 'pointer', padding: '9px 12px', borderRadius: 'var(--r-sm)' }}>Remove</button>}
