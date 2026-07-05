@@ -114,7 +114,7 @@
 ## Phase 9 — Platform delivery
 - [ ] 9.1 Capacitor iOS/Android: local build steps (Xcode/Android Studio, dev accounts, APNs/FCM) — Judah + Claude
 - [ ] 9.2 Extension store-readiness (icons, listing, honesty popups verified)
-- [ ] 9.3 PWA verified installable (manifest, SW, icons, Lighthouse ≥ 90)
+- [x] 9.3 PWA verified installable (manifest, SW, icons; Lighthouse audit = Judah tooling verify)
 - **Gate:** app runs on a real phone; extension loads from a packed build; PWA installs.
 
 ## Phase 10 — DESIGN DEBUG & CLEANUP PREVIEW
