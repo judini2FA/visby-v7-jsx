@@ -1,52 +1,57 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
-import { verifyPersonaWebhook } from '@/lib/persona';
+import { verifyIdentityWebhook, fetchIdentityStatus } from '@/lib/stripe-identity';
 import { setKycStatus, type KycStatus } from '@/lib/kyc';
 
-// Map a Persona inquiry state (or event name) to our status. Approval requires an explicit approved/pass
-// signal — mere completion is held for review, never auto-approved here.
-function mapKyc(s: string): KycStatus | null {
-  s = (s || '').toLowerCase();
-  if (s.includes('approved') || s.includes('passed')) return 'approved';
-  if (s.includes('declined') || s.includes('failed') || s.includes('expired')) return 'declined';
-  if (s.includes('needs') || s.includes('review') || s.includes('pending')) return 'review';
-  if (s.includes('completed')) return 'review';
-  return null;
+// Canonical KYC result from Stripe Identity. Every webhook is signature-verified against the dedicated
+// Identity endpoint secret before it's trusted. Approval requires an explicit `verified` session that we
+// RE-FETCH from Stripe (never trust the body alone); anything else is held or declined — fail-closed.
+function mapEvent(type: string): KycStatus | null {
+  if (type === 'identity.verification_session.verified') return 'approved';
+  if (type === 'identity.verification_session.requires_input') return 'review';
+  if (type === 'identity.verification_session.processing') return 'pending';
+  if (type === 'identity.verification_session.canceled') return 'declined';
+  return null; // an event we don't act on (created, redacted, …)
 }
 
-// Canonical KYC result. Persona signs every webhook; we verify against the raw body before trusting it.
 export async function POST(req: Request) {
   const raw = await req.text();
-  if (!verifyPersonaWebhook(raw, req.headers.get('persona-signature'))) {
-    return NextResponse.json({ error: 'bad signature' }, { status: 401 });
+  const parsed = verifyIdentityWebhook(raw, req.headers.get('stripe-signature'));
+  if (!parsed) return NextResponse.json({ error: 'bad signature' }, { status: 401 });
+
+  const { event } = parsed;
+  let mapped = mapEvent(event.type);
+  if (!mapped) return NextResponse.json({ ok: true });
+
+  const session = event.data.object as Stripe.Identity.VerificationSession;
+  const sessionId = session.id;
+  const wallet = (session.metadata?.wallet as string | undefined) ?? null;
+
+  // Belt-and-suspenders: before granting an approval, re-fetch the session from Stripe (source of truth)
+  // and require status === 'verified'. If it no longer reads verified, downgrade to review rather than
+  // approve — never approve on a stale/forged body.
+  if (mapped === 'approved') {
+    const live = await fetchIdentityStatus(sessionId);
+    if (live !== 'verified') mapped = 'review';
   }
-
-  let event: any;
-  try { event = JSON.parse(raw); } catch { return NextResponse.json({ error: 'bad json' }, { status: 400 }); }
-
-  const name: string = event?.data?.attributes?.name ?? '';
-  const inquiry = event?.data?.attributes?.payload?.data ?? {};
-  const inquiryId: string | undefined = inquiry?.id;
-  const inqStatus: string | undefined = inquiry?.attributes?.status;
-  const referenceId: string | undefined = inquiry?.attributes?.['reference-id'];
-
-  const mapped = mapKyc(inqStatus || name);
-  if (!mapped) return NextResponse.json({ ok: true }); // an event we don't act on
 
   const supabase = createServiceClient();
-  let wallet = referenceId ?? null;
-  if (inquiryId) {
-    const { data: row } = await supabase.from('kyc_verifications').select('wallet').eq('inquiry_id', inquiryId).maybeSingle();
-    if (row?.wallet) wallet = row.wallet;
-    const rowStatus = mapped === 'approved' ? 'approved' : mapped === 'declined' ? 'declined' : 'needs_review';
+  let resolvedWallet = wallet;
+
+  if (sessionId) {
+    const { data: row } = await supabase.from('kyc_verifications').select('wallet').eq('inquiry_id', sessionId).maybeSingle();
+    if (row?.wallet) resolvedWallet = row.wallet;
+    const rowStatus = mapped === 'approved' ? 'approved' : mapped === 'declined' ? 'declined' : mapped === 'pending' ? 'created' : 'needs_review';
     await supabase.from('kyc_verifications')
-      .update({ status: rowStatus, raw: event, updated_at: new Date().toISOString() })
-      .eq('inquiry_id', inquiryId);
+      .update({ status: rowStatus, raw: event as unknown as Record<string, unknown>, updated_at: new Date().toISOString() })
+      .eq('inquiry_id', sessionId);
   }
-  if (wallet) await setKycStatus(wallet, mapped);
+
+  if (resolvedWallet) await setKycStatus(resolvedWallet, mapped);
 
   return NextResponse.json({ ok: true });
 }
