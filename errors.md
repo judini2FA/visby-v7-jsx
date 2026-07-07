@@ -27,10 +27,10 @@
 - (none)
 
 ### S3 — polish / hardening
-- [ ] H1 — step-up action signing (`src/lib/step-up-shared.ts`): the action strings use a naive `:`-join with no escaping, so a field value containing `:` could collide (e.g. `payoutAction('a:b','c') === payoutAction('a','b:c')`) — in theory letting one signed step-up authorize a different action. **NOT exploitable today** (real fields are constrained: payout type ∈ bank/crypto, wallets are base58, tokens are short symbols) and step-up is dark. Hardening: length-delimit/encode the fields (or JSON) so no value can shift the delimiter. Surfaced by the Phase 11.1 unit tests.
+- (none)
 
 ---
 
 ## FIXED
 <!-- Claude moves entries here with: E<n> — <what it was> → FIX: <what changed> (commit) -->
-- (none yet)
+- **H1** — step-up action-string `:`-join collision (`src/lib/step-up-shared.ts`): a field containing `:` could shift the delimiter and let one signed step-up match a different action. → **FIXED 2026-07-07**: percent-encode each field (`encodeURIComponent`) so a `:` becomes `%3A` and can't move a field boundary. Zero behavior change for real inputs (base58/alnum/`-` are unencoded); unit test now asserts no-collision. Was non-exploitable; hardened while step-up is dark.

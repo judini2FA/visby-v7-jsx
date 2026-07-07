@@ -139,14 +139,16 @@ describe('step-up-shared — different logical actions never collide (realistic 
   });
 });
 
-describe('step-up-shared — KNOWN LIMITATION: the ":" join has no escaping', () => {
-  // Documents actual behavior rather than asserting a guarantee the implementation doesn't provide.
-  // If a field value itself contains ':', two logically-different calls can produce the SAME action
-  // string. This does not happen with real call-site inputs (see above), but the builders do not
-  // defend against it structurally.
-  it('payoutAction: a colon inside a field can shift the field boundary and collide with a different call', () => {
-    const a = payoutAction('a:b', 'c');
-    const b = payoutAction('a', 'b:c');
-    expect(a).toBe(b); // both produce 'payout_destination:a:b:c' — documents the gap, not a guarantee
+describe('step-up-shared — H1 fixed: fields are percent-encoded so ":" cannot shift the delimiter', () => {
+  // Each field is encodeURIComponent'd, so a ':' inside a value is escaped (%3A) and can never move a
+  // field boundary. Two logically-different calls therefore ALWAYS produce different action strings —
+  // the earlier collision (payoutAction('a:b','c') === payoutAction('a','b:c')) is structurally impossible.
+  it('payoutAction: a colon inside a field does NOT collide with a different call', () => {
+    const a = payoutAction('a:b', 'c'); // payout_destination:a%3Ab:c
+    const b = payoutAction('a', 'b:c'); // payout_destination:a:b%3Ac
+    expect(a).not.toBe(b);
+  });
+  it('encodes a ":" as %3A rather than leaving it raw', () => {
+    expect(payoutAction('bank', 'a:b')).toBe('payout_destination:bank:a%3Ab');
   });
 });
