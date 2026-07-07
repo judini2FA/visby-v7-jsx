@@ -10,6 +10,7 @@ import { t, S, price, card, surface, btn, badge, sectionLabel, avatar, T } from 
 import { useCurrency } from '@/lib/currency';
 import { StarRating, ReputationBadge, ReviewList } from '@/components/reviews';
 import { BlockButton } from '@/components/block-button';
+import { isCutout } from '@/components/listing-card';
 import { ReportButton } from '@/components/report-button';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { ListingCard } from '@/components/listing-card';
@@ -39,7 +40,7 @@ function SoldRow({ sale, index }: { sale: any; index: number }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: S[3], padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
         <div style={{ ...surface({ radius: 14 }), width: 48, height: 48, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {item.image_url
-            ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: isCutout(item.image_url) ? 'contain' : 'cover' }} />
             : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
           }
         </div>

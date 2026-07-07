@@ -29,12 +29,21 @@ export async function POST(req: NextRequest) {
   let contentType = file.type;
   let finalExt = ext;
 
-  // Cutout uploads (from PhotoCutoutPicker) are normalized through sharp to a clean, alpha-preserving
-  // PNG so transparency survives intact. Best-effort: any sharp failure keeps the original bytes.
+  // Cutout uploads are normalized through sharp to a clean, alpha-preserving PNG, then TRIMMED to the
+  // subject's bounding box: background removal leaves the subject floating inside the original frame's
+  // transparent margins, so untrimmed it renders tiny. Trimming the fully-transparent border makes the
+  // subject fill the product card at the same size as any other photo. Best-effort: any sharp failure
+  // keeps the original bytes (an all-transparent image would make trim throw — caught and skipped).
   if (formData.get('cutout') === '1') {
     try {
       const sharp = (await import('sharp')).default;
-      buffer = await sharp(buffer).png().toBuffer();
+      const base = sharp(buffer).png();
+      try {
+        // trim fully-transparent margins; threshold tolerates the soft anti-aliased subject edge
+        buffer = await base.clone().trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 10 }).toBuffer();
+      } catch {
+        buffer = await sharp(buffer).png().toBuffer(); // trim failed (e.g. blank) — keep normalized, untrimmed
+      }
       contentType = 'image/png';
       finalExt = 'png';
     } catch { /* keep the uploaded bytes as-is */ }

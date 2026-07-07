@@ -106,7 +106,6 @@ export function CutoutEditor({
       await loadOriginal();
       const { removeBackground } = await import('@imgly/background-removal');
       const blob = await removeBackground(file, {
-        model: 'isnet_fp16',
         output: { format: 'image/png' },
         progress: (_k, cur, total) => { if (total) setProgress(Math.round((cur / total) * 100)); },
       });
@@ -114,11 +113,13 @@ export function CutoutEditor({
       renderReview();
       setBusy(false);
       setPhase('review');
-    } catch {
-      // Auto failed — don't dead-end. Seed the manual editor from the original so a cutout is still reachable.
+    } catch (err) {
+      // Auto failed — don't dead-end. Seed the manual editor from the original so a cutout is still
+      // reachable, and surface the real reason (model download blocked, unsupported device, etc.).
       try { await loadOriginal(); work.current = new ImageData(new Uint8ClampedArray(origData.current!.data), dims.current.w, dims.current.h); } catch {}
+      const msg = err instanceof Error ? err.message : String(err);
       setBusy(false);
-      setNote('Auto cutout could not run on this photo. Remove the background by hand, or retry with AI.');
+      setNote(`Auto cutout couldn't run (${msg || 'unknown error'}). Remove the background by hand below.`);
       setPhase('review');
       renderReview();
     }
@@ -126,24 +127,6 @@ export function CutoutEditor({
 
   useEffect(() => { void runAuto(); /* run once for this file */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function retryWithAI() {
-    setBusy(true); setNote('');
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const token = getAccessToken ? await getAccessToken() : null;
-      const res = await fetch('/api/remove-bg', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
-      if (!res.ok) { setNote('AI cutout is unavailable right now — try manual mode.'); return; }
-      await applyCutAlpha(await res.blob());
-      renderReview();
-      setNote('');
-    } catch {
-      setNote('AI cutout is unavailable right now — try manual mode.');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function exportAndDone(isCut: boolean) {
     const wk = work.current;
@@ -187,10 +170,7 @@ export function CutoutEditor({
             <span style={{ ...t('body'), color: 'var(--text-strong)', textAlign: 'center' }}>Looks good?</span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
               <button onClick={() => exportAndDone(true)} disabled={busy} style={{ ...btn('primary') }}>Yes, use this</button>
-              <div style={{ display: 'flex', gap: S[2] }}>
-                <button onClick={() => { setPhase('manual'); }} disabled={busy} style={{ ...btn('secondary'), flex: 1 }}>Edit by hand</button>
-                <button onClick={retryWithAI} disabled={busy} style={{ ...btn('secondary'), flex: 1 }}>Retry with AI</button>
-              </div>
+              <button onClick={() => { setPhase('manual'); }} disabled={busy} style={{ ...btn('secondary') }}>Touch up by hand</button>
               <button onClick={useOriginal} style={{ ...btn('text'), fontSize: 13 }}>Use the original photo instead</button>
             </div>
           </>

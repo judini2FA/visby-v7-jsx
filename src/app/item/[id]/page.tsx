@@ -251,7 +251,7 @@ export default function ItemPage() {
         <div style={{ background: 'var(--surface-bg)', width: '100%', height: 360, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
           {item.image_url ? (
             <img src={item.image_url} alt={item.name} style={isCutout(item.image_url)
-              ? { width: '100%', height: '100%', objectFit: 'contain', padding: 28 }
+              ? { width: '100%', height: '100%', objectFit: 'contain', padding: 12 }
               : { width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>{item.category}</div>
