@@ -248,7 +248,7 @@ export default function ItemPage() {
 
       {/* Hero image — full width up to page container */}
       <div className="visby-inner" style={{ paddingTop: S[4], paddingBottom: 0 }}>
-        <div style={{ background: 'var(--surface-bg)', width: '100%', height: 360, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+        <div style={{ background: isCutout(item.image_url) ? 'transparent' : 'var(--surface-bg)', width: '100%', height: 360, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
           {item.image_url ? (
             <img src={item.image_url} alt={item.name} style={isCutout(item.image_url)
               ? { width: '100%', height: '100%', objectFit: 'contain', padding: 12 }

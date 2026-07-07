@@ -29,7 +29,7 @@ export function ListingCard({ item }: { item: ListingItem }) {
       style={{ display: 'block', position: 'relative', alignSelf: 'start', textDecoration: 'none' }}>
 
       {/* Image — cutouts (.png, pre-trimmed) fill the frame uncropped (contain); photos fill (cover). */}
-      <div style={{ position: 'relative', aspectRatio: '1 / 1', background: 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', aspectRatio: '1 / 1', background: isCutout(item.image_url) ? 'transparent' : 'var(--surface-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
         {item.image_url
           ? <img src={item.image_url} alt={item.name} style={isCutout(item.image_url)
               ? { width: '100%', height: '100%', objectFit: 'contain' }

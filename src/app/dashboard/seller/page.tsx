@@ -193,7 +193,7 @@ function MintForm({ wallet }: { wallet: string }) {
             const url = img.useCut && img.cutUrl ? img.cutUrl : img.originalUrl;
             return (
             <div key={img.id} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-              <img src={url} alt="" title="Tap to remove background" onClick={() => setEditId(img.id)} style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 'var(--r-sm)', border: i === 0 ? `2px solid var(--text-muted)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined, cursor: 'pointer' }} />
+              <img src={url} alt="" title="Tap to remove background" onClick={() => setEditId(img.id)} style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 'var(--r-sm)', border: i === 0 ? `2px solid var(--text-muted)` : '2px solid transparent', cursor: 'pointer' }} />
               {i === 0 && <span style={{ ...badge('onImage'), position: 'absolute', bottom: S[1], left: S[1] }}>COVER</span>}
               {img.busy && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--img-scrim)', borderRadius: 'var(--r-sm)' }}>

@@ -217,7 +217,7 @@ export default function MintPage() {
               const url = img.useCut && img.cutUrl ? img.cutUrl : img.originalUrl;
               return (
               <div key={img.id} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                <img src={url} alt="" title="Tap to remove background" onClick={() => setEditId(img.id)} style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 12, border: i === 0 ? `2px solid var(--glass-border)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined, cursor: 'pointer' }} />
+                <img src={url} alt="" title="Tap to remove background" onClick={() => setEditId(img.id)} style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 12, border: i === 0 ? `2px solid var(--glass-border)` : '2px solid transparent', cursor: 'pointer' }} />
                 {i === 0 && <div style={{ ...t('micro'), position: 'absolute', bottom: S[1], left: S[1], background: 'var(--glass-bg-strong)', borderRadius: 4, color: 'var(--text)', padding: '1px 5px' }}>Cover</div>}
                 {img.busy && (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--img-scrim)', borderRadius: 12 }}>
