@@ -116,21 +116,24 @@
 - [x] 9.3 PWA verified installable (manifest, SW, icons; Lighthouse audit = Judah tooling verify)
 - **Gate:** app runs on a real phone; extension loads from a packed build; PWA installs.
 
-## Phase 10 — DESIGN DEBUG & CLEANUP PREVIEW
-- [ ] 10.1 Page-by-page sweep of every route against design.md (tokens only, type scale, S-grid, glass-nesting law, gradient budget, one focal point)
-- [ ] 10.2 Light + dark parity audit
-- [ ] 10.3 WCAG contrast measurements on worst-case translucent surfaces; reduced-motion/transparency honored
-- [ ] 10.4 Kill visual drift: hardcoded colors, off-scale font sizes, emoji regressions, inconsistent radii
-- [ ] 10.5 Before/after preview screenshots per page delivered to Judah; fix everything he flags
-- **Gate:** Judah signs off on the screenshot review; zero design-rule violations remain.
+## Phase 10 — DESIGN DEBUG & CLEANUP  ✅ CLOSED (folded into Phase 12 per Judah 2026-07-07)
+> The design audit RAN (15-route fan-out vs design.md → 119 findings in `PHASE10_DESIGN_AUDIT.md`); the safe
+> high-severity fixes were shipped + deployed. Judah is folding the remaining medium/low design fixes into
+> his Phase 12 testing pass — he flags what he sees while testing, Claude fixes. Closed as a standalone phase.
+- [x] 10.1 Page-by-page sweep vs design.md — audit delivered (`PHASE10_DESIGN_AUDIT.md`, 119 findings)
+- [x] 10.2 Light + dark parity — covered by the audit
+- [x] 10.3 WCAG contrast — covered by the audit
+- [x] 10.4 Kill visual drift — safe high-severity fixed; medium/low → Phase 12
+- [x] 10.5 Fixes handled via Phase 12 as Judah flags them during testing
+- **Gate:** ✅ audit delivered + safe fixes shipped; remaining polish tracked as Phase 12 items.
 
 ## Phase 11 — TEST EVERYTHING + mainnet launch
 - [x] 11.1 Unit tests via vitest (96 green; harness `vitest.config.ts`, `npm run test`): fee math (9%/floor/price-cap), order state-machine transitions, password + reset-token crypto, step-up action-signing. Surfaced hardening H1 (step-up `:`-join collision — non-exploitable → errors.md). NOTE: serial-registry verdicts (`checkSerial`) are DB-backed → covered under 11.2 integration, not unit.
-- [ ] 11.2 Integration: Privy↔Supabase, mint↔Arweave↔Helius read-back, Stripe/Moov/EasyPost/Civic webhooks, SDK settle
+- [~] 11.2 Integration — offline part DONE 2026-07-07 (vitest): webhook signature verification for EVERY verifier (Moov HMAC-512, Persona HMAC-256 w/ rotation, Stripe Identity, Stripe payments, shipping HMAC/shared-secret, review-token, outbound merchant HMAC) — each asserts accept-valid / reject-tampered / reject-missing / fail-closed-when-unconfigured (55 tests) + SDK settle/backoff decision helpers. `src/lib/webhook-verification.test.ts` + `sdk-webhook.test.ts`. REMAINING (needs a live env → 11.7 staging): Privy↔Supabase + mint↔Arweave↔Helius read-back.
 - [ ] 11.3 E2E (Playwright): signup→wallet→mint+serial→list→buy (card & crypto)→ship→deliver→review→payout; SDK merchant journey; dispute/refund journey
-- [ ] 11.4 Unhappy paths: RPC failure mid-action, double-submit, wrong wallet, insufficient funds, concurrent actions, canceled signing
-- [ ] 11.5 Load: drop-spike on mint + checkout; Helius/Vercel/Supabase limits; cache hot reads
-- [ ] 11.6 Security: threat-model review, dependency audit, external pentest prep, bug-bounty scoping
+- [~] 11.4 Unhappy paths — pure-logic part DONE 2026-07-07 (vitest, 71 tests): adversarial money math (zero/negative/NaN/±Inf/$1B prices, floor↔cap crossovers, shipping≥price never negative-net), payable-tokens gating, shipping estimate/rate clamps, currency fallbacks, admin fail-closed-with-no-bootstrap, review-token fail-closed-when-unconfigured. Files: payable-tokens/shipping-estimate/shipping/currency/admin/review-token.test.ts + fees.test.ts extension. Surfaced a note (non-issue): platformFeeCents on a NEGATIVE price returns the negative (never a positive fee; net floored at 0) → callers validate price>0 upstream. REMAINING (needs integration env → 11.7): RPC-failure-mid-action, concurrent, canceled-signing.
+- [~] 11.5 Load — script DELIVERED 2026-07-07: `scripts/load-test.mjs` (plain Node, no deps; --url/--concurrency/--duration/--path; reports req/s, error rate, p50/p95/p99; safe LOW defaults + a "never run against production" guard). RUNNING it against a staging target is an 11.7 step.
+- [x] 11.6 Security — DONE 2026-07-07: `docs/threat-model.md` — dependency audit (`npm audit` summarized: prod vs dev/transitive, actionable vs noise), a real threat model (money paths incl. OFAC fail-closed + ACH multi-day settle + crypto payouts, non-custodial posture, auth/ban/step-up trust boundaries, webhook fail-closed, known residual risks from errors.md), and external-pentest + bug-bounty scoping (in/out-of-scope, highest-risk surfaces). The external pentest itself is a pre-launch vendor engagement.
 - [ ] 11.7 Staging (devnet + test keys) full regression
 - [ ] 11.8 Mainnet closed beta: allowlisted, tiny real value, non-custodial verified with real money
 - [ ] 11.9 Devnet→mainnet cutover: fund monitored mint wallet, pre-fund Arweave, live keys, explorer links
