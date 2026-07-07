@@ -119,7 +119,7 @@ export function CutoutEditor({
         // mangled default entirely. Host is already in the CSP connect-src allowlist; keep the literal
         // version in sync with package.json (^1.7.0 → 1.7.0). isnet_fp16 = smaller/faster than full isnet.
         publicPath: 'https://staticimgly.com/@imgly/background-removal-data/1.7.0/dist/',
-        model: 'isnet_fp16',
+        model: 'isnet_quint8', // 42MB vs 84MB (fp16) / 168MB (isnet) — quantized, ample for product cutouts
         output: { format: 'image/png' },
         progress: (_k, cur, total) => { if (total) setProgress(Math.round((cur / total) * 100)); },
       });

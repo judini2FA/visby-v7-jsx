@@ -39,6 +39,16 @@ const nextConfig = {
                   type: 'javascript/auto',
                   resolve: { fullySpecified: false },
           });
+          // onnxruntime-web (via @imgly cutout) does `new URL(x, import.meta.url)` at module scope to
+          // locate its wasm/worker. Webpack rewrites that to its RelativeURL runtime helper, which calls
+          // url.replace() — and here the arg arrives non-string, throwing "url.replace is not a function"
+          // and killing background removal. Disable webpack's new URL() asset parsing FOR ORT ONLY so the
+          // call runs natively (import.meta.url is a real string at runtime). Scoped to onnxruntime-web to
+          // avoid touching Next's own asset handling.
+          config.module.rules.push({
+                  test: /onnxruntime-web[\\/].*\.m?js$/,
+                  parser: { url: false },
+          });
           // The cutout runs only in the browser. Keep onnxruntime-web out of the server bundle so
           // SSR/route compilation never parses its WebGPU/WASM backend.
           if (isServer) {
