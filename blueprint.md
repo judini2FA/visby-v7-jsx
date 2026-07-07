@@ -138,6 +138,76 @@
 - [ ] 11.11 Launch-day smoke on mainnet: mint→serial→list→buy→confirm with a tiny real tx
 - **Gate:** zero open S0/S1 bugs, one full lifecycle completed by a real buyer with real money, mainnet live.
 
+## Phase 12 — Test error log (Judah's running bug list)
+> Judah's live list of every error/bug found while testing. Each is a checkable item — check it off ONLY
+> when it's FIXED and RE-VERIFIED (note the fix in memory.md). Detailed entries + repro steps live in
+> `errors.md` (kept out of this lean file); this phase is the index + gate. Log format:
+> `- [ ] E<n> — <route/screen>: <what happens / expected vs actual> · sev S0(crash/money) / S1(blocker) / S2(broken) / S3(polish)`.
+- [ ] (no errors logged yet — Judah adds them to `errors.md`; Claude triages, fixes, and checks them off here)
+- **Gate:** every logged error is fixed + re-tested + checked off; ZERO open S0/S1 (crash / blocker / money) errors.
+
+## Phase 13 — Final live-startup runbook (the go-live gate)
+> The LAST phase. Every item flips the platform from test/devnet to real/live, or verifies launch-readiness.
+> Do NOT advertise or submit to the app stores until this whole phase clears, ending with the final walkthrough (13.7).
+
+### 13.1 Flip test → live keys / accounts
+- [ ] Stripe: live secret + publishable keys; live webhook endpoints (payments + Identity) + their signing secrets
+- [ ] Moov: live keys + funded platform account, capabilities + `visby.me` domain allowlist, `MOOV_WEBHOOK_SECRET`
+- [ ] AtoShip: `ak_live_` key + funded shipping wallet (real labels)
+- [ ] Privy: production app; Solana embedded wallets enabled
+- [ ] Resend: production sending verified + company email aliases (needs DNS)
+- [ ] Rotate every secret that ever touched a session/log (Resend key done — audit CRON_SECRET + the rest)
+
+### 13.2 Mainnet cutover (Solana)
+- [ ] Fund + secure the mainnet mint-authority wallet (KMS custody — the parked item)
+- [ ] Pre-fund Arweave for metadata; point mint/verify at mainnet via live Helius RPC
+- [ ] Treasury SOL + USDC float funded for payouts; devnet→mainnet config flipped everywhere
+- [ ] `scripts/verify-payable-tokens.mjs` re-run green on mainnet
+
+### 13.3 Flip the dark flags (each only after its own live test)
+- [ ] `NEXT_PUBLIC_STEP_UP_ENFORCED`, `NEXT_PUBLIC_ACH_ENABLED`, `NEXT_PUBLIC_MOOV_ENABLED`
+- [ ] `STRIPE_TAX_ENABLED` (after nexus registration) + 1099-K filing (Connect dashboard)
+- [ ] `NEXT_PUBLIC_KYC_REQUIRED` (if enforcing at launch), `NEXT_PUBLIC_MULTICRYPTO_ENABLED`
+- [ ] `OFAC_SCREENING_ENABLED` — already on ✓
+
+### 13.4 Compliance + legal final
+- [ ] Counsel's FINAL Terms / Privacy / Acceptable-Use / Seller-Agreement uploaded (replace the DRAFT placeholders)
+- [ ] KYC/AML program + non-custodial posture signed off by counsel; sanctions screening confirmed live
+- [ ] Data-export + account-deletion confirmed working on prod
+
+### 13.5 Monitoring + safety net
+- [ ] Sentry / alert webhook live + confirmed receiving; every cron's failure alert verified
+- [ ] Reconciliation crons (fees, settlements, merchant payouts, OFAC refresh) confirmed running on mainnet
+- [ ] Backups + a written incident/rollback runbook
+
+### 13.6 App store + PWA submission prep
+- [ ] Capacitor iOS + Android builds signed; push certs (APNs/FCM); store listings, screenshots, privacy labels
+- [ ] Extension store listing (icons, description, honesty popups)
+- [ ] PWA installable + Lighthouse ≥ 90
+
+### 13.7 FINAL WALKTHROUGH — one full pass before advertising + app-store submission (the last gate)
+> A single comprehensive, checkable walk through EVERY critical journey on LIVE/mainnet with real (tiny) value.
+> Nothing goes to advertising or the app stores until every box below is green.
+- [ ] Sign up (fresh email) → Solana wallet auto-provisions → set password + 2FA → sign out + back in
+- [ ] First-run onboarding + "what's a Tally" read clean (zero jargon)
+- [ ] Browse home + search + filters + category chips; empty states show a helpful next action
+- [ ] Mint an item + serial + Tally; provenance + brand badge show; QR resolves to the item
+- [ ] List it — the 9% fee + your-net shown BEFORE listing
+- [ ] Buy — CARD (real tiny charge) → order → Tally transfers to buyer → payout releases (OFAC-screened)
+- [ ] Buy — CRYPTO (SOL) and a USDC-payout seller
+- [ ] Buy — ACH bank debit → funds clear (days) → nothing minted until cleared → then fulfilled
+- [ ] Ship a real label → tracking → delivery webhook auto-fires review email + payout
+- [ ] KYC gate (if enforced): unverified can't sell, verified can
+- [ ] OFAC: a test sanctioned wallet is HELD (admin queue), a normal wallet pays out clean
+- [ ] Dispute / return → evidence upload → admin resolve → refund reflects on the order + provenance
+- [ ] Data export downloads; account deletion anonymizes + locks out (retained records explained)
+- [ ] SDK / merchant: a partner checkout → mint → merchant payout + webhook delivered
+- [ ] Legal pages load counsel's final docs; Help + contact-support works
+- [ ] iOS app + Android app + PWA install: the full buy/sell journey works on-device (push arrives)
+- [ ] Share / OG images render; all 5 bottom-nav tabs + hamburger menu work
+- [ ] Monitoring caught every seeded test error; ZERO open S0/S1
+- **Gate:** every box green on LIVE/mainnet with real value → **CLEARED TO ADVERTISE + SUBMIT TO APP STORES.**
+
 ---
 
 ## PARKED — do NOT build now
