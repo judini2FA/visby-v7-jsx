@@ -15,6 +15,7 @@ import { feeBreakdown } from '@/lib/fees';
 import { localShipEstimate } from '@/lib/shipping-estimate';
 import KycVerify from '@/components/kyc-verify';
 import { EmptyState } from '@/components/empty-state';
+import { CutoutEditor } from '@/components/cutout-editor';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -57,27 +58,28 @@ function MintForm({ wallet }: { wallet: string }) {
   const [status, setStatus]       = useState<MintStatus>('idle');
   const [result, setResult]       = useState<{ txHash: string; mintAddress: string; serial: string; itemId: string } | null>(null);
   const [error, setError]         = useState('');
+  const [editId, setEditId]       = useState<string | null>(null); // image whose cutout editor is open
 
   function pickImages(files: FileList | null) {
     if (!files) return;
     const adds = Array.from(files).slice(0, 4 - images.length).map(f => ({
-      id: crypto.randomUUID(), original: f, originalUrl: URL.createObjectURL(f), useCut: false, busy: true,
+      id: crypto.randomUUID(), original: f, originalUrl: URL.createObjectURL(f), useCut: false, busy: false,
     }));
     setImages(prev => [...prev, ...adds].slice(0, 4));
-    adds.forEach(a => runCutout(a.original, a.id));
+    // Open the cutout flow (auto → "looks good?" → manual) for the first freshly-added photo.
+    if (adds[0]) setEditId(adds[0].id);
   }
 
-  // In-browser background removal on add; defaults to the cutout, user can toggle back to the original.
-  async function runCutout(file: File, id: string) {
-    try {
-      const { removeBackground } = await import('@imgly/background-removal');
-      const blob = await removeBackground(file, { output: { format: 'image/png' } });
-      const cf = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
-      const url = URL.createObjectURL(blob);
-      setImages(prev => prev.map(im => im.id === id ? { ...im, cutFile: cf, cutUrl: url, useCut: true, busy: false } : im));
-    } catch {
-      setImages(prev => prev.map(im => im.id === id ? { ...im, busy: false } : im));
-    }
+  // Result of the cutout editor: adopt the returned file as this image's cutout (or clear it).
+  function applyCutout(id: string, file: File, isCut: boolean) {
+    setImages(prev => prev.map(im => {
+      if (im.id !== id) return im;
+      if (im.cutUrl) URL.revokeObjectURL(im.cutUrl);
+      return isCut
+        ? { ...im, cutFile: file, cutUrl: URL.createObjectURL(file), useCut: true, busy: false }
+        : { ...im, cutFile: undefined, cutUrl: undefined, useCut: false, busy: false };
+    }));
+    setEditId(null);
   }
 
   async function uploadImage(file: File, cutout: boolean): Promise<string | null> {
@@ -191,7 +193,7 @@ function MintForm({ wallet }: { wallet: string }) {
             const url = img.useCut && img.cutUrl ? img.cutUrl : img.originalUrl;
             return (
             <div key={img.id} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-              <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 'var(--r-sm)', border: i === 0 ? `2px solid var(--text-muted)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined }} />
+              <img src={url} alt="" title="Tap to remove background" onClick={() => setEditId(img.id)} style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 'var(--r-sm)', border: i === 0 ? `2px solid var(--text-muted)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined, cursor: 'pointer' }} />
               {i === 0 && <span style={{ ...badge('onImage'), position: 'absolute', bottom: S[1], left: S[1] }}>COVER</span>}
               {img.busy && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--img-scrim)', borderRadius: 'var(--r-sm)' }}>
@@ -297,6 +299,19 @@ function MintForm({ wallet }: { wallet: string }) {
           {status === 'uploading' ? 'Uploading photo…' : 'Minting…'}</>
         ) : `Mint Item${listNow && price ? ` · $${price} USDC` : ''}`}
       </button>
+
+      {editId && (() => {
+        const target = images.find(m => m.id === editId);
+        if (!target) return null;
+        return (
+          <CutoutEditor
+            file={target.original}
+            getAccessToken={getAccessToken}
+            onDone={(f, isCut) => applyCutout(editId, f, isCut)}
+            onCancel={() => setEditId(null)}
+          />
+        );
+      })()}
     </form>
   );
 }

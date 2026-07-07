@@ -9,6 +9,7 @@ import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, card, surface, btn, sectionLabel, input, T } from '@/lib/ui';
 import { explorerTx } from '@/lib/explorer';
 import { feeBreakdown } from '@/lib/fees';
+import { CutoutEditor } from '@/components/cutout-editor';
 
 const C = {
   green: 'var(--ok)', red: 'var(--danger)',
@@ -49,7 +50,7 @@ export default function MintPage() {
   const [status, setStatus]         = useState<'idle' | 'uploading' | 'minting' | 'done' | 'error'>('idle');
   const [result, setResult]         = useState<{ txHash: string; mintAddress: string; itemId: string } | null>(null);
   const [error, setError]           = useState('');
-
+  const [editId, setEditId]         = useState<string | null>(null);
 
   function pickImages(files: FileList | null) {
     if (!files) return;
@@ -58,24 +59,21 @@ export default function MintPage() {
       original: file,
       originalUrl: URL.createObjectURL(file),
       useCut: false,
-      busy: true,
+      busy: false,
     }));
     setImages(prev => [...prev, ...adds].slice(0, 4));
-    adds.forEach(a => runCutout(a.original, a.id));
+    if (adds[0]) setEditId(adds[0].id); // open auto → "looks good?" → manual for the first added photo
   }
 
-  // In-browser background removal on add. Defaults to the cutout once ready; the user can toggle back to
-  // the original per photo. @imgly is dynamically imported so its WASM only loads when a photo is picked.
-  async function runCutout(file: File, id: string) {
-    try {
-      const { removeBackground } = await import('@imgly/background-removal');
-      const blob = await removeBackground(file, { output: { format: 'image/png' } });
-      const cf = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
-      const url = URL.createObjectURL(blob);
-      setImages(prev => prev.map(im => im.id === id ? { ...im, cutFile: cf, cutUrl: url, useCut: true, busy: false } : im));
-    } catch {
-      setImages(prev => prev.map(im => im.id === id ? { ...im, busy: false } : im));
-    }
+  function applyCutout(id: string, file: File, isCut: boolean) {
+    setImages(prev => prev.map(im => {
+      if (im.id !== id) return im;
+      if (im.cutUrl) URL.revokeObjectURL(im.cutUrl);
+      return isCut
+        ? { ...im, cutFile: file, cutUrl: URL.createObjectURL(file), useCut: true, busy: false }
+        : { ...im, cutFile: undefined, cutUrl: undefined, useCut: false, busy: false };
+    }));
+    setEditId(null);
   }
 
   async function uploadImage(file: File, cutout: boolean): Promise<string> {
@@ -219,7 +217,7 @@ export default function MintPage() {
               const url = img.useCut && img.cutUrl ? img.cutUrl : img.originalUrl;
               return (
               <div key={img.id} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 12, border: i === 0 ? `2px solid var(--glass-border)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined }} />
+                <img src={url} alt="" title="Tap to remove background" onClick={() => setEditId(img.id)} style={{ width: '100%', height: '100%', objectFit: img.useCut ? 'contain' : 'cover', borderRadius: 12, border: i === 0 ? `2px solid var(--glass-border)` : '2px solid transparent', background: img.useCut ? 'var(--surface-bg)' : undefined, cursor: 'pointer' }} />
                 {i === 0 && <div style={{ ...t('micro'), position: 'absolute', bottom: S[1], left: S[1], background: 'var(--glass-bg-strong)', borderRadius: 4, color: 'var(--text)', padding: '1px 5px' }}>Cover</div>}
                 {img.busy && (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--img-scrim)', borderRadius: 12 }}>
@@ -357,6 +355,19 @@ export default function MintPage() {
           )}
         </button>
       </form>
+
+      {editId && (() => {
+        const target = images.find(m => m.id === editId);
+        if (!target) return null;
+        return (
+          <CutoutEditor
+            file={target.original}
+            getAccessToken={getAccessToken}
+            onDone={(f, isCut) => applyCutout(editId, f, isCut)}
+            onCancel={() => setEditId(null)}
+          />
+        );
+      })()}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
