@@ -125,7 +125,7 @@
 - **Gate:** Judah signs off on the screenshot review; zero design-rule violations remain.
 
 ## Phase 11 — TEST EVERYTHING + mainnet launch
-- [ ] 11.1 Unit: fee math (9%/3.5%/floor), state-machine transitions, step-up crypto, serial-registry verdicts
+- [~] 11.1 Unit: fee math (9%/3.5%/floor) ✓, state-machine transitions ✓, step-up action-signing ✓ — DONE via vitest (96 tests green; harness in vitest.config.ts, `npm run test`). Surfaced hardening item H1 (step-up `:`-join collision, non-exploitable, in errors.md). REMAINING: serial-registry verdicts.
 - [ ] 11.2 Integration: Privy↔Supabase, mint↔Arweave↔Helius read-back, Stripe/Moov/EasyPost/Civic webhooks, SDK settle
 - [ ] 11.3 E2E (Playwright): signup→wallet→mint+serial→list→buy (card & crypto)→ship→deliver→review→payout; SDK merchant journey; dispute/refund journey
 - [ ] 11.4 Unhappy paths: RPC failure mid-action, double-submit, wrong wallet, insufficient funds, concurrent actions, canceled signing
