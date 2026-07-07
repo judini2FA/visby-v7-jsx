@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/refresh-ofac",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/sdk/redeliver-webhooks",
       "schedule": "0 6 * * *"
     },

@@ -4,6 +4,7 @@ import { captureError } from '@/lib/monitoring';
 import { solUsd } from '@/lib/price-oracle';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getConnectStatus, payoutToConnect } from '@/lib/stripe-connect';
+import { ofacScreeningEnabled, screenPayoutWallet, recordPayoutHold } from '@/lib/ofac';
 
 // Escrow release. Buyer funds are held until delivery is confirmed; then the seller's net
 // (price − platform fee − shipping) is paid to their PRIMARY payout method.
@@ -115,6 +116,19 @@ export async function releasePayout(order: PayoutOrder): Promise<PayoutResult> {
   }
   if (net <= 0) return { ok: true, payout_tx: null }; // nothing owed (e.g. shipping ≥ net)
   if (!order.seller_wallet) return { ok: false, payout_tx: null, error: 'No seller wallet on file for payout.' };
+
+  // OFAC sanctions screen (6.4) — fail-CLOSED gate over EVERY payout rail. Dormant unless
+  // OFAC_SCREENING_ENABLED=1 (then it's byte-identical to before this block). A sanctioned hit, or an
+  // untrustworthy list (empty/stale/unreadable), HOLDS the payout (recorded for admin review) instead of
+  // releasing funds unscreened. A hold returns ok:false so the release stays unmade + retryable — no
+  // money moves, and a later retry re-screens once the hold clears / the list is healthy again.
+  if (ofacScreeningEnabled()) {
+    const screen = await screenPayoutWallet(order.seller_wallet);
+    if (screen.decision !== 'clear') {
+      await recordPayoutHold({ id: order.id, seller_wallet: order.seller_wallet }, screen);
+      return { ok: false, payout_tx: null, error: screen.decision === 'blocked' ? 'ofac_blocked' : 'screening_unavailable' };
+    }
+  }
 
   // Seller-opt-in fiat rail (4.3). Only a bank-preferring, fully-onboarded seller lands here; every
   // other case (incl. any DB error) returns null and falls through to the unchanged crypto path below.
