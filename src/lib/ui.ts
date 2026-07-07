@@ -92,7 +92,9 @@ export function readableGlass(o: GlassOpts = {}): CSSProperties {
    One type scale, one spacing grid, one of each component. See design.md.
    Pages consume these helpers instead of hand-rolling inline numbers. */
 
-const QUICKSAND = "'Quicksand', sans-serif";
+// Inter = corporate-minimalist display/title font. Quicksand is retired from the UI and now lives
+// ONLY on the "Visby" wordmark (hard-coded where the mark is drawn), never through the type scale.
+const INTER = "'Inter', sans-serif";
 const MANROPE = "'Manrope', sans-serif";
 
 // Spacing — strict 4/8 grid. Mirror of --s-* in tokens.css (identical numbers).
@@ -101,8 +103,8 @@ export const S = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32, 7: 48, 8: 64 } as con
 export type TypeRole = 'display' | 'title' | 'heading' | 'body' | 'meta' | 'micro';
 
 const TYPE: Record<TypeRole, CSSProperties> = {
-  display: { fontFamily: QUICKSAND, fontSize: 30, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.01em' },
-  title:   { fontFamily: QUICKSAND, fontSize: 22, fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.01em' },
+  display: { fontFamily: INTER, fontSize: 30, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.02em' },
+  title:   { fontFamily: INTER, fontSize: 22, fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.02em' },
   heading: { fontFamily: MANROPE,   fontSize: 16, fontWeight: 700, lineHeight: 1.3 },
   body:    { fontFamily: MANROPE,   fontSize: 14, fontWeight: 500, lineHeight: 1.5 },
   meta:    { fontFamily: MANROPE,   fontSize: 12, fontWeight: 500, lineHeight: 1.4 },
@@ -224,7 +226,7 @@ export function avatar(size: keyof typeof AVATAR_SIZE = 'md'): CSSProperties {
     justifyContent: 'center',
     flexShrink: 0,
     overflow: 'hidden',
-    fontFamily: QUICKSAND,
+    fontFamily: INTER,
     fontWeight: 700,
     fontSize: AVATAR_FS[size],
     color: '#fff',

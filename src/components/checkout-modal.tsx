@@ -92,11 +92,11 @@ function CardPayForm({ priceUsdc, payAmount, clientSecret, onSuccess, onError }:
   return (
     <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ background: 'var(--field-input-bg)', border: '1px solid var(--glass-border)', borderRadius: 16, padding: '15px 16px' }}>
-        <div style={{ fontSize: 10, color: C.muted, fontFamily: "'Quicksand',sans-serif", textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Card details</div>
+        <div style={{ fontSize: 10, color: C.muted, fontFamily: "'Inter',sans-serif", textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Card details</div>
         <CardElement options={{ style: cardStyle(mode === 'dark'), hidePostalCode: true }} />
       </div>
       <button type="submit" disabled={paying || !stripe}
-        style={{ width: '100%', background: paying ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: paying ? 'not-allowed' : 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+        style={{ width: '100%', background: paying ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: paying ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
         {paying ? <><Spinner /> Processing…</> : `Pay $${chargeUsd.toFixed(2)}`}
       </button>
     </form>
@@ -355,7 +355,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-strong)', fontFamily: "'Quicksand',sans-serif" }}>Checkout</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-strong)', fontFamily: "'Inter',sans-serif" }}>Checkout</div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 2, fontFamily: "'Manrope',sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>{itemName}</div>
           </div>
           {status !== 'done' && (
@@ -368,8 +368,8 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
         {/* Price summary */}
         <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>You pay</span>
-            <span style={{ fontSize: 22, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: "'Quicksand',sans-serif" }}>
+            <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>You pay</span>
+            <span style={{ fontSize: 22, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: "'Inter',sans-serif" }}>
               {currency === 'CARD' && taxCents > 0
                 ? `$${(priceUsdc + taxCents / 100).toFixed(2)}`
                 : currency === 'CARD' || currency === 'USDC' || currency === 'ACH'
@@ -380,27 +380,27 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             </span>
           </div>
           {currency === 'SOL' && quote && (
-            <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Quicksand',sans-serif" }}>
+            <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Inter',sans-serif" }}>
               ≈ ${priceUsdc.toFixed(2)} USD
             </div>
           )}
           {isSwapToken(currency) && swapQuote && (
-            <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Quicksand',sans-serif" }}>
+            <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Inter',sans-serif" }}>
               ≈ ${priceUsdc.toFixed(2)} USD
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
-            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Shipping</span>
-            <span style={{ fontSize: 12, color: C.green, fontWeight: 700, fontFamily: "'Quicksand',sans-serif" }}>Free</span>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Shipping</span>
+            <span style={{ fontSize: 12, color: C.green, fontWeight: 700, fontFamily: "'Inter',sans-serif" }}>Free</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Transfer fee</span>
-            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>{transferFeeNote}</span>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Transfer fee</span>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>{transferFeeNote}</span>
           </div>
           {currency === 'CARD' && taxCents > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-              <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Sales tax</span>
-              <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>${(taxCents / 100).toFixed(2)}</span>
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Sales tax</span>
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>${(taxCents / 100).toFixed(2)}</span>
             </div>
           )}
         </div>
@@ -408,7 +408,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
         {/* Shipping gate — use the saved address, or ask for one before paying */}
         {status !== 'done' && (
           <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', marginBottom: 20 }}>
-            <div style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif", marginBottom: 8 }}>Ship to</div>
+            <div style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif", marginBottom: 8 }}>Ship to</div>
             {shipLoading ? (
               <div style={{ fontSize: 13, color: C.muted }}>Loading…</div>
             ) : (hasShip && !editingAddr) ? (
@@ -425,7 +425,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 <AddressForm value={addrDraft} onChange={setAddrDraft} />
                 {addrErr && <div style={{ fontSize: 12, color: C.red }}>{addrErr}</div>}
                 <button onClick={saveAddr} disabled={addrSaving}
-                  style={{ background: GH, border: 'none', borderRadius: 14, padding: '12px', fontWeight: 700, fontSize: 14, color: '#fff', cursor: addrSaving ? 'default' : 'pointer', fontFamily: "'Quicksand',sans-serif", opacity: addrSaving ? 0.7 : 1 }}>
+                  style={{ background: GH, border: 'none', borderRadius: 14, padding: '12px', fontWeight: 700, fontSize: 14, color: '#fff', cursor: addrSaving ? 'default' : 'pointer', fontFamily: "'Inter',sans-serif", opacity: addrSaving ? 0.7 : 1 }}>
                   {addrSaving ? 'Saving…' : 'Save address'}
                 </button>
               </div>
@@ -443,9 +443,9 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'var(--glass-bg)', borderRadius: 16, padding: 4 }}>
               {tabs.map(t => (
                 <button key={t.id} onClick={() => { setCurrency(t.id); setErrMsg(''); setStatus('idle'); setSwapQuote(null); }}
-                  style={{ flex: 1, position: 'relative', background: currency === t.id ? 'var(--glass-bg-strong)' : 'none', border: `1px solid ${currency === t.id ? 'var(--glass-border)' : 'transparent'}`, borderRadius: 12, padding: '9px 4px', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif", transition: 'all .15s', opacity: t.soon ? 0.5 : 1 }}>
+                  style={{ flex: 1, position: 'relative', background: currency === t.id ? 'var(--glass-bg-strong)' : 'none', border: `1px solid ${currency === t.id ? 'var(--glass-border)' : 'transparent'}`, borderRadius: 12, padding: '9px 4px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", transition: 'all .15s', opacity: t.soon ? 0.5 : 1 }}>
                   <div style={{ fontSize: 12, fontWeight: currency === t.id ? 700 : 500, color: currency === t.id ? 'var(--text-strong)' : 'var(--text-muted)' }}>{t.label}</div>
-                  {t.soon && <div style={{ position: 'absolute', top: -5, right: -2, fontSize: 7, background: 'var(--glass-bg-strong)', color: C.muted, borderRadius: 4, padding: '1px 4px', fontFamily: "'Quicksand',sans-serif" }}>SOON</div>}
+                  {t.soon && <div style={{ position: 'absolute', top: -5, right: -2, fontSize: 7, background: 'var(--glass-bg-strong)', color: C.muted, borderRadius: 4, padding: '1px 4px', fontFamily: "'Inter',sans-serif" }}>SOON</div>}
                 </button>
               ))}
             </div>
@@ -458,7 +458,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             <div style={{ width: 52, height: 52, borderRadius: '50%', background: `${C.green}20`, border: `2px solid ${C.green}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: C.green, fontFamily: "'Quicksand',sans-serif" }}>Purchase complete!</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: C.green, fontFamily: "'Inter',sans-serif" }}>Purchase complete!</div>
             <div style={{ fontSize: 12, color: C.muted }}>NFT ownership transferred on Solana</div>
           </div>
         ) : status === 'ach_processing' ? (
@@ -466,11 +466,11 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--glass-bg-strong)', border: `2px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-strong)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
             </div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-strong)', fontFamily: "'Quicksand',sans-serif" }}>Bank payment started</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-strong)', fontFamily: "'Inter',sans-serif" }}>Bank payment started</div>
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
               We&apos;re collecting ${priceUsdc.toFixed(2)}{achBank?.last4 ? ` from your ${achBank.institution_name ?? 'bank'} ••${achBank.last4}` : ' from your bank'}. Bank transfers take about 1–3 business days to clear — your item transfers to you automatically once it does, and we&apos;ll email you.
             </div>
-            <button onClick={onClose} style={{ marginTop: 6, width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '13px 20px', fontWeight: 800, fontSize: 15, color: '#fff', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif" }}>
+            <button onClick={onClose} style={{ marginTop: 6, width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '13px 20px', fontWeight: 800, fontSize: 15, color: '#fff', cursor: 'pointer', fontFamily: "'Inter',sans-serif" }}>
               Done
             </button>
           </div>
@@ -510,18 +510,18 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 (solBalance != null && solBalance < quotes.SOL.amount + 0.002) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '16px' }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6, fontFamily: "'Quicksand',sans-serif" }}>Not enough SOL</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6, fontFamily: "'Inter',sans-serif" }}>Not enough SOL</div>
                       <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
                         This costs {quotes.SOL.display} (plus a small network fee), but your wallet holds {solBalance.toFixed(4)} SOL. Add funds to continue — or pay with Card.
                       </div>
                     </div>
-                    <a href="/buy-crypto" style={{ width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textDecoration: 'none' }}>
+                    <a href="/buy-crypto" style={{ width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textDecoration: 'none' }}>
                       Add funds
                     </a>
                   </div>
                 ) : (
                   <button onClick={payWithSol} disabled={status === 'paying'}
-                    style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                    style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                     {status === 'paying' ? <><Spinner />Processing…</> : `Pay ${quotes.SOL.display}`}
                   </button>
                 )
@@ -542,13 +542,13 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                       ['Network fee',    swapQuote.gas_usd > 0 ? `≈ $${swapQuote.gas_usd.toFixed(2)}` : '—'],
                     ].map(([k, v]) => (
                       <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>{k}</span>
+                        <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>{k}</span>
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Manrope',sans-serif" }}>{v}</span>
                       </div>
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
-                      <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Seller receives</span>
-                      <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Quicksand',sans-serif" }}>${priceUsdc.toFixed(2)} USD</span>
+                      <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Seller receives</span>
+                      <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${priceUsdc.toFixed(2)} USD</span>
                     </div>
                   </div>
 
@@ -559,7 +559,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                   </div>
 
                   <button onClick={() => settle(currency, swapQuote.from_amount_display)} disabled={status === 'paying'}
-                    style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                    style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                     {status === 'paying' ? <><Spinner />Confirming swap…</> : `Confirm swap · ${swapQuote.from_amount_display}`}
                   </button>
                 </div>
@@ -571,19 +571,19 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>You pay</span>
+                    <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>You pay</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Manrope',sans-serif" }}>{priceUsdc.toFixed(2)} USDC</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
-                    <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Seller receives</span>
-                    <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Quicksand',sans-serif" }}>${priceUsdc.toFixed(2)} USD</span>
+                    <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Seller receives</span>
+                    <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${priceUsdc.toFixed(2)} USD</span>
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, fontFamily: "'Manrope',sans-serif" }}>
                   USDC is pegged 1:1 — no conversion. Settles on confirm (devnet simulation — real SPL transfer on mainnet).
                 </div>
                 <button onClick={() => settle('USDC', `${priceUsdc.toFixed(2)} USDC`)} disabled={status === 'paying'}
-                  style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                  style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                   {status === 'paying' ? <><Spinner />Processing…</> : `Pay ${priceUsdc.toFixed(2)} USDC`}
                 </button>
               </div>
@@ -596,12 +596,12 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
               ) : achBanks.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '16px' }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6, fontFamily: "'Quicksand',sans-serif" }}>Link a bank to pay by transfer</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6, fontFamily: "'Inter',sans-serif" }}>Link a bank to pay by transfer</div>
                     <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
                       Connect your bank once in your wallet, then pay directly from it. Bank transfers clear in 1–3 business days — or pay instantly with Card.
                     </div>
                   </div>
-                  <a href="/profile" style={{ width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+                  <a href="/profile" style={{ width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
                     Link a bank account
                   </a>
                 </div>
@@ -609,21 +609,21 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Pay from</span>
+                      <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Pay from</span>
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Manrope',sans-serif" }}>
                         {(achBanks[0].institution_name ?? 'Bank')}{achBanks[0].last4 ? ` ••${achBanks[0].last4}` : ''}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
-                      <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Quicksand',sans-serif" }}>Amount</span>
-                      <span style={{ fontSize: 12, color: 'var(--text-strong)', fontWeight: 600, fontFamily: "'Quicksand',sans-serif" }}>${priceUsdc.toFixed(2)}</span>
+                      <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Amount</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-strong)', fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${priceUsdc.toFixed(2)}</span>
                     </div>
                   </div>
                   <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, fontFamily: "'Manrope',sans-serif" }}>
                     Bank transfers take about 1–3 business days to clear. Your item transfers to you automatically once it does — we&apos;ll email you.
                   </div>
                   <button onClick={payWithAch} disabled={status === 'paying'}
-                    style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Quicksand',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                    style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                     {status === 'paying' ? <><Spinner />Starting…</> : `Pay $${priceUsdc.toFixed(2)} from bank`}
                   </button>
                 </div>

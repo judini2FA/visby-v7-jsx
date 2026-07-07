@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&family=Quicksand:wght@400;500;600;700&display=swap');
 @import '../styles/tokens.css';
 
 @tailwind base;
@@ -10,7 +10,7 @@
 body {
   background-color: var(--bg-0);
   color: var(--text);
-  /* Manrope = body/UI; Quicksand reserved for brand + headings */
+  /* Manrope = body/UI; Inter = display/title headings; Quicksand ONLY on the Visby wordmark */
   font-family: 'Manrope', sans-serif;
   -webkit-font-smoothing: antialiased;
 }

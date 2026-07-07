@@ -18,7 +18,7 @@ Visby is a mobile-first Next.js marketplace for buying/selling physical luxury g
 - **Payments**: Stripe
 - **Styling**: React inline styles throughout (no Tailwind classes used in practice), driven by a **CSS-variable design-token system** (`src/styles/tokens.css`). `globals.css` imports tokens + fonts and holds base resets/keyframes.
 - **Theming**: Light + dark, flipped by a `[data-theme]` attribute on `<html>`. `src/lib/theme.tsx` = `ThemeProvider` / `useTheme()` / `<ThemeToggle/>` (default follows OS, override persisted to `localStorage`, no-flash init script). `src/components/background-field.tsx` renders the global background.
-- **Font**: **Quicksand** = brand/logo/wordmark + display headings (Google Fonts 400–800). **Manrope** = body / UI / labels / numbers. Headings stay light–medium weight so they never out-weigh the Visby logo.
+- **Font**: **Inter** = display/title headings (corporate-minimalist; Google Fonts 400–800, driven by `t('display')`/`t('title')`). **Manrope** = body / UI / labels / numbers. **Quicksand is retired from the UI — it appears ONLY on the "Visby" / "VisbyPay" wordmark** (homepage/login SVG text, SDK checkout header+footer, embedded `public/sdk/v1/button.js`). Never route Quicksand through the type scale or add it to any new UI. Headings stay light–medium weight so they never out-weigh the Visby logo.
 
 ## Design rules — "Ambient Glass Futurism" (enforce these always)
 

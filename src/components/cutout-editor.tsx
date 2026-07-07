@@ -11,6 +11,13 @@ import { btn, S, t, sheet } from '@/lib/ui';
 
 const MAX_DIM = 1400; // cap the working canvas so flood-fill + brush stay responsive on phones
 
+// The two secondary review actions: clean white cards with a drop shadow, sitting side by side. Blur is
+// dropped (the modal sheet is already glass — no glass-inside-glass) so they read as near-solid cards.
+const CARD_BTN: React.CSSProperties = {
+  ...btn('secondary'), flex: 1, backdropFilter: 'none', WebkitBackdropFilter: 'none',
+  boxShadow: '0 8px 20px rgba(15,15,30,.16), 0 2px 6px rgba(15,15,30,.10)',
+};
+
 type Phase = 'auto' | 'review' | 'manual';
 type Tool = 'magic' | 'erase' | 'restore';
 
@@ -106,6 +113,13 @@ export function CutoutEditor({
       await loadOriginal();
       const { removeBackground } = await import('@imgly/background-removal');
       const blob = await removeBackground(file, {
+        // @imgly 1.7.0 defaults publicPath to a "…/${PACKAGE_VERSION}/dist/" template and runs
+        // `.replace()` on it; under Next 14's bundler that default resolves to a non-string, so it
+        // throws "url.replace is not a function". Passing an explicit absolute string bypasses the
+        // mangled default entirely. Host is already in the CSP connect-src allowlist; keep the literal
+        // version in sync with package.json (^1.7.0 → 1.7.0). isnet_fp16 = smaller/faster than full isnet.
+        publicPath: 'https://staticimgly.com/@imgly/background-removal-data/1.7.0/dist/',
+        model: 'isnet_fp16',
         output: { format: 'image/png' },
         progress: (_k, cur, total) => { if (total) setProgress(Math.round((cur / total) * 100)); },
       });
@@ -167,11 +181,13 @@ export function CutoutEditor({
 
         {phase === 'review' && (
           <>
-            <span style={{ ...t('body'), color: 'var(--text-strong)', textAlign: 'center' }}>Looks good?</span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-              <button onClick={() => exportAndDone(true)} disabled={busy} style={{ ...btn('primary') }}>Yes, use this</button>
-              <button onClick={() => { setPhase('manual'); }} disabled={busy} style={{ ...btn('secondary') }}>Touch up by hand</button>
-              <button onClick={useOriginal} style={{ ...btn('text'), fontSize: 13 }}>Use the original photo instead</button>
+              <button onClick={() => exportAndDone(true)} disabled={busy} style={{ ...btn('primary'), width: '100%' }}>Looks good</button>
+              <div style={{ display: 'flex', gap: S[2] }}>
+                {/* near-solid white cards with a drop shadow (no nested glass blur inside the sheet) */}
+                <button onClick={() => { setPhase('manual'); }} disabled={busy} style={CARD_BTN}>Touch up by hand</button>
+                <button onClick={useOriginal} disabled={busy} style={CARD_BTN}>Use original</button>
+              </div>
             </div>
           </>
         )}

@@ -17,7 +17,7 @@ export function AvatarCircle({
       width: size, height: size, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: avatarUrl ? 'var(--surface-bg)' : grad(wallet),
-      color: '#fff', fontWeight: 700, fontSize: Math.round(size * 0.4), fontFamily: "'Quicksand',sans-serif",
+      color: '#fff', fontWeight: 700, fontSize: Math.round(size * 0.4), fontFamily: "'Inter',sans-serif",
       boxShadow: ring ? `0 0 0 2px ${ring}` : undefined,
     }}>
       {avatarUrl

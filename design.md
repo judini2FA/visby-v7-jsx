@@ -31,8 +31,8 @@ Six roles. Every text node uses one (or `price()` / `sectionLabel()`). Nothing e
 
 | role      | size | weight | font      | use |
 |-----------|------|--------|-----------|-----|
-| `display` | 30   | 800    | Quicksand | rare hero numbers/moments |
-| `title`   | 22   | 700    | Quicksand | page titles |
+| `display` | 30   | 800    | Inter     | rare hero numbers/moments |
+| `title`   | 22   | 700    | Inter     | page titles |
 | `heading` | 16   | 700    | Manrope   | card titles, section titles |
 | `body`    | 14   | 500    | Manrope   | default text |
 | `meta`    | 12   | 500    | Manrope   | secondary / metadata |
@@ -42,7 +42,7 @@ Six roles. Every text node uses one (or `price()` / `sectionLabel()`). Nothing e
 <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>Air Jordan 1</div>
 <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>2 owners</span>
 ```
-Quicksand is reserved for the wordmark, `title`, and `display`. Everything else is Manrope.
+**Inter** (corporate-minimalist) drives `title` and `display`; **Manrope** everything else. **Quicksand is retired from the UI — it appears ONLY on the "Visby" / "VisbyPay" wordmark**, hard-coded where the mark is drawn (homepage/login SVGs, the SDK checkout header + footer, the embedded `button.js`). Never route Quicksand through the type scale again.
 **Never** write a raw `fontSize`/`fontWeight` outside this scale — the one exception is price.
 
 ## 4. Spacing — `S` (4/8 grid)
