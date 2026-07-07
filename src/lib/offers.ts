@@ -165,6 +165,20 @@ export async function getAcceptedOfferPrice(
   }
 }
 
+// Convenience for the checkout rails: given the item row + the AUTHENTICATED buyer wallet, return the
+// effective checkout price (accepted-offer amount if one applies, else the list price) + the offer id.
+// Every rail resolves the price the same way through this, so the offer discount is applied identically
+// (and safely — see getAcceptedOfferPrice) everywhere. Falls back to the list price on any miss/error.
+export async function resolveCheckoutPrice(
+  item: { id: string; price_usdc: number | string | null },
+  buyerWallet: string,
+): Promise<{ priceUsd: number; offerId: string | null }> {
+  const list = Number(item?.price_usdc ?? 0);
+  if (!item?.id || !buyerWallet || !Number.isFinite(list) || list <= 0) return { priceUsd: list, offerId: null };
+  const offer = await getAcceptedOfferPrice(item.id, buyerWallet, list);
+  return offer ? { priceUsd: offer.amountUsd, offerId: offer.offerId } : { priceUsd: list, offerId: null };
+}
+
 // Mark the accepted offer consumed once the purchase completes. Best-effort: the item selling once
 // (is_listed→false + owner transfer) is the real single-use guard, so a missed consume never enables reuse.
 export async function consumeOffer(itemId: string, buyerWallet: string): Promise<void> {

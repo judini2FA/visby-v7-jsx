@@ -4,6 +4,7 @@ import { notify } from '@/lib/notifications';
 import { emailWallet } from '@/lib/email';
 import { orderSoldSeller, orderPlacedBuyer } from '@/lib/email-templates';
 import { captureError } from '@/lib/monitoring';
+import { consumeOffer } from '@/lib/offers';
 
 // Creates the physical-fulfillment order for a completed purchase. Additive and tolerant:
 // if the orders table doesn't exist yet (migration not run) this is a silent no-op, and it
@@ -123,6 +124,10 @@ export async function createOrder(o: {
         }
       }
     }
+
+    // Offers (7.3): mark this buyer's accepted offer on the item consumed now that the sale is recorded.
+    // Best-effort + no-op when there was no offer (the item selling once is the real single-use guard).
+    if (createdId) void consumeOffer(o.item_id, o.buyer_wallet);
 
     await notify({
       recipient_wallet: o.seller_wallet,
