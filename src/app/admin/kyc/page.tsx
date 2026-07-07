@@ -68,6 +68,22 @@ export default function AdminKycPage() {
     } finally { setBusy(null); }
   }
 
+  async function downloadAmlExport() {
+    if (!wallet || !token || busy) return;
+    setBusy('aml-export'); setErr('');
+    try {
+      const res = await fetch(`/api/admin/aml-export?wallet=${encodeURIComponent(wallet)}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setErr(j.error ?? 'Could not generate export'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'visby-aml-kyc-export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally { setBusy(null); }
+  }
+
   if (state === 'forbidden') {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: S[3], padding: S[5] }}>
@@ -89,6 +105,16 @@ export default function AdminKycPage() {
       </div>
 
       <div style={{ padding: `${S[4]}px ${S[4]}px`, display: 'flex', flexDirection: 'column', gap: S[4] }}>
+        {wallet && (
+          <button
+            onClick={downloadAmlExport}
+            disabled={!!busy}
+            style={{ ...btn('secondary', { pill: false }), alignSelf: 'flex-start', fontSize: 13, opacity: busy ? 0.6 : 1 }}
+          >
+            {busy === 'aml-export' ? 'Preparing…' : 'Download AML/KYC records'}
+          </button>
+        )}
+
         <span style={{ ...sectionLabel(), display: 'block' }}>Verifications ({rows.length})</span>
 
         {rows.length === 0 && state === 'ready' && (
