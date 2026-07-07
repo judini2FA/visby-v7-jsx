@@ -14,6 +14,7 @@ import { useCurrency } from '@/lib/currency';
 import { TallyCard } from '@/components/tally-card';
 import { ListingCard } from '@/components/listing-card';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { EmptyState } from '@/components/empty-state';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -113,14 +114,13 @@ function MyItemsTab({ wallet }: { wallet: string }) {
   );
 
   if (ownedItems.length === 0) return (
-    <div style={{ paddingTop: S[6], textAlign: 'center' }}>
-      <div style={{ ...surface({ pad: '40px 20px' }) }}>
-        <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>No items yet</div>
-        <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5] }}>Mint your first item to see it here</div>
-        <Link href="/dashboard/seller" style={btn('primary')}>
-          Mint First Item
-        </Link>
-      </div>
+    <div style={{ paddingTop: S[6] }}>
+      <EmptyState
+        icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>}
+        title="No items yet"
+        message="Mint your first item to see it here."
+        action={{ label: 'Sell an item', href: '/dashboard/seller' }}
+      />
     </div>
   );
 

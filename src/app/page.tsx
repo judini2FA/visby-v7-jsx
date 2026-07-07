@@ -13,6 +13,7 @@ import { PendingSerialCard } from '@/components/pending-serial-card';
 import { useCurrency } from '@/lib/currency';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { FirstRunOnboarding } from '@/components/first-run-onboarding';
+import { EmptyState } from '@/components/empty-state';
 
 const C = {
   navy: 'transparent',
@@ -397,13 +398,21 @@ export default function HomePage() {
 
           {/* Empty */}
           {!isLoading && items.length === 0 && (
-            <div style={{ textAlign: 'center', padding: `${S[7]}px ${S[5]}px` }}>
-              <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[2] }}>No listings yet</div>
-              <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5] }}>Be the first to mint an item on Visby</div>
-              <Link href="/mint" style={btn('primary')}>
-                Mint First Item
-              </Link>
-            </div>
+            (debouncedQ || hasFilters) ? (
+              <EmptyState
+                icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>}
+                title="No matches found"
+                message={debouncedQ ? `Nothing matches "${debouncedQ}". Try a different search or clear your filters.` : 'No items match these filters. Try widening your search.'}
+                action={{ label: 'Clear filters', onClick: () => { setQ(''); clearFilters(); } }}
+              />
+            ) : (
+              <EmptyState
+                icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>}
+                title="No listings yet"
+                message="Be the first to mint an item on Visby."
+                action={{ label: 'Mint First Item', href: '/mint' }}
+              />
+            )
           )}
 
           {/* Cards — minted listings render as ListingCard, pending business inventory as

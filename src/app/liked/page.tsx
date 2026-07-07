@@ -7,6 +7,7 @@ import { trpc } from '@/lib/trpc/client';
 import { t, S, price, card, btn, badge, avatar } from '@/lib/ui';
 import { useCurrency } from '@/lib/currency';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { EmptyState } from '@/components/empty-state';
 
 const AVATAR_GRADIENTS = [
   'linear-gradient(135deg,#25CDB8,#2A8AED)',
@@ -47,17 +48,20 @@ export default function LikedPage() {
           </div>
         )}
         {!isLoading && items.length === 0 && !wallet && (
-          <div style={{ textAlign: 'center', padding: `${S[8]}px ${S[5]}px` }}>
-            <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[4] }}>Sign in to see liked items</div>
-            <Link href="/login" style={{ ...btn('primary'), textDecoration: 'none' }}>Sign In</Link>
-          </div>
+          <EmptyState
+            icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>}
+            title="Sign in to see liked items"
+            message="Your saved items will show up here once you're signed in."
+            action={{ label: 'Sign In', href: '/login' }}
+          />
         )}
         {!isLoading && items.length === 0 && !!wallet && (
-          <div style={{ textAlign: 'center', padding: `${S[8]}px ${S[5]}px` }}>
-            <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[2] }}>No liked items yet</div>
-            <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[5] }}>Tap the heart on any listing to save it here</div>
-            <Link href="/marketplace" style={{ ...btn('primary'), textDecoration: 'none' }}>Browse listings</Link>
-          </div>
+          <EmptyState
+            icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>}
+            title="No liked items yet"
+            message="Tap the heart on any listing to save it here."
+            action={{ label: 'Explore the market', href: '/' }}
+          />
         )}
         {items.length > 0 && (
           <div className="visby-grid">

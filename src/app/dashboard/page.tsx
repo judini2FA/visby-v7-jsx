@@ -9,6 +9,7 @@ import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card, surface, sheet, btn, badge, avatar, sectionLabel, tabSlider, input, T } from '@/lib/ui';
 import { createPortal } from 'react-dom';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { EmptyState } from '@/components/empty-state';
 import PayRequest from '@/components/pay-request';
 import { PresetComposer, StructuredBubble, type MessagePreset } from '@/components/preset-composer';
 import { feeBreakdown } from '@/lib/fees';
@@ -314,10 +315,12 @@ function NotificationsTab({ wallet }: { wallet: string }) {
 
   if (isEmpty) return (
     <div style={{ paddingTop: S[4] }}>
-      <div style={{ textAlign: 'center', padding: `${S[7]}px 0` }}>
-        <div style={{ ...t('heading'), color: 'var(--text)', marginBottom: S[2] }}>No notifications yet</div>
-        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>When someone likes your item you&apos;ll see it here</div>
-      </div>
+      <EmptyState
+        icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>}
+        title="No notifications yet"
+        message="When someone likes, buys, or messages you about your items, you'll see it here."
+        action={{ label: 'Browse the market', href: '/' }}
+      />
     </div>
   );
 
@@ -742,10 +745,12 @@ function SalesTab({ wallet }: { wallet: string }) {
       </div>
 
       {sales.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: `${S[7]}px 0` }}>
-          <div style={{ ...t('heading'), color: 'var(--text)', marginBottom: S[2] }}>No sales yet</div>
-          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>List an item on the Sell page to get started</div>
-        </div>
+        <EmptyState
+          icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>}
+          title="No sales yet"
+          message="List an item on the Sell page to get started."
+          action={{ label: 'List an item', href: '/dashboard/seller' }}
+        />
       ) : (
         <>
           <div style={{ ...sectionLabel(), marginBottom: S[3] }}>
@@ -936,13 +941,12 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
   return (
     <div style={{ paddingTop: S[4] }}>
       {conversations.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: `${S[7]}px 0` }}>
-          <div style={{ ...surface({ radius: '50%' }), width: 52, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: `0 auto ${S[4]}px` }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          </div>
-          <div style={{ ...t('heading'), color: 'var(--text)', marginBottom: S[2] }}>No messages yet</div>
-          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Buyers can message you from item pages</div>
-        </div>
+        <EmptyState
+          icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+          title="No messages yet"
+          message="Buyers can message you from item pages. Conversations will show up here."
+          action={{ label: 'Browse the market', href: '/' }}
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
           {conversations.map((conv: any) => (

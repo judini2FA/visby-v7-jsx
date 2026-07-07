@@ -14,6 +14,7 @@ import { isCutout } from '@/components/listing-card';
 import { feeBreakdown } from '@/lib/fees';
 import { localShipEstimate } from '@/lib/shipping-estimate';
 import KycVerify from '@/components/kyc-verify';
+import { EmptyState } from '@/components/empty-state';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -303,7 +304,7 @@ function MintForm({ wallet }: { wallet: string }) {
 // ─────────────────────────────────────────────────────────────
 // RELIST panel
 // ─────────────────────────────────────────────────────────────
-function RelistPanel({ wallet }: { wallet: string }) {
+function RelistPanel({ wallet, onMintClick }: { wallet: string; onMintClick: () => void }) {
   const [editSerial, setEditSerial] = useState<string | null>(null);
   const [editPrice,  setEditPrice]  = useState('');
   const [unlisting,  setUnlisting]  = useState<string | null>(null);
@@ -322,9 +323,13 @@ function RelistPanel({ wallet }: { wallet: string }) {
   );
 
   if (ownedItems.length === 0) return (
-    <div style={{ textAlign: 'center', paddingTop: S[8], paddingBottom: S[8], display: 'flex', flexDirection: 'column', gap: S[2] }}>
-      <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>No items in your wallet yet</div>
-      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Mint something first to add it to your wallet</div>
+    <div style={{ paddingTop: S[8], paddingBottom: S[8] }}>
+      <EmptyState
+        icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>}
+        title="Nothing to relist yet"
+        message="Mint something first, then it'll show up here ready to list."
+        action={{ label: 'Mint an item', onClick: onMintClick }}
+      />
     </div>
   );
 
@@ -757,7 +762,7 @@ export default function SellerDashboardPage() {
         </div>
 
         {mode === 'mint'   && <MintForm     wallet={wallet} />}
-        {mode === 'resell' && <RelistPanel  wallet={wallet} />}
+        {mode === 'resell' && <RelistPanel  wallet={wallet} onMintClick={() => setMode('mint')} />}
         {mode === 'bulk' && isBusiness && <BulkLogPanel wallet={wallet} />}
       </div>
 
