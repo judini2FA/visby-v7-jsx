@@ -6,6 +6,7 @@ import { createOrder } from '@/lib/orders';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { captureError, captureMessage } from '@/lib/monitoring';
 import { solUsd } from '@/lib/price-oracle';
+import { resolveCheckoutPrice } from '@/lib/offers';
 
 const TREASURY = process.env.MINT_AUTHORITY_ADDRESS!;
 // Allow up to 2% slippage from quoted price at time of payment
@@ -68,6 +69,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Transaction signer does not match buyer_wallet' }, { status: 400 });
     }
 
+    // Offers (7.3): the buyer authenticates by signing the on-chain payment above, so buyer_wallet is
+    // trusted here. Resolve the accepted-offer price (else list) and verify the SOL they sent against THAT
+    // — otherwise an accepted-offer buyer who correctly sends the discounted SOL would fail the amount check.
+    const { priceUsd } = await resolveCheckoutPrice(item, buyer_wallet);
+
     // Verify amount matches price (with slippage tolerance). Value the SOL with the server-side oracle —
     // never the client-supplied quote alone, which a buyer could inflate (e.g. 4000 vs the real ~200) so a
     // token amount of real SOL clears the USD check. The quote is honored only as a UX hint when it already
@@ -81,7 +87,7 @@ export async function POST(req: Request) {
       Math.abs(quoted_sol_price - oraclePrice) / oraclePrice <= SLIPPAGE_TOLERANCE;
     const solPrice = quoteWithinTolerance ? quoted_sol_price : oraclePrice;
     const solPriceAtPayment = solReceived * solPrice;
-    const expectedUsd = item.price_usdc;
+    const expectedUsd = priceUsd;
     const discrepancy = Math.abs(solPriceAtPayment - expectedUsd) / expectedUsd;
 
     if (discrepancy > SLIPPAGE_TOLERANCE) {
@@ -137,13 +143,13 @@ export async function POST(req: Request) {
         from_wallet:   previousOwner,
         tx_hash:       nftTxHash,
         event_type:    'transfer',
-        price_usdc:    item.price_usdc,
+        price_usdc:    priceUsd,
       });
     }
 
     const orderRecorded = await createOrder({
       item_id, buyer_wallet, seller_wallet: previousOwner,
-      price_usdc: item.price_usdc, pay_method: 'sol', nft_tx: nftTxHash,
+      price_usdc: priceUsd, pay_method: 'sol', nft_tx: nftTxHash,
       received_lamports: receivedLamports,   // for the delivery-time FX cap (never pay out more SOL than received)
     });
     // (signature already claimed insert-first above — no late insert needed.)

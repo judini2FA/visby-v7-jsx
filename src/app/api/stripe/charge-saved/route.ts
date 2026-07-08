@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
 import { createOrder } from '@/lib/orders';
+import { resolveCheckoutPrice } from '@/lib/offers';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -39,9 +40,12 @@ export async function POST(req: Request) {
     if (!item.is_listed || !item.price_usdc) return NextResponse.json({ error: 'Item no longer listed' }, { status: 400 });
     if (item.current_owner_wallet === buyer_wallet) return NextResponse.json({ error: 'You already own this' }, { status: 400 });
 
+    // Offers (7.3): accepted-offer price for this authed buyer (callerOwnsWallet above), else list.
+    const { priceUsd, offerId } = await resolveCheckoutPrice(item, buyer_wallet);
+
     // Create and immediately confirm the PaymentIntent server-side — no client action needed
     const paymentIntent = await stripe.paymentIntents.create({
-      amount:          Math.round(item.price_usdc * 100),
+      amount:          Math.round(priceUsd * 100),
       currency:        'usd',
       customer:        cust.stripe_customer_id,
       payment_method:  payment_method_id,
@@ -50,8 +54,9 @@ export async function POST(req: Request) {
       metadata: {
         item_id:       item.id,
         buyer_wallet,
-        price_usdc:    String(item.price_usdc),
+        price_usdc:    String(priceUsd),
         seller_wallet: item.current_owner_wallet,
+        ...(offerId ? { offer_id: offerId } : {}),
       },
     });
 
@@ -73,12 +78,12 @@ export async function POST(req: Request) {
       from_wallet:  previousOwner,
       tx_hash:      nftTxHash,
       event_type:   'transfer',
-      price_usdc:   item.price_usdc,
+      price_usdc:   priceUsd,
     });
 
     await createOrder({
       item_id, buyer_wallet, seller_wallet: previousOwner,
-      price_usdc: item.price_usdc,
+      price_usdc: priceUsd,
       pay_method: 'card', nft_tx: nftTxHash,
       stripe_payment_intent: paymentIntent.id,
     });

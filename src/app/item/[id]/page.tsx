@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useVisbWallet } from '@/lib/wallet';
 import CheckoutModal from '@/components/checkout-modal';
+import { OffersPanel } from '@/components/offers-panel';
 import { S, t, price, card, surface, btn, badge, avatar, sectionLabel, input } from '@/lib/ui';
 import { explorerAddress } from '@/lib/explorer';
 import { trpc } from '@/lib/trpc/client';
@@ -421,6 +422,15 @@ export default function ItemPage() {
               <div style={{ ...t('body'), color: C.muted }}>Not listed for sale</div>
             )
           )}
+
+          {/* Offers (7.3): buyer proposes a price / seller accepts. Self-gates by role + listed state. */}
+          <OffersPanel
+            itemId={item.id}
+            listPrice={item.price_usdc ?? 0}
+            viewerWallet={walletAddress ?? null}
+            isOwner={isOwner}
+            listed={!!(item.is_listed && item.price_usdc)}
+          />
         </div>
 
         {/* Seller */}

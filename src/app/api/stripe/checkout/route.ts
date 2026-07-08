@@ -1,17 +1,24 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
+import { getAuthedContext } from '@/lib/auth';
+import { resolveCheckoutPrice } from '@/lib/offers';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(req: Request) {
   try {
     const origin = req.headers.get('origin') ?? req.headers.get('referer')?.replace(/\/$/, '') ?? 'http://localhost:3001';
+    // Auth FIRST (same reason as the payment-intent rail): buyer_wallet drives the offer-price lookup and
+    // is baked into session.metadata, which the signed webhook trusts to settle + record the order.
+    const ctx = await getAuthedContext(req);
+    if (!ctx || !ctx.wallets.length) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { item_id, serial, buyer_wallet } = await req.json();
 
     if (!item_id || !buyer_wallet) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
+    if (!ctx.wallets.includes(buyer_wallet)) return NextResponse.json({ error: 'Not authorized for that wallet' }, { status: 401 });
 
     const supabase = createServiceClient();
     const { data: item, error } = await supabase
@@ -30,6 +37,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'You already own this item' }, { status: 400 });
     }
 
+    // Offers (7.3): charge the accepted-offer price for this authed buyer (else list); locked into metadata.
+    const { priceUsd, offerId } = await resolveCheckoutPrice(item, buyer_wallet);
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [
@@ -41,7 +51,7 @@ export async function POST(req: Request) {
               description: `${item.condition} · ${item.category} · Serial: ${item.serial_number}`,
               ...(item.image_url ? { images: [item.image_url] } : {}),
             },
-            unit_amount: Math.round(item.price_usdc * 100),
+            unit_amount: Math.round(priceUsd * 100),
           },
           quantity: 1,
         },
@@ -50,7 +60,8 @@ export async function POST(req: Request) {
         item_id: item.id,
         serial_number: item.serial_number,
         buyer_wallet,
-        price_usdc: String(item.price_usdc),
+        price_usdc: String(priceUsd),
+        ...(offerId ? { offer_id: offerId } : {}),
       },
       success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url:  `${origin}/item/${item.id}`,

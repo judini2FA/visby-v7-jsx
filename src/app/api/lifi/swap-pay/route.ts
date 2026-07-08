@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
 import { createOrder } from '@/lib/orders';
+import { resolveCheckoutPrice } from '@/lib/offers';
 
 // Settles a Li.Fi crypto-swap purchase and transfers the NFT to the buyer.
 //
@@ -32,7 +33,10 @@ export async function POST(req: Request) {
     }
 
     const previousOwner = item.current_owner_wallet;
-    const pricePaid = item.price_usdc;
+    // Offers (7.3): accepted-offer price for this authed buyer (callerOwnsWallet above), else list. On
+    // mainnet the client swap must target this same USDC amount (checkout surfaces the offer price).
+    const { priceUsd } = await resolveCheckoutPrice(item, buyer_wallet);
+    const pricePaid = priceUsd;
 
     // Compare-and-swap: only one request wins; concurrent buyers get 409
     const { data: casRows } = await supabase

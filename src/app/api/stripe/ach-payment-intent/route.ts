@@ -6,6 +6,7 @@ import { isBanned } from '@/lib/account-status';
 import { clientIp, rateLimit, tooManyRequests } from '@/lib/rate-limit';
 import { achEnabled } from '@/lib/payable-tokens';
 import { claimAchPayin, attachAchPayinPi, releaseAchPayin } from '@/lib/ach-payins';
+import { resolveCheckoutPrice } from '@/lib/offers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,11 @@ export async function POST(req: Request) {
     if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     if (!item.is_listed || !item.price_usdc) return NextResponse.json({ error: 'This item is not for sale.' }, { status: 400 });
     if (item.current_owner_wallet === buyer_wallet) return NextResponse.json({ error: 'You already own this item' }, { status: 400 });
+
+    // Offers (7.3): accepted-offer price for this authed buyer (else list). Resolved BEFORE the debit is
+    // claimed/created so the amount charged == the amount recorded. The 48h accept-TTL must exceed the ACH
+    // clear window; the webhook records from metadata.price_usdc days later.
+    const { priceUsd, offerId } = await resolveCheckoutPrice(item, buyer_wallet);
 
     // Buyer must have a Stripe customer + at least one linked bank (created during 4.1 bank-linking).
     const { data: cust } = await supabase
@@ -93,7 +99,7 @@ export async function POST(req: Request) {
 
       pi = await stripe.paymentIntents.create(
         {
-          amount: Math.round(item.price_usdc * 100),
+          amount: Math.round(priceUsd * 100),
           currency: 'usd',
           customer: cust.stripe_customer_id,
           payment_method: pm.id,
@@ -108,10 +114,11 @@ export async function POST(req: Request) {
           metadata: {
             item_id:       item.id,
             buyer_wallet,
-            price_usdc:    String(item.price_usdc),
+            price_usdc:    String(priceUsd),
             item_name:     item.name,
             seller_wallet: item.current_owner_wallet,
             pay_method:    'ach',
+            ...(offerId ? { offer_id: offerId } : {}),
           },
         },
         { idempotencyKey: `ach-pi:${item.id}:${buyer_wallet}` },

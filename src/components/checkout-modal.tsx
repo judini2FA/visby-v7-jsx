@@ -121,6 +121,9 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   const [swapQuote,   setSwapQuote]   = useState<any | null>(null);
   const [swapLoading, setSwapLoading] = useState(false);
   const [solBalance,  setSolBalance]  = useState<number | null>(null);
+  // Effective checkout price for THIS buyer = accepted-offer price (if any) else the list price prop.
+  // Display/quote convenience only — every rail independently re-resolves + enforces the price server-side.
+  const [effPrice,    setEffPrice]    = useState(priceUsdc);
 
   // Shipping gate: load the buyer's saved address; if none, ask here before they can pay. Whatever is
   // saved here is snapshotted onto the order by createOrder at settlement.
@@ -157,20 +160,46 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
       .catch(() => {});
   }, [itemId, isPending, priceUsdc]);
 
-  // Create PaymentIntent as soon as the card tab is active
+  // Resolve the accepted-offer price for this buyer (else list) so every tab shows + sends the right
+  // amount. Fails soft to the list-price prop. Skipped in pending mode (no offers on unminted serials).
+  useEffect(() => {
+    if (isPending || !buyerWallet) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const r = await fetch('/api/offers/checkout-price', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ item_id: itemId, buyer_wallet: buyerWallet }),
+        });
+        const d = await r.json();
+        if (!cancelled && typeof d.priceUsd === 'number' && d.priceUsd > 0) setEffPrice(d.priceUsd);
+      } catch { /* fail soft to list price */ }
+    })();
+    return () => { cancelled = true; };
+  }, [itemId, buyerWallet, isPending, getAccessToken]);
+
+  // Create PaymentIntent as soon as the card tab is active. Sends the Privy token — the route now
+  // authenticates the buyer (offer pricing keys off buyer_wallet), so an unauthed call 401s.
   useEffect(() => {
     if (isPending || currency !== 'CARD' || piSecret || !buyerWallet || shipLoading) return;
-    fetch('/api/stripe/payment-intent', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_id: itemId, buyer_wallet: buyerWallet }),
-    })
-      .then(r => r.json())
-      .then(d => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const r = await fetch('/api/stripe/payment-intent', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ item_id: itemId, buyer_wallet: buyerWallet }),
+        });
+        const d = await r.json();
+        if (cancelled) return;
         if (d.client_secret) { setPiSecret(d.client_secret); setTaxCents(d.tax_cents ?? 0); }
         else setErrMsg(d.error ?? 'Could not start checkout');
-      })
-      .catch(() => setErrMsg('Network error — could not load checkout'));
-  }, [currency, itemId, buyerWallet, piSecret, shipLoading]);
+      } catch { if (!cancelled) setErrMsg('Network error — could not load checkout'); }
+    })();
+    return () => { cancelled = true; };
+  }, [currency, itemId, buyerWallet, piSecret, shipLoading, isPending, getAccessToken]);
 
   // Check the buyer's SOL balance when the SOL tab opens, so we can warn before a failed tx
   useEffect(() => {
@@ -279,7 +308,8 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     setStatus('paying');
     setErrMsg('');
     try {
-      const lamports   = Math.round(quotes.SOL.amount * LAMPORTS_PER_SOL);
+      const solAmount  = isPending ? quotes.SOL.amount : (solPay ?? quotes.SOL.amount);
+      const lamports   = Math.round(solAmount * LAMPORTS_PER_SOL);
       const connection = new Connection(RPC, 'confirmed');
       const { blockhash } = await connection.getLatestBlockhash();
       const tx = new Transaction();
@@ -335,6 +365,14 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
 
   const quote = currency === 'SOL' ? quotes?.SOL : currency === 'ETH' ? quotes?.ETH : quotes?.USDC;
 
+  // The SOL quote is priced off the LIST price; scale it by the effective/list ratio so an accepted-offer
+  // buyer sends the discounted SOL amount that the (offer-aware) sol-pay rail now expects. Ratio is 1 with
+  // no offer or in pending mode, so this is a no-op there.
+  const priceRatio = priceUsdc > 0 ? effPrice / priceUsdc : 1;
+  const solPay = quotes?.SOL ? quotes.SOL.amount * priceRatio : null;
+  const solPayDisplay = solPay != null ? `${solPay.toFixed(4)} SOL` : '…';
+  const hasOfferDiscount = effPrice < priceUsdc - 0.005;
+
   // What the buyer pays in network/transfer fees, by method (shipping is always free to the buyer).
   const transferFeeNote =
     currency === 'SOL' ? 'Solana network fee · paid by you'
@@ -371,22 +409,28 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>You pay</span>
             <span style={{ fontSize: 22, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: "'Inter',sans-serif" }}>
               {currency === 'CARD' && taxCents > 0
-                ? `$${(priceUsdc + taxCents / 100).toFixed(2)}`
+                ? `$${(effPrice + taxCents / 100).toFixed(2)}`
                 : currency === 'CARD' || currency === 'USDC' || currency === 'ACH'
-                ? `$${priceUsdc.toFixed(2)}`
+                ? `$${effPrice.toFixed(2)}`
                 : isSwapToken(currency)
                   ? (swapQuote?.from_amount_display ?? '…')
+                  : currency === 'SOL' ? solPayDisplay
                   : quote?.display ?? '…'}
             </span>
           </div>
+          {hasOfferDiscount && (
+            <div style={{ fontSize: 11, color: C.green, textAlign: 'right', marginTop: 3, fontWeight: 700, fontFamily: "'Inter',sans-serif" }}>
+              Offer accepted · was ${priceUsdc.toFixed(2)}
+            </div>
+          )}
           {currency === 'SOL' && quote && (
             <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Inter',sans-serif" }}>
-              ≈ ${priceUsdc.toFixed(2)} USD
+              ≈ ${effPrice.toFixed(2)} USD
             </div>
           )}
           {isSwapToken(currency) && swapQuote && (
             <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Inter',sans-serif" }}>
-              ≈ ${priceUsdc.toFixed(2)} USD
+              ≈ ${effPrice.toFixed(2)} USD
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
@@ -468,7 +512,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             </div>
             <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-strong)', fontFamily: "'Inter',sans-serif" }}>Bank payment started</div>
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
-              We&apos;re collecting ${priceUsdc.toFixed(2)}{achBank?.last4 ? ` from your ${achBank.institution_name ?? 'bank'} ••${achBank.last4}` : ' from your bank'}. Bank transfers take about 1–3 business days to clear — your item transfers to you automatically once it does, and we&apos;ll email you.
+              We&apos;re collecting ${effPrice.toFixed(2)}{achBank?.last4 ? ` from your ${achBank.institution_name ?? 'bank'} ••${achBank.last4}` : ' from your bank'}. Bank transfers take about 1–3 business days to clear — your item transfers to you automatically once it does, and we&apos;ll email you.
             </div>
             <button onClick={onClose} style={{ marginTop: 6, width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '13px 20px', fontWeight: 800, fontSize: 15, color: '#fff', cursor: 'pointer', fontFamily: "'Inter',sans-serif" }}>
               Done
@@ -490,8 +534,8 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 // Elements provides Stripe context only — no clientSecret means no Link, no branding
                 <Elements stripe={stripePromise}>
                   <CardPayForm
-                    priceUsdc={priceUsdc}
-                    payAmount={priceUsdc + taxCents / 100}
+                    priceUsdc={effPrice}
+                    payAmount={effPrice + taxCents / 100}
                     clientSecret={piSecret}
                     onSuccess={() => { setStatus('done'); onSuccess(itemId); }}
                     onError={msg => { setErrMsg(msg); setStatus('error'); }}
@@ -507,12 +551,12 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             {/* ── SOL TAB ── */}
             {currency === 'SOL' && (
               quotes?.SOL ? (
-                (solBalance != null && solBalance < quotes.SOL.amount + 0.002) ? (
+                (solBalance != null && solBalance < (solPay ?? quotes.SOL.amount) + 0.002) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '16px' }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-strong)', marginBottom: 6, fontFamily: "'Inter',sans-serif" }}>Not enough SOL</div>
                       <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
-                        This costs {quotes.SOL.display} (plus a small network fee), but your wallet holds {solBalance.toFixed(4)} SOL. Add funds to continue — or pay with Card.
+                        This costs {solPayDisplay} (plus a small network fee), but your wallet holds {solBalance.toFixed(4)} SOL. Add funds to continue — or pay with Card.
                       </div>
                     </div>
                     <a href="/buy-crypto" style={{ width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textDecoration: 'none' }}>
@@ -522,7 +566,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 ) : (
                   <button onClick={payWithSol} disabled={status === 'paying'}
                     style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                    {status === 'paying' ? <><Spinner />Processing…</> : `Pay ${quotes.SOL.display}`}
+                    {status === 'paying' ? <><Spinner />Processing…</> : `Pay ${solPayDisplay}`}
                   </button>
                 )
               ) : <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: C.muted, fontSize: 13 }}><Spinner />Loading SOL quote…</div>
@@ -548,7 +592,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
                       <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Seller receives</span>
-                      <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${priceUsdc.toFixed(2)} USD</span>
+                      <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${effPrice.toFixed(2)} USD</span>
                     </div>
                   </div>
 
@@ -572,19 +616,19 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                 <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>You pay</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Manrope',sans-serif" }}>{priceUsdc.toFixed(2)} USDC</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Manrope',sans-serif" }}>{effPrice.toFixed(2)} USDC</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
                     <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Seller receives</span>
-                    <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${priceUsdc.toFixed(2)} USD</span>
+                    <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${effPrice.toFixed(2)} USD</span>
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, fontFamily: "'Manrope',sans-serif" }}>
                   USDC is pegged 1:1 — no conversion. Settles on confirm (devnet simulation — real SPL transfer on mainnet).
                 </div>
-                <button onClick={() => settle('USDC', `${priceUsdc.toFixed(2)} USDC`)} disabled={status === 'paying'}
+                <button onClick={() => settle('USDC', `${effPrice.toFixed(2)} USDC`)} disabled={status === 'paying'}
                   style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                  {status === 'paying' ? <><Spinner />Processing…</> : `Pay ${priceUsdc.toFixed(2)} USDC`}
+                  {status === 'paying' ? <><Spinner />Processing…</> : `Pay ${effPrice.toFixed(2)} USDC`}
                 </button>
               </div>
             )}
@@ -616,7 +660,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
                       <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Amount</span>
-                      <span style={{ fontSize: 12, color: 'var(--text-strong)', fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${priceUsdc.toFixed(2)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-strong)', fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${effPrice.toFixed(2)}</span>
                     </div>
                   </div>
                   <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, fontFamily: "'Manrope',sans-serif" }}>
@@ -624,7 +668,7 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                   </div>
                   <button onClick={payWithAch} disabled={status === 'paying'}
                     style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                    {status === 'paying' ? <><Spinner />Starting…</> : `Pay $${priceUsdc.toFixed(2)} from bank`}
+                    {status === 'paying' ? <><Spinner />Starting…</> : `Pay $${effPrice.toFixed(2)} from bank`}
                   </button>
                 </div>
               )

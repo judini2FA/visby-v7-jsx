@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { transferFromAuthority, getRpcUrl } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
 import { createOrder } from '@/lib/orders';
+import { resolveCheckoutPrice } from '@/lib/offers';
 
 export async function POST(req: Request) {
     try {
@@ -50,6 +51,9 @@ export async function POST(req: Request) {
                   return NextResponse.json({ error: 'You already own this item' }, { status: 400 });
                 }
 
+          // Offers (7.3): record the accepted-offer price for this authed buyer (callerOwnsWallet above), else list.
+          const { priceUsd } = await resolveCheckoutPrice(item, buyer_wallet);
+
           // CAS: atomically mark as sold — only succeeds if still listed
           const previousOwner = item.current_owner_wallet;
           const { data: casRows, error: casError } = await supabase
@@ -92,12 +96,12 @@ export async function POST(req: Request) {
                   from_wallet: previousOwner,
                   tx_hash: nftTxHash,
                   event_type: 'transfer',
-                  price_usdc: item.price_usdc,
+                  price_usdc: priceUsd,
                 });
 
           await createOrder({
                   item_id: item.id, buyer_wallet, seller_wallet: previousOwner,
-                  price_usdc: item.price_usdc, pay_method: 'usdc', nft_tx: nftTxHash,
+                  price_usdc: priceUsd, pay_method: 'usdc', nft_tx: nftTxHash,
                 });
 
           return NextResponse.json({

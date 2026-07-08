@@ -8,6 +8,7 @@ import { moovConfigured, findCardPaymentMethod, findWalletPaymentMethod, createM
 import { fulfillPurchase } from '@/lib/fulfill';
 import { createServiceClient } from '@/lib/supabase/service';
 import { toCents } from '@/lib/fees';
+import { resolveCheckoutPrice } from '@/lib/offers';
 
 const PLATFORM_ACCOUNT_ID = process.env.MOOV_PLATFORM_ACCOUNT_ID;
 
@@ -42,6 +43,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'item_not_purchasable' }, { status: 409 });
     }
 
+    // Offers (7.3): accepted-offer price for this authed buyer (ctx.wallets.includes above), else list.
+    // One resolved value feeds BOTH the card charge amount and fulfillPurchase so they can't diverge.
+    const { priceUsd } = await resolveCheckoutPrice(item, buyer_wallet);
+
     const sourcePM = await findCardPaymentMethod(account_id);
     if (!sourcePM) return NextResponse.json({ error: 'card_payment_method_not_found' }, { status: 400 });
     const destPM = await findWalletPaymentMethod(PLATFORM_ACCOUNT_ID);
@@ -50,7 +55,7 @@ export async function POST(req: Request) {
     const transfer = await createMoovTransfer({
       sourcePaymentMethodID: sourcePM,
       destinationPaymentMethodID: destPM,
-      amountCents: toCents(item.price_usdc),
+      amountCents: toCents(priceUsd),
       description: `Visby order ${item.id}`,
       idempotencyKey: `moov-charge:${item.id}:${buyer_wallet}`,
       metadata: { item_id: item.id, buyer_wallet },
@@ -64,7 +69,7 @@ export async function POST(req: Request) {
     // Only settle (transfer the NFT + record the order) once the card has actually cleared. If the rail
     // is still pending, the buyer retries — the idempotency key + fulfillPurchase's guard make that safe.
     if (transfer.status === 'completed') {
-      await fulfillPurchase(item.id, buyer_wallet, String(item.price_usdc), null, { pay_method: 'card' });
+      await fulfillPurchase(item.id, buyer_wallet, String(priceUsd), null, { pay_method: 'card' });
       return NextResponse.json({ ok: true, transfer_id: transfer.transferID, status: transfer.status });
     }
 
