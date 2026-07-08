@@ -107,7 +107,7 @@
 - [x] 8.2 Account-deletion endpoint (wallet/provenance caveats explained plainly)
 - [x] 8.3 Seller/Marketplace Agreement + Acceptable Use routes (counsel supplies content; admin PDF-upload exists)
 - [ ] 8.4 Company email aliases (Resend catch-all; needs Judah's domain DNS)
-- [ ] 8.5 AML/KYC record-keeping hooks (screening results retained + exportable)
+- [x] 8.5 AML/KYC record-keeping hooks (screening results retained + exportable) — DONE 2026-07-07. `/api/admin/aml-export` (admin-gated finance/moderator + callerOwnsWallet, read-only, rate-limited) exports the retained KYC verification-status records + OFAC payout_holds + sanctions-list freshness meta, as JSON or CSV. PII-safe: kyc_verifications.raw (identity-doc payload) is NEVER selected — explicit safe columns only, same rule as /api/account/export. Button on /admin/kyc.
 - **Gate:** a user can export or delete their data; all four legal routes live.
 
 ## Phase 9 — Platform delivery
@@ -146,7 +146,9 @@
 > when it's FIXED and RE-VERIFIED (note the fix in memory.md). Detailed entries + repro steps live in
 > `errors.md` (kept out of this lean file); this phase is the index + gate. Log format:
 > `- [ ] E<n> — <route/screen>: <what happens / expected vs actual> · sev S0(crash/money) / S1(blocker) / S2(broken) / S3(polish)`.
-- [ ] (no errors logged yet — Judah adds them to `errors.md`; Claude triages, fixes, and checks them off here)
+- [x] E1 — Sell/Mint photo cutout dead + no manual fallback (S2) → FIXED `005aad8` (real `cutout-editor.tsx`: auto → "Looks good?" → manual erase/restore + magic-erase).
+- [x] E2 — cutout rendered tiny/floating + grey box behind it (S3) → FIXED `f1a61ff`/`33f7118` (sharp-trim to subject + fill frame + transparent backing).
+- [x] E3 — cutout crash "url.replace is not a function" (S2) → FIXED `8ddeafa` (onnxruntime-web × webpack: `parser:{url:false}`; browser-verified end-to-end). Details in `errors.md`.
 - **Gate:** every logged error is fixed + re-tested + checked off; ZERO open S0/S1 (crash / blocker / money) errors.
 
 ## Phase 13 — Final live-startup runbook (the go-live gate)
