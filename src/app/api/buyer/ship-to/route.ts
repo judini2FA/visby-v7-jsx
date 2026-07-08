@@ -7,6 +7,40 @@ export const dynamic = 'force-dynamic';
 // The buyer's saved default shipping address (profiles.ship_to). Snapshotted onto each order at
 // purchase so checkout never needs a separate post-purchase address step. Authed: a buyer reads/writes
 // only their own.
+//
+// POL3: this is also the address checkout-modal.tsx saves to when a buyer types a new address at
+// checkout. It must land in the SAME address book that /api/buyer/addresses (7.4) reads, or the
+// checkout-entered address silently never shows up in Settings → Address Book. So POST here also
+// upserts the buyer's default row in shipping_addresses (updating it in place if one already exists,
+// so re-saving at checkout doesn't spam new rows), mirroring the default-write pattern
+// /api/buyer/addresses already uses in the other direction.
+async function upsertDefaultShippingAddress(supabase: ReturnType<typeof createServiceClient>, wallet: string, addr: { name: string | null; line1: string; line2: string; city: string; state: string; postal: string; country: string }) {
+  try {
+    const { data: existingDefaults } = await supabase
+      .from('shipping_addresses')
+      .select('id')
+      .eq('wallet', wallet)
+      .eq('is_default', true)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const existingDefault = existingDefaults?.[0];
+
+    if (existingDefault) {
+      await supabase.from('shipping_addresses').update(addr).eq('id', existingDefault.id);
+      return;
+    }
+
+    const { count } = await supabase
+      .from('shipping_addresses')
+      .select('id', { count: 'exact', head: true })
+      .eq('wallet', wallet);
+    if ((count ?? 0) >= 20) return; // address book full — profiles.ship_to still saved, just not mirrored
+
+    await supabase.from('shipping_addresses').insert({ wallet, ...addr, is_default: true });
+  } catch {
+    // Best-effort mirror — never fail the checkout-critical ship_to save over this.
+  }
+}
 
 export async function GET(req: Request) {
   try {
@@ -69,6 +103,8 @@ export async function POST(req: Request) {
       .from('profiles')
       .upsert({ wallet: buyer_wallet, ship_to: clean, updated_at: new Date().toISOString() }, { onConflict: 'wallet' });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    await upsertDefaultShippingAddress(supabase, buyer_wallet, clean);
 
     return NextResponse.json({ ok: true, ship_to: clean });
   } catch (err) {

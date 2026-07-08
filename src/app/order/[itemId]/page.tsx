@@ -561,7 +561,9 @@ export default function OrderPage() {
           {walletAddress && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Owner</span>
-              <span style={{ ...t('meta'), color: 'var(--text)' }}>{shortAddr(walletAddress)}</span>
+              <Link href="/profile" style={{ ...t('meta'), color: 'var(--text)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                {shortAddr(walletAddress)}
+              </Link>
             </div>
           )}
         </div>

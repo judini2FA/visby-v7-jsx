@@ -420,7 +420,10 @@ export default function ItemPage() {
   const sellerAvatar  = sellerProfile?.avatar_url ?? null;
   const sellerInitial = (item.current_owner_wallet[0] ?? '?').toUpperCase();
   const history = item.ownership_history ?? [];
-  const ownerCount = new Set(history.map(h => h.owner_wallet)).size || 1;
+  // POL1: every transfer event counts as an owner, even if a wallet reappears
+  // (e.g. person1 -> person2 -> back to person1 reads as 3 owners), so this
+  // counts ownership_history rows rather than deduping by owner_wallet.
+  const ownerCount = history.length || 1;
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>

@@ -4,17 +4,28 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { passwordProblem } from '@/lib/password-rules';
+import { webauthnSupported } from '@/lib/app-lock';
 import { t, S, btn, input, card, T } from '@/lib/ui';
 
 // Session flag is per-wallet so switching accounts on the same device re-gates. Cleared on Privy
 // logout (see effect below) so the next sign-in — same wallet or not — always re-prompts.
+//
+// Stores a timestamp (not a bare flag) in localStorage — not sessionStorage — so the unlock survives
+// a tab/browser close and re-prompts purely on elapsed time (S3): a signed-in user stays past the
+// gate for ~1 hour of real time, then the next visit (any tab) re-checks and re-prompts.
+const SESSION_TTL_MS = 60 * 60 * 1000; // ~1 hour
+
 function sessionKey(wallet: string) {
   return `visby-pw-ok:${wallet}`;
 }
 
 function isSessionOk(wallet: string): boolean {
   try {
-    return sessionStorage.getItem(sessionKey(wallet)) === '1';
+    const raw = localStorage.getItem(sessionKey(wallet));
+    if (!raw) return false;
+    const at = Number(raw);
+    if (!Number.isFinite(at)) return false;
+    return Date.now() - at < SESSION_TTL_MS;
   } catch {
     return false;
   }
@@ -22,13 +33,13 @@ function isSessionOk(wallet: string): boolean {
 
 function markSessionOk(wallet: string): void {
   try {
-    sessionStorage.setItem(sessionKey(wallet), '1');
+    localStorage.setItem(sessionKey(wallet), String(Date.now()));
   } catch {}
 }
 
 function clearSessionOk(wallet: string): void {
   try {
-    sessionStorage.removeItem(sessionKey(wallet));
+    localStorage.removeItem(sessionKey(wallet));
   } catch {}
 }
 
@@ -44,6 +55,9 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
 
   const [status, setStatus] = useState<GateStatus>('checking');
   const loadedForWallet = useRef<string | null>(null);
+  // Bumped by the TTL-expiry watcher below to force the main effect to re-run its isSessionOk check
+  // even though ready/authenticated/wallet haven't changed.
+  const [recheckTick, setRecheckTick] = useState(0);
 
   // Privy logout must always invalidate the session flag — otherwise a second person signing into
   // the same device/browser would inherit the previous user's unlocked gate.
@@ -88,7 +102,28 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
         setStatus('needs-verify');
       }
     })();
-  }, [ready, authenticated, walletReady, wallet, authHeaders]);
+  }, [ready, authenticated, walletReady, wallet, authHeaders, recheckTick]);
+
+  // Re-prompt once the ~1hr session lapses even if the tab was left open the whole time (S3) —
+  // isSessionOk is otherwise only consulted on mount/wallet-change. Checked on an interval and on
+  // tab refocus rather than a single long-lived timeout, so a laptop put to sleep mid-session still
+  // re-locks promptly on wake instead of drifting past the TTL. Bumping recheckTick re-runs the main
+  // effect above, which re-reads isSessionOk and re-locks if it has lapsed.
+  useEffect(() => {
+    if (status !== 'clear' || !wallet) return;
+    function recheck() {
+      if (wallet && !isSessionOk(wallet)) {
+        loadedForWallet.current = null; // let the main effect's fetch-guard re-fire for this wallet
+        setRecheckTick(n => n + 1);
+      }
+    }
+    const id = setInterval(recheck, 60 * 1000);
+    document.addEventListener('visibilitychange', recheck);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', recheck);
+    };
+  }, [status, wallet]);
 
   function handleUnlocked() {
     if (wallet) markSessionOk(wallet);
@@ -196,6 +231,14 @@ function GateOverlay({
   );
 }
 
+const PasskeyIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M10.5 12H8a2 2 0 0 0-2 2v1" />
+    <path d="M15 15l3 3 4-4" />
+  </svg>
+);
+
 function CreatePasswordForm({
   wallet,
   email,
@@ -209,10 +252,53 @@ function CreatePasswordForm({
   onDone: () => void;
   onSignOut: () => void;
 }) {
+  const { linkPasskey, user } = usePrivy();
+  // Default nudge (POL5): lead with "use a passkey instead" — the password form only shows once the
+  // user explicitly opts out. Settings' own passkey control (security-settings.tsx) is untouched;
+  // this just offers the same Privy linkPasskey() primitive earlier, at the moment it matters most.
+  const [showPasswordForm, setShowPasswordForm] = useState(!webauthnSupported());
+  const [pkBusy, setPkBusy] = useState(false);
+  const [pkErr, setPkErr] = useState('');
+
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // linkPasskey() is fire-and-forget (returns void, not a Promise) — Privy raises its own modal and
+  // updates `user.linkedAccounts` asynchronously once the device actually completes WebAuthn. So
+  // completion is detected by watching the passkey count rise, exactly like Settings' passkeyCount
+  // badge does — never by awaiting the call itself, which would unlock instantly on click regardless
+  // of whether the user finished (or cancelled) the on-device prompt.
+  const passkeyCount = ((user?.linkedAccounts ?? []) as any[]).filter((a) => a.type === 'passkey').length;
+  const passkeyCountAtOpen = useRef(passkeyCount);
+  useEffect(() => {
+    if (pkBusy && passkeyCount > passkeyCountAtOpen.current) {
+      setPkBusy(false);
+      onDone();
+    }
+  }, [passkeyCount, pkBusy, onDone]);
+
+  // Privy's own modal has no cancel/error callback exposed here — if the user dismisses the
+  // on-device prompt, nothing ever fires. This timeout is the only way to un-stick the button so
+  // "Waiting for device…" doesn't spin forever; it's a no-op if the effect above already resolved it.
+  useEffect(() => {
+    if (!pkBusy) return;
+    const id = setTimeout(() => setPkBusy(false), 45000);
+    return () => clearTimeout(id);
+  }, [pkBusy]);
+
+  function usePasskey() {
+    setPkErr('');
+    passkeyCountAtOpen.current = passkeyCount;
+    setPkBusy(true);
+    try {
+      linkPasskey?.();
+    } catch {
+      setPkBusy(false);
+      setPkErr('Couldn’t set up a passkey on this device — try a password instead.');
+    }
+  }
 
   async function submit() {
     setErr('');
@@ -237,6 +323,33 @@ function CreatePasswordForm({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!showPasswordForm) {
+    return (
+      <>
+        <div style={{ ...t('title'), color: T.textStrong, marginTop: S[4] }}>Secure your account</div>
+        <div style={{ ...t('body'), color: T.textMuted, marginTop: S[2], marginBottom: S[5] }}>
+          Use Face ID, Touch ID, or your device passkey instead of typing a password.
+        </div>
+        {email && <div style={{ width: '100%', marginBottom: S[2] }}><EmailField email={email} /></div>}
+        {pkErr && <div style={{ ...t('meta'), color: 'var(--danger)', marginBottom: S[3] }}>{pkErr}</div>}
+        <button
+          onClick={usePasskey}
+          disabled={pkBusy}
+          style={{ ...btn('primary', { full: true }), opacity: pkBusy ? 0.7 : 1 }}
+        >
+          <PasskeyIcon />
+          {pkBusy ? 'Waiting for device…' : 'Use a passkey'}
+        </button>
+        <button onClick={() => setShowPasswordForm(true)} style={{ background: 'none', border: 'none', ...t('meta'), color: T.textMuted, cursor: 'pointer', marginTop: S[4] }}>
+          Use a password instead
+        </button>
+        <button onClick={onSignOut} style={{ background: 'none', border: 'none', ...t('meta'), color: T.textMuted, cursor: 'pointer', marginTop: S[2] }}>
+          Sign out instead
+        </button>
+      </>
+    );
   }
 
   return (
@@ -274,7 +387,12 @@ function CreatePasswordForm({
       >
         {busy ? 'Saving…' : 'Create password'}
       </button>
-      <button onClick={onSignOut} style={{ background: 'none', border: 'none', ...t('meta'), color: T.textMuted, cursor: 'pointer', marginTop: S[4] }}>
+      {webauthnSupported() && (
+        <button onClick={() => setShowPasswordForm(false)} style={{ background: 'none', border: 'none', ...t('meta'), color: T.textMuted, cursor: 'pointer', marginTop: S[3] }}>
+          Use a passkey instead
+        </button>
+      )}
+      <button onClick={onSignOut} style={{ background: 'none', border: 'none', ...t('meta'), color: T.textMuted, cursor: 'pointer', marginTop: S[2] }}>
         Sign out instead
       </button>
     </>

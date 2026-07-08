@@ -13,6 +13,19 @@ export default function LoginPage() {
     if (ready && authenticated) router.push('/dashboard');
   }, [ready, authenticated, router]);
 
+  // Two clearly separate entry points (A1) that both land in the same Privy modal — "Sign in" tells
+  // Privy to reject an email/wallet it doesn't already recognize instead of silently creating one,
+  // so returning users can't accidentally spin up a second account. "Create account" leaves sign-up
+  // open, same as before. Every method funnels through PasswordGate afterward regardless of which
+  // button was pressed or which login method (email/social/wallet) was used.
+  function signIn() {
+    login({ disableSignup: true });
+  }
+
+  function createAccount() {
+    login();
+  }
+
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: S[5] }}>
 
@@ -33,15 +46,20 @@ export default function LoginPage() {
 
         <div style={{ ...t('title'), color: T.textStrong, marginTop: S[5], textAlign: 'center' }}>Welcome</div>
         <div style={{ ...t('body'), color: T.textMuted, marginTop: S[2], marginBottom: S[6], textAlign: 'center', maxWidth: 320 }}>
-          Sign in with your email. We'll create a secure wallet automatically — no crypto knowledge needed.
+          Sign in with your email or a wallet. We'll create a secure wallet automatically — no crypto knowledge needed.
         </div>
 
-        <button onClick={login} disabled={!ready} style={{ ...btn('primary', { full: true }), opacity: ready ? 1 : 0.6, cursor: ready ? 'pointer' : 'not-allowed' }}>
-          {!ready ? 'Loading…' : 'Sign in with Visby'}
-        </button>
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: S[3] }}>
+          <button onClick={signIn} disabled={!ready} style={{ ...btn('primary', { full: true }), opacity: ready ? 1 : 0.6, cursor: ready ? 'pointer' : 'not-allowed' }}>
+            {!ready ? 'Loading…' : 'Sign in'}
+          </button>
+          <button onClick={createAccount} disabled={!ready} style={{ ...btn('secondary', { full: true }), opacity: ready ? 1 : 0.6, cursor: ready ? 'pointer' : 'not-allowed' }}>
+            Create account
+          </button>
+        </div>
 
         <div style={{ ...t('meta'), color: T.textMuted, marginTop: S[5], textAlign: 'center', lineHeight: 1.6 }}>
-          By signing in you agree to our Terms of Service.
+          By continuing you agree to our Terms of Service.
         </div>
       </div>
     </div>

@@ -95,17 +95,42 @@ export async function recordDeviceSession(args: {
   }
 }
 
+// A user re-authenticating (token refresh, re-login, new tab) gets a fresh Privy session_id each time,
+// but on the SAME physical browser/device — so raw rows can list one device many times over. Collapse
+// rows that share a device identity (fingerprint, falling back to platform+user_agent when no
+// fingerprint was captured) down to one entry: the most-recently-seen session_id represents the device
+// in the UI and in revocation (see revokeDeviceSessions' `deviceKey` path below).
+function deviceKeyOf(row: Pick<DeviceSession, 'session_id' | 'platform' | 'user_agent'> & { fingerprint?: string | null }): string {
+  if (row.fingerprint) return row.fingerprint;
+  if (row.platform || row.user_agent) return `ua:${row.platform ?? ''}|${row.user_agent ?? ''}`;
+  // No fingerprint and no platform/user-agent captured at all — nothing to group on, so treat this row
+  // as its own device rather than silently merging unrelated unknown-device sessions together.
+  return `sid:${row.session_id}`;
+}
+
+function dedupeByDevice(rows: (DeviceSession & { fingerprint?: string | null })[]): DeviceSession[] {
+  const byDevice = new Map<string, DeviceSession & { fingerprint?: string | null }>();
+  for (const row of rows) {
+    const key = deviceKeyOf(row);
+    const existing = byDevice.get(key);
+    if (!existing || row.last_seen_at > existing.last_seen_at) byDevice.set(key, row);
+  }
+  return Array.from(byDevice.values())
+    .sort((a, b) => (a.last_seen_at < b.last_seen_at ? 1 : -1))
+    .map(({ fingerprint: _fingerprint, ...rest }) => rest);
+}
+
 export async function listDeviceSessions(userId: string): Promise<DeviceSession[]> {
   if (!userId) return [];
   try {
     const supabase = createServiceClient();
     const { data } = await supabase
       .from('device_sessions')
-      .select(PUBLIC_COLS)
+      .select(`${PUBLIC_COLS}, fingerprint`)
       .eq('user_id', userId)
       .is('revoked_at', null)
       .order('last_seen_at', { ascending: false });
-    return (data ?? []) as DeviceSession[];
+    return dedupeByDevice((data ?? []) as (DeviceSession & { fingerprint: string | null })[]);
   } catch {
     return [];
   }
@@ -114,22 +139,52 @@ export async function listDeviceSessions(userId: string): Promise<DeviceSession[
 // Revoke one session, or every session for the user EXCEPT keepSessionId ("log out other devices").
 // Returns the number of rows actually revoked so the caller can avoid success-theater + only audit real
 // revocations.
+//
+// listDeviceSessions collapses multiple session_id rows from the same physical device into one entry
+// (see dedupeByDevice), so revoking "one" device must revoke every underlying session_id that shares its
+// device identity — otherwise a stale sibling row (same fingerprint, older session_id) survives and the
+// device silently reappears in the list right after "Log out".
 export async function revokeDeviceSessions(args: {
   userId: string;
-  sessionId?: string;        // revoke just this one
-  keepSessionId?: string;    // revoke all others, keep this one
+  sessionId?: string;        // revoke this session's whole device group
+  keepSessionId?: string;    // revoke all other devices, keep this session's device
 }): Promise<{ ok: boolean; count: number }> {
   if (!args.userId) return { ok: false, count: 0 };
   try {
     const supabase = createServiceClient();
-    let q = supabase
+
+    // Pull every active row once, then resolve device groups in JS — safer than a raw NOT IN string
+    // and cheap (a single user's active-session count is always small).
+    const { data: active, error: fetchError } = await supabase
+      .from('device_sessions')
+      .select('session_id, fingerprint, platform, user_agent')
+      .eq('user_id', args.userId)
+      .is('revoked_at', null);
+    if (fetchError) return { ok: false, count: 0 };
+    const rows = (active ?? []) as { session_id: string; fingerprint: string | null; platform: string | null; user_agent: string | null }[];
+
+    let idsToRevoke: string[];
+    if (args.sessionId) {
+      const target = rows.find((r) => r.session_id === args.sessionId);
+      if (!target) return { ok: false, count: 0 };
+      const key = deviceKeyOf(target);
+      idsToRevoke = rows.filter((r) => deviceKeyOf(r) === key).map((r) => r.session_id);
+    } else if (args.keepSessionId) {
+      const keep = rows.find((r) => r.session_id === args.keepSessionId);
+      const keepKey = keep ? deviceKeyOf(keep) : null;
+      idsToRevoke = rows.filter((r) => r.session_id !== args.keepSessionId && (!keepKey || deviceKeyOf(r) !== keepKey)).map((r) => r.session_id);
+    } else {
+      return { ok: false, count: 0 };
+    }
+    if (idsToRevoke.length === 0) return { ok: true, count: 0 };
+
+    const { data, error } = await supabase
       .from('device_sessions')
       .update({ revoked_at: new Date().toISOString() })
       .eq('user_id', args.userId)
-      .is('revoked_at', null);
-    if (args.sessionId) q = q.eq('session_id', args.sessionId);
-    else if (args.keepSessionId) q = q.neq('session_id', args.keepSessionId);
-    const { data, error } = await q.select('session_id');
+      .is('revoked_at', null)
+      .in('session_id', idsToRevoke)
+      .select('session_id');
     if (error) return { ok: false, count: 0 };
     return { ok: true, count: data?.length ?? 0 };
   } catch {

@@ -94,6 +94,12 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
           theme: mode === 'dark' ? 'dark' : 'light',
           accentColor: '#2A8AED',
           logo: '/visby-logo-mark.png',
+          // Solana-only, direct-connect wallets. Dropping 'wallet_connect' (and the EVM-only
+          // metamask/coinbase/rainbow entries — irrelevant on a Solana-only app) removes the
+          // pairing-QR/raw-URI step from external-wallet sign-in: 'detected_wallets' +
+          // 'phantom' connect in one click via the browser extension, no code ever shown (A3).
+          walletList: ['detected_wallets', 'phantom'],
+          walletChainType: 'solana-only',
         },
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',

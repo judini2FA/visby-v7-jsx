@@ -186,6 +186,30 @@ interface NotificationRow {
   created_at: string;
 }
 
+function shortWallet(w: string): string {
+  if (!w || w.length < 12) return w ?? '';
+  return `${w.slice(0, 6)}…${w.slice(-4)}`;
+}
+
+// Links a user's name/wallet to their profile — their own profile (/profile) if it's the viewer,
+// otherwise the public view (/p/[wallet]). Safe to nest inside a clickable ancestor row (Link/button):
+// it stops propagation and navigates itself, mirroring OwnerStack's pattern in owner-stack.tsx.
+function UserLink({ wallet, viewerWallet, children, style }: { wallet: string; viewerWallet: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  const router = useRouter();
+  const href = wallet && viewerWallet && wallet === viewerWallet ? '/profile' : `/p/${wallet}`;
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push(href); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); router.push(href); } }}
+      style={{ cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2, ...style }}
+    >
+      {children}
+    </span>
+  );
+}
+
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
@@ -212,6 +236,8 @@ function NotifIcon({ type }: { type: string }) {
       return <svg {...s}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
     case 'message':
       return <svg {...s}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
+    case 'offer':
+      return <svg {...s}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
     case 'review':
       return <svg {...s}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
     case 'dispute_opened':
@@ -225,16 +251,78 @@ function NotifIcon({ type }: { type: string }) {
   }
 }
 
+interface IncomingOffer {
+  id: string;
+  item_id: string;
+  buyer_wallet: string;
+  seller_wallet: string;
+  amount_usd: number;
+  status: string;
+  created_at: string;
+  item: { name: string; image_url: string | null; price_usdc: number | null; is_listed: boolean } | null;
+}
+
 function NotificationsTab({ wallet }: { wallet: string }) {
   const { getAccessToken } = usePrivy();
   const utils = trpc.useUtils();
   const [notifs, setNotifs] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [offers, setOffers] = useState<IncomingOffer[]>([]);
+  const [offersLoading, setOffersLoading] = useState(true);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [offerErr, setOfferErr] = useState<Record<string, string>>({});
 
   const { data: likeNotifs = [], isLoading: likesLoading } = trpc.likes.getForOwner.useQuery(
     { owner_wallet: wallet },
     { enabled: !!wallet }
   );
+
+  async function loadOffers() {
+    if (!wallet) return;
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/offers/list', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      const incoming: IncomingOffer[] = Array.isArray(json.incoming) ? json.incoming : [];
+      setOffers(incoming.filter(o => o.status === 'pending'));
+    } catch {
+      setOffers([]);
+    } finally {
+      setOffersLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!wallet) { setOffersLoading(false); return; }
+    setOffersLoading(true);
+    loadOffers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet]);
+
+  async function respondOffer(offerId: string, action: 'accept' | 'decline') {
+    setRespondingId(offerId);
+    setOfferErr(prev => ({ ...prev, [offerId]: '' }));
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/offers/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ offer_id: offerId, action }),
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setOfferErr(prev => ({ ...prev, [offerId]: json.error ?? 'Something went wrong' }));
+        return;
+      }
+      setOffers(prev => prev.filter(o => o.id !== offerId));
+    } catch {
+      setOfferErr(prev => ({ ...prev, [offerId]: 'Network error' }));
+    } finally {
+      setRespondingId(null);
+    }
+  }
 
   async function loadNotifs() {
     if (!wallet) return;
@@ -304,14 +392,14 @@ function NotificationsTab({ wallet }: { wallet: string }) {
     }
   }
 
-  if (loading || likesLoading) return (
+  if (loading || likesLoading || offersLoading) return (
     <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[2] }}>
       {[1,2,3].map(i => <div key={i} style={{ ...card(), height: 64, animation: 'pulse 2s infinite' }} />)}
     </div>
   );
 
   const unreadCount = notifs.filter(n => !n.read).length;
-  const isEmpty = notifs.length === 0 && likeNotifs.length === 0;
+  const isEmpty = notifs.length === 0 && likeNotifs.length === 0 && offers.length === 0;
 
   if (isEmpty) return (
     <div style={{ paddingTop: S[4] }}>
@@ -326,6 +414,55 @@ function NotificationsTab({ wallet }: { wallet: string }) {
 
   return (
     <div style={{ paddingTop: S[4] }}>
+      {offers.length > 0 && (
+        <div style={{ marginBottom: S[6] }}>
+          <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Offers</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+            {offers.map(o => (
+              <div key={o.id} style={{ ...surface({ pad: '12px 16px' }), display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+                  <div style={{ ...surface({ radius: '50%' }), width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
+                    <NotifIcon type="offer" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      Offer on {o.item?.name ?? 'your item'}
+                    </div>
+                    <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>
+                      <UserLink wallet={o.buyer_wallet} viewerWallet={wallet} style={{ color: 'inherit' }}>
+                        {shortWallet(o.buyer_wallet)}
+                      </UserLink>
+                      {' offered '}
+                      <span style={{ color: 'var(--text-strong)', fontWeight: 700 }}>${Number(o.amount_usd).toFixed(2)}</span>
+                      {o.item?.price_usdc != null ? ` (list $${Number(o.item.price_usdc).toFixed(2)})` : ''}
+                    </div>
+                  </div>
+                </div>
+                {offerErr[o.id] && (
+                  <div style={{ ...t('meta'), color: 'var(--danger)' }}>{offerErr[o.id]}</div>
+                )}
+                <div style={{ display: 'flex', gap: S[2] }}>
+                  <button
+                    onClick={() => respondOffer(o.id, 'decline')}
+                    disabled={respondingId === o.id}
+                    style={{ ...btn('secondary'), flex: 1, fontSize: 13, padding: '8px 12px', opacity: respondingId === o.id ? 0.6 : 1 }}
+                  >
+                    Decline
+                  </button>
+                  <button
+                    onClick={() => respondOffer(o.id, 'accept')}
+                    disabled={respondingId === o.id}
+                    style={{ ...btn('primary'), flex: 1, fontSize: 13, padding: '8px 12px', opacity: respondingId === o.id ? 0.6 : 1 }}
+                  >
+                    {respondingId === o.id ? 'Working…' : 'Accept'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {notifs.length > 0 && (
         <>
           {unreadCount > 0 && (
@@ -695,17 +832,26 @@ function SalesTab({ wallet }: { wallet: string }) {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ ...t('body'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.items?.name ?? '—'}</div>
-                        {order.tracking_number && (
-                          <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>
-                            {order.tracking_carrier ? `${order.tracking_carrier} · ` : ''}{order.tracking_number}
-                          </div>
-                        )}
                       </div>
                       <span style={{ ...badge(order.status === 'delivered' ? 'success' : 'default') }}>
                         {order.status === 'delivered' ? 'Delivered' : 'Shipped'}
                       </span>
                       <DisputeBadge order={order} />
                     </div>
+                    {order.tracking_number && (
+                      <div style={{ ...surface({ pad: '8px 12px' }), display: 'flex', flexDirection: 'column', gap: 4, marginTop: S[2] }}>
+                        {order.tracking_carrier && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Carrier</span>
+                            <span style={{ ...t('meta'), color: 'var(--text-strong)' }}>{order.tracking_carrier}</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Tracking number</span>
+                          <span style={{ ...t('meta'), color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{order.tracking_number}</span>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], marginTop: S[2], paddingTop: S[2], borderTop: '1px solid var(--divider)', flexWrap: 'wrap' }}>
                       <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>
                         ${price.toFixed(2)} − ${feeUsd.toFixed(2)} fee{shipCost > 0 ? ` − $${shipCost.toFixed(2)} ship` : ''}
@@ -781,7 +927,10 @@ function SalesTab({ wallet }: { wallet: string }) {
                     </div>
                     {sale.owner_wallet && (
                       <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>
-                        → {sale.owner_wallet.slice(0,6)}…{sale.owner_wallet.slice(-4)}
+                        {'→ '}
+                        <UserLink wallet={sale.owner_wallet} viewerWallet={wallet} style={{ color: 'inherit' }}>
+                          {shortWallet(sale.owner_wallet)}
+                        </UserLink>
                       </div>
                     )}
                   </div>
@@ -892,9 +1041,12 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
           Back to conversations
         </button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], marginBottom: S[3] }}>
-          <div style={{ ...t('heading'), color: 'var(--text-strong)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Link
+            href={activeConv === wallet ? '/profile' : `/p/${activeConv}`}
+            style={{ ...t('heading'), color: 'var(--text-strong)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
+          >
             {displayName}
-          </div>
+          </Link>
           <button
             onClick={() => setShowPaySheet(true)}
             style={{ ...btn('secondary'), gap: S[2], padding: '8px 14px', flexShrink: 0 }}
@@ -957,7 +1109,13 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: S[2], marginBottom: S[1] }}>
-                  <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.partner_name ?? `${conv.partner_wallet.slice(0,6)}…${conv.partner_wallet.slice(-4)}`}</div>
+                  <UserLink
+                    wallet={conv.partner_wallet}
+                    viewerWallet={wallet}
+                    style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}
+                  >
+                    {conv.partner_name ?? shortWallet(conv.partner_wallet)}
+                  </UserLink>
                   <div style={{ ...t('meta'), color: 'var(--text-muted)', flexShrink: 0 }}>{new Date(conv.last_at).toLocaleDateString()}</div>
                 </div>
                 <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.last_message}</div>

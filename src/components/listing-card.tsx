@@ -23,6 +23,11 @@ export const isCutout = (url?: string | null): boolean => !!url && /\.png(\?|$)/
 // button, price, and the owner stack. Used everywhere a listing is shown (home, profiles, etc.).
 export function ListingCard({ item }: { item: ListingItem }) {
   const { format: fmtPrice } = useCurrency();
+  const owners = item.owners?.length ? item.owners : [{ wallet: item.current_owner_wallet }];
+  // POL1: owner count is transfer events, not distinct wallets — a wallet that buys, sells, then
+  // buys back again is 3 owners, not 1. `transfer_count` (one row per mint/transfer) is the
+  // authoritative count; `owners.length` (deduped chain) only ever under-counts, so it's a floor.
+  const ownerCount = Math.max(item.transfer_count ?? 0, owners.length);
 
   return (
     <Link href={`/item/${item.id}`}
@@ -57,10 +62,13 @@ export function ListingCard({ item }: { item: ListingItem }) {
           <div style={price('md')}>
             {fmtPrice(item.price_usdc ?? 0)}
           </div>
-          <OwnerStack
-            owners={item.owners?.length ? item.owners : [{ wallet: item.current_owner_wallet }]}
-            href={`/item/${item.id}#history`}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>{ownerCount} owner{ownerCount !== 1 ? 's' : ''}</span>
+            <OwnerStack
+              owners={owners}
+              href={`/item/${item.id}#history`}
+            />
+          </div>
         </div>
       </div>
     </Link>
