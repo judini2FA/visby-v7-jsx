@@ -154,10 +154,13 @@ export async function getAcceptedOfferPrice(
       .eq('status', 'accepted')
       .maybeSingle();
     if (error || !data) return null;
-    if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null; // expired
+    // Require a present AND future expiry — an accepted offer always carries one (set atomically in
+    // respondToOffer), so a missing expires_at is anomalous; treat it as no discount rather than unbounded.
+    if (!data.expires_at || new Date(data.expires_at).getTime() < Date.now()) return null;
     const amt = Number(data.amount_usd);
     if (!Number.isFinite(amt) || amt <= 0) return null;
-    if (amt > listPriceUsd) return null; // an offer can NEVER raise the price
+    if (!(listPriceUsd > 0)) return null;   // a non-positive list price is corrupt — never grant a discount off it
+    if (amt > listPriceUsd) return null;     // an offer can NEVER raise the price
     return { amountUsd: amt, offerId: data.id };
   } catch (err) {
     captureError(err, { stage: 'getAcceptedOfferPrice', item_id: itemId });

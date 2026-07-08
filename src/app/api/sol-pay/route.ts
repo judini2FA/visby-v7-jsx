@@ -73,6 +73,7 @@ export async function POST(req: Request) {
     // trusted here. Resolve the accepted-offer price (else list) and verify the SOL they sent against THAT
     // — otherwise an accepted-offer buyer who correctly sends the discounted SOL would fail the amount check.
     const { priceUsd } = await resolveCheckoutPrice(item, buyer_wallet);
+    if (!(priceUsd > 0)) return NextResponse.json({ error: 'Item price unavailable' }, { status: 400 }); // guard the discrepancy division below
 
     // Verify amount matches price (with slippage tolerance). Value the SOL with the server-side oracle —
     // never the client-supplied quote alone, which a buyer could inflate (e.g. 4000 vs the real ~200) so a
