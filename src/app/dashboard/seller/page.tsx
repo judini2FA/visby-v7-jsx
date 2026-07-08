@@ -95,11 +95,21 @@ function MintForm({ wallet }: { wallet: string }) {
     } catch { return null; }
   }
 
+  function missingFields(): string[] {
+    const missing: string[] = [];
+    if (images.length === 0) missing.push('a photo');
+    if (!name) missing.push('a title');
+    if (!serial) missing.push('a serial number');
+    if (!category) missing.push('a category');
+    if (listNow && !price) missing.push('a price');
+    return missing;
+  }
+
   async function handleMint(e: React.FormEvent) {
     e.preventDefault();
     if (!wallet) { setError('Connect your wallet first'); return; }
-    if (!name || !serial || !category) { setError('Fill in all required fields'); return; }
-    if (listNow && !price) { setError('Enter a price to list'); return; }
+    const missing = missingFields();
+    if (missing.length > 0) { setError(`Add ${missing.join(', ')} before minting`); return; }
     setError('');
     setStatus('uploading');
     const cover = images[0];
@@ -176,7 +186,8 @@ function MintForm({ wallet }: { wallet: string }) {
   }
 
   const busy      = status === 'uploading' || status === 'minting';
-  const canSubmit = !!(name && serial && category && (!listNow || price));
+  const missing   = missingFields();
+  const canSubmit = missing.length === 0;
 
   return (
     <form onSubmit={handleMint} style={{ paddingTop: S[5], paddingBottom: S[7], display: 'flex', flexDirection: 'column', gap: S[5] }}>
@@ -289,6 +300,12 @@ function MintForm({ wallet }: { wallet: string }) {
       {error && (
         <div style={{ ...badge('danger'), display: 'flex', padding: '12px 16px', borderRadius: 'var(--r-sm)', ...t('body'), letterSpacing: 0 }}>
           {error}
+        </div>
+      )}
+
+      {!error && !busy && missing.length > 0 && (
+        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+          Add {missing.join(', ')} to mint
         </div>
       )}
 

@@ -7,7 +7,8 @@ import Link from 'next/link';
 import { useVisbWallet } from '@/lib/wallet';
 import CheckoutModal from '@/components/checkout-modal';
 import { OffersPanel } from '@/components/offers-panel';
-import { S, t, price, card, surface, btn, badge, avatar, sectionLabel, input } from '@/lib/ui';
+import { S, t, price, card, surface, btn, badge, avatar, sectionLabel, input, sheet, T } from '@/lib/ui';
+import { CutoutEditor } from '@/components/cutout-editor';
 import { explorerAddress } from '@/lib/explorer';
 import { trpc } from '@/lib/trpc/client';
 import { ReputationBadge } from '@/components/reviews';
@@ -50,12 +51,219 @@ interface OwnershipRecord {
 interface Item {
   id: string; name: string; serial_number: string; condition: string;
   category: string; description?: string; image_url?: string;
+  extra_image_urls?: string[];
   nft_mint_address: string; current_owner_wallet: string;
   is_listed: boolean; price_usdc?: number; created_at: string;
   weight_oz?: number; ship_service_pref?: string;
   auth_status?: string;
   ownership_history?: OwnershipRecord[];
   profiles?: Record<string, { avatar_url: string | null; display_name: string | null }>;
+}
+
+const MAX_EXTRA_PHOTOS = 8;
+
+// Owner-only edit sheet (12b L2). Title is permanently locked (tied to the serial) and the original
+// cover photo is never replaced or removed — this only APPENDS new photos and can update the
+// description. Reuses the same upload path + cutout flow as mint/relist.
+function EditListingSheet({
+  item,
+  walletAddress,
+  getAccessToken,
+  onClose,
+  onSaved,
+}: {
+  item: Item;
+  walletAddress: string;
+  getAccessToken: () => Promise<string | null>;
+  onClose: () => void;
+  onSaved: (patch: { description?: string; extra_image_urls?: string[] }) => void;
+}) {
+  const [description, setDescription] = useState(item.description ?? '');
+  const [newPhotos, setNewPhotos] = useState<{ id: string; file: File; previewUrl: string }[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const existingCount = 1 + (item.extra_image_urls?.length ?? 0); // cover + already-added extras
+  const remainingSlots = Math.max(0, MAX_EXTRA_PHOTOS - existingCount - newPhotos.length);
+
+  function pickPhotos(files: FileList | null) {
+    if (!files) return;
+    const adds = Array.from(files).slice(0, remainingSlots).map(file => ({
+      id: crypto.randomUUID(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setNewPhotos(prev => [...prev, ...adds]);
+  }
+
+  function applyCutout(id: string, file: File) {
+    setNewPhotos(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      URL.revokeObjectURL(p.previewUrl);
+      return { ...p, file, previewUrl: URL.createObjectURL(file) };
+    }));
+    setEditId(null);
+  }
+
+  function removePhoto(id: string) {
+    setNewPhotos(prev => {
+      const found = prev.find(p => p.id === id);
+      if (found) URL.revokeObjectURL(found.previewUrl);
+      return prev.filter(p => p.id !== id);
+    });
+  }
+
+  async function save() {
+    if (busy) return;
+    setErr('');
+    setBusy(true);
+    try {
+      const token = await getAccessToken();
+      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const uploadedUrls: string[] = [];
+      for (const p of newPhotos) {
+        const fd = new FormData();
+        fd.append('file', p.file);
+        const res = await fetch('/api/upload-image', { method: 'POST', headers: authHeaders, body: fd });
+        if (!res.ok) {
+          const b = await res.json().catch(() => ({}));
+          throw new Error((b as any).error ?? 'Photo upload failed');
+        }
+        const { url } = await res.json();
+        uploadedUrls.push(url);
+      }
+
+      const trimmedDesc = description.trim();
+      const descChanged = trimmedDesc !== (item.description ?? '').trim();
+
+      if (!descChanged && uploadedUrls.length === 0) {
+        onClose();
+        return;
+      }
+
+      const res = await fetch('/api/items/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          item_id: item.id,
+          wallet: walletAddress,
+          ...(descChanged ? { description: trimmedDesc } : {}),
+          ...(uploadedUrls.length ? { add_image_urls: uploadedUrls } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error((b as any).error ?? 'Failed to save changes');
+      }
+
+      onSaved({
+        ...(descChanged ? { description: trimmedDesc } : {}),
+        ...(uploadedUrls.length ? { extra_image_urls: [...(item.extra_image_urls ?? []), ...uploadedUrls] } : {}),
+      });
+    } catch (e: any) {
+      setErr(e.message ?? 'Failed to save changes');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const editTarget = newPhotos.find(p => p.id === editId);
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'var(--img-scrim)' }}
+    >
+      <div style={{ ...sheet(), width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: S[5], display: 'flex', flexDirection: 'column', gap: S[4], borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ ...t('heading'), color: T.textStrong }}>Edit listing</span>
+          <button onClick={onClose} style={{ ...btn('text'), padding: S[1] }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* Title is locked — shown read-only for clarity, no input */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+          <label style={{ ...t('meta'), color: T.textMuted, display: 'flex', alignItems: 'center', gap: S[1] }}>
+            Title
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </label>
+          <div style={{ ...input(), display: 'flex', alignItems: 'center', color: 'var(--text-muted)', background: 'var(--surface-bg)', cursor: 'not-allowed' }}>
+            {item.name}
+          </div>
+          <span style={{ ...t('micro'), color: T.textMuted }}>Locked — tied to the item&rsquo;s serial number</span>
+        </div>
+
+        {/* Description */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+          <label style={{ ...t('meta'), color: T.textMuted }}>Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value.slice(0, 4000))}
+            rows={5}
+            placeholder="Describe the item..."
+            style={{ ...input(), resize: 'vertical', minHeight: 100, fontFamily: 'inherit' }}
+          />
+          <span style={{ ...t('micro'), color: T.textMuted, textAlign: 'right' }}>{description.length}/4000</span>
+        </div>
+
+        {/* Photos — original cover is locked; this only adds new ones */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          <label style={{ ...t('meta'), color: T.textMuted }}>Add photos</label>
+          <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
+            {item.image_url && (
+              <div style={{ position: 'relative', width: 72, height: 72, borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-bg)' }}>
+                <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <span style={{ position: 'absolute', bottom: 2, left: 2, ...t('micro'), fontSize: 9, color: '#fff', background: 'rgba(0,0,0,.55)', borderRadius: 4, padding: '1px 4px' }}>Original</span>
+              </div>
+            )}
+            {(item.extra_image_urls ?? []).map((url) => (
+              <div key={url} style={{ width: 72, height: 72, borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-bg)' }}>
+                <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            ))}
+            {newPhotos.map((p) => (
+              <div key={p.id} style={{ position: 'relative', width: 72, height: 72, borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-bg)' }}>
+                <img src={p.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <button onClick={() => removePhoto(p.id)} aria-label="Remove"
+                  style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <button onClick={() => setEditId(p.id)}
+                  style={{ position: 'absolute', bottom: 2, right: 2, ...t('micro'), fontSize: 9, color: '#fff', background: 'rgba(0,0,0,.55)', border: 'none', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}>
+                  Cutout
+                </button>
+              </div>
+            ))}
+            {remainingSlots > 0 && (
+              <label style={{ width: 72, height: 72, borderRadius: 'var(--r-sm)', border: '2px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <input type="file" accept="image/*" multiple hidden onChange={(e) => { pickPhotos(e.target.files); e.currentTarget.value = ''; }} />
+              </label>
+            )}
+          </div>
+          <span style={{ ...t('micro'), color: T.textMuted }}>The original photo can&rsquo;t be removed or replaced — new photos are added alongside it.</span>
+        </div>
+
+        {err && <span style={{ ...t('meta'), color: 'var(--danger)' }}>{err}</span>}
+
+        <button onClick={save} disabled={busy} style={{ ...btn('primary', { full: true }), opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Saving…' : 'Save Changes'}
+        </button>
+      </div>
+
+      {editTarget && (
+        <CutoutEditor
+          file={editTarget.file}
+          getAccessToken={getAccessToken}
+          onDone={(f) => applyCutout(editTarget.id, f)}
+          onCancel={() => setEditId(null)}
+        />
+      )}
+    </div>
+  );
 }
 
 export default function ItemPage() {
@@ -78,30 +286,11 @@ export default function ItemPage() {
   const [privateMode, setPrivateMode] = useState(false);
   const [itemOrder, setItemOrder] = useState<{ status: string; shipped_at: string | null; delivered_at: string | null } | null | undefined>(undefined);
   const [shipEst, setShipEst] = useState<number | null>(null);
-  const [authBusy, setAuthBusy] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [showEditListing, setShowEditListing] = useState(false);
+  const [activeImage, setActiveImage] = useState<string | undefined>(undefined);
 
   const isAdmin = isAdminWallet(walletAddress);
-
-  async function handleSetAuth(auth_status: 'authenticated' | 'flagged') {
-    if (!item || !walletAddress || authBusy) return;
-    setAuthBusy(true);
-    try {
-      const token = await getAccessToken();
-      const res = await fetch('/api/items/authenticate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ wallet: walletAddress, item_id: item.id, auth_status }),
-      });
-      if (res.ok) {
-        setItem(prev => prev ? { ...prev, auth_status } : prev);
-      }
-    } catch {}
-    finally { setAuthBusy(false); }
-  }
 
   const { data: sellerRep, isLoading: repLoading } = trpc.reviews.getReputation.useQuery(
     { wallet: item?.current_owner_wallet ?? '' },
@@ -152,7 +341,7 @@ export default function ItemPage() {
         try { return JSON.parse(text); }
         catch { throw new Error(`Server error (${r.status}): ${text.slice(0, 120)}`); }
       })
-      .then(d => { if (d.error) setErr(d.error); else setItem(d); })
+      .then(d => { if (d.error) setErr(d.error); else { setItem(d); setActiveImage(d.image_url); } })
       .catch((e: any) => setErr(e.message ?? 'Failed to load'))
       .finally(() => setLoading(false));
   }, [id]);
@@ -249,9 +438,9 @@ export default function ItemPage() {
 
       {/* Hero image — full width up to page container */}
       <div className="visby-inner" style={{ paddingTop: S[4], paddingBottom: 0 }}>
-        <div style={{ background: isCutout(item.image_url) ? 'transparent' : 'var(--surface-bg)', width: '100%', height: 360, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
-          {item.image_url ? (
-            <img src={item.image_url} alt={item.name} style={isCutout(item.image_url)
+        <div style={{ background: isCutout(activeImage) ? 'transparent' : 'var(--surface-bg)', width: '100%', height: 360, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+          {activeImage ? (
+            <img src={activeImage} alt={item.name} style={isCutout(activeImage)
               ? { width: '100%', height: '100%', objectFit: 'contain', padding: 12 }
               : { width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
@@ -262,6 +451,21 @@ export default function ItemPage() {
             {(item as any).transfer_count > 0 ? 'Used' : item.condition}
           </span>
         </div>
+        {/* Additional owner-added photos — original cover always shown first */}
+        {(item.extra_image_urls?.length ?? 0) > 0 && (
+          <div style={{ display: 'flex', gap: S[2], marginTop: S[3], overflowX: 'auto' }}>
+            {[item.image_url, ...(item.extra_image_urls ?? [])].filter(Boolean).map((url, i) => (
+              <button key={`${url}-${i}`} onClick={() => setActiveImage(url as string)}
+                style={{
+                  width: 64, height: 64, borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0,
+                  padding: 0, cursor: 'pointer', background: 'var(--surface-bg)',
+                  border: activeImage === url ? '2px solid var(--accent)' : '1px solid var(--glass-border)',
+                }}>
+                <img src={url as string} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="visby-inner" style={{ paddingBottom: S[8] + S[7] }}>
@@ -314,6 +518,11 @@ export default function ItemPage() {
                     {unlistStatus === 'unlisting' ? 'Removing…' : 'Unlist'}
                   </button>
                 </div>
+                <button onClick={() => setShowEditListing(true)}
+                  style={{ ...btn('text', { full: true }), marginTop: S[2] }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Edit Photos &amp; Description
+                </button>
 
                 {/* Seller payout breakdown — Visby cut + shipping deducted from the sale price */}
                 <div style={{ ...surface({ pad: S[4] }), marginTop: S[4], display: 'flex', flexDirection: 'column', gap: S[2] }}>
@@ -475,24 +684,10 @@ export default function ItemPage() {
             {isAdmin && (
               <div style={{ marginTop: S[4], paddingTop: S[4], borderTop: '1px solid var(--divider)' }}>
                 <div style={{ ...t('micro'), color: 'var(--text-muted)', marginBottom: S[2], letterSpacing: '0.05em', textTransform: 'uppercase' }}>Admin</div>
-                <div style={{ display: 'flex', gap: S[2] }}>
-                  <button
-                    onClick={() => handleSetAuth('authenticated')}
-                    disabled={authBusy || item.auth_status === 'authenticated'}
-                    style={{ ...btn('secondary', { full: true, pill: false }), flex: 1, opacity: (authBusy || item.auth_status === 'authenticated') ? 0.5 : 1, fontSize: 12 }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/><polyline points="9 12 11 14 15 10"/></svg>
-                    Mark Authenticated
-                  </button>
-                  <button
-                    onClick={() => handleSetAuth('flagged')}
-                    disabled={authBusy || item.auth_status === 'flagged'}
-                    style={{ ...btn('danger', { full: true, pill: false }), flex: 1, opacity: (authBusy || item.auth_status === 'flagged') ? 0.5 : 1, fontSize: 12 }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    Flag
-                  </button>
-                </div>
+                <Link href="/admin/reports" style={{ ...btn('secondary', { full: true, pill: false }), fontSize: 12 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  Review in moderation queue
+                </Link>
               </div>
             )}
           </div>
@@ -601,6 +796,19 @@ export default function ItemPage() {
           onSuccess={(purchasedItemId) => {
             setShowCheckout(false);
             router.push(`/order/${purchasedItemId}`);
+          }}
+        />
+      )}
+
+      {showEditListing && item && walletAddress && (
+        <EditListingSheet
+          item={item}
+          walletAddress={walletAddress}
+          getAccessToken={getAccessToken}
+          onClose={() => setShowEditListing(false)}
+          onSaved={(patch) => {
+            setItem(prev => prev ? { ...prev, ...patch } : prev);
+            setShowEditListing(false);
           }}
         />
       )}

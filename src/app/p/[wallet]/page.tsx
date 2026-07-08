@@ -174,6 +174,11 @@ export default function PublicProfilePage() {
             <div style={{ ...t('title'), color: 'var(--text-strong)' }}>
               {profile?.display_name ?? shortAddr(wallet)}
             </div>
+            {(profile as any)?.username && (
+              <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                @{(profile as any).username}
+              </div>
+            )}
             {profile?.bio && (
               <div style={{ ...t('body'), color: 'var(--text)', maxWidth: 280 }}>
                 {profile.bio}

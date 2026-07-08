@@ -1,34 +1,20 @@
 import { create, insertMultiple, search } from '@orama/orama';
 import { createServiceClient } from '@/lib/supabase/service';
-import { GROUPS } from './synonyms';
+import { expandSearchTerms } from './synonyms';
 import { embedText, cosineSim } from '@/lib/embeddings';
 
 // In-app intuitive search (Orama) — free, no AI, nothing extra to run.
 // Builds its index straight from the live listings on a short TTL, so new
 // mints/lists/sales show up automatically with no sync wiring or backfill.
 
-// Curated synonym lookup (offline, deterministic). Query expansion gives the
-// "navy → dark blue" behavior; Orama's typo tolerance + BM25 do the rest.
-const SYN = new Map<string, Set<string>>();
-for (const group of GROUPS) {
-  for (const term of group) {
-    const key = term.toLowerCase();
-    if (!SYN.has(key)) SYN.set(key, new Set());
-    for (const other of group) if (other.toLowerCase() !== key) SYN.get(key)!.add(other.toLowerCase());
-  }
-}
-
-function expandQuery(query: string): string {
+// Shares the curated-map + Datamuse expansion used by the SQL ilike fallback, so the primary
+// engine gets the same "navy → dark blue" and "succulent → cactus"-style relatedness, not just a
+// curated-only subset. Orama's typo tolerance + BM25 rank the widened term set.
+async function expandQuery(query: string): Promise<string> {
   const q = query.trim().toLowerCase();
   if (!q) return '';
-  const out = new Set<string>([q]);
-  const tokens = q.split(/\s+/).filter(Boolean);
-  for (const t of tokens) {
-    out.add(t);
-    for (const s of SYN.get(t) ?? []) out.add(s);
-  }
-  for (const s of SYN.get(q) ?? []) out.add(s); // whole-phrase keys like "dark blue"
-  return Array.from(out).join(' ');
+  const terms = await expandSearchTerms(q);
+  return Array.from(new Set([q, ...terms])).join(' ');
 }
 
 type ItemRow = Record<string, any>;
@@ -114,8 +100,13 @@ export type SearchParams = {
 };
 
 export async function searchListings(p: SearchParams): Promise<ItemRow[]> {
+  // A blank/whitespace-only query has no terms to rank against — Orama treats an empty `term` as
+  // match-all, which would silently degrade "search for nothing" into "browse everything". Return
+  // no hits instead so an explicit blank search reads as an empty result, not the full catalog.
+  if (!p.query?.trim()) return [];
+
   const db = await getIndex();
-  const term = expandQuery(p.query);
+  const term = await expandQuery(p.query);
 
   const res = await search(db, {
     term,
@@ -134,6 +125,8 @@ export async function searchListings(p: SearchParams): Promise<ItemRow[]> {
 // stored embedding. Throws when embeddings are unavailable (no key, query embed failed, or nothing is
 // embedded yet) so the caller falls back to the Orama BM25 engine — which itself falls back to SQL ilike.
 export async function semanticSearchListings(p: SearchParams): Promise<ItemRow[]> {
+  if (!p.query?.trim()) return [];
+
   const qvec = await embedText(p.query);
   if (!qvec) throw new Error('query embedding unavailable');
 

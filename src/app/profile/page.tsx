@@ -194,25 +194,13 @@ function MyItemsTab({ wallet }: { wallet: string }) {
 // ─────────────────────────────────────────────────────────────
 // PUBLIC VIEW TAB
 // ─────────────────────────────────────────────────────────────
-function PublicViewTab({ wallet, displayName, bio, avatarUrl }: { wallet: string; displayName: string; bio?: string | null; avatarUrl?: string | null }) {
+function PublicViewTab({ wallet }: { wallet: string }) {
   const { data: ownedItems = [] } = trpc.listings.getByOwner.useQuery({ wallet }, { enabled: !!wallet });
   const listedItems = ownedItems.filter((i: any) => i.is_listed);
   const { format: fmtPrice } = useCurrency();
 
   return (
     <div style={{ paddingTop: S[4] }}>
-      {/* Avatar card */}
-      <div style={{ ...surface({ pad: S[4] }), display: 'flex', alignItems: 'center', gap: S[3], marginBottom: S[5] }}>
-        <div style={{ ...avatar('md'), width: 56, height: 56, fontSize: 20, background: avatarUrl ? 'var(--surface-bg)' : (wallet ? `linear-gradient(135deg, hsl(${(wallet.charCodeAt(0)*7)%360},70%,55%), hsl(${(wallet.charCodeAt(4)*13)%360},70%,45%))` : GD) }}>
-          {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (displayName[0] ?? '?').toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>{displayName}</div>
-          {bio && <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[1] }}>{bio}</div>}
-          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{shortAddr(wallet)}</div>
-        </div>
-      </div>
-
       {/* Active listings preview */}
       {listedItems.length > 0 && (
         <>
@@ -538,6 +526,9 @@ export default function ProfilePage() {
                     </svg>
                   </button>
                 </div>
+                {(profile as any)?.username && (
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{(profile as any).username}</div>
+                )}
                 {profile?.bio && (
                   <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.bio}</div>
                 )}
@@ -579,7 +570,7 @@ export default function ProfilePage() {
           <div className="visby-page" style={{ paddingBottom: 100 }}>
             <div style={{ marginTop: S[2] }}>
               {tab === 'items'  && <MyItemsTab wallet={walletAddress} />}
-              {tab === 'public' && <PublicViewTab wallet={walletAddress} displayName={displayName} bio={profile?.bio} avatarUrl={profile?.avatar_url} />}
+              {tab === 'public' && <PublicViewTab wallet={walletAddress} />}
             </div>
           </div>
         </>

@@ -90,11 +90,22 @@ export default function MintPage() {
     return url;
   }
 
+  function missingFields(): string[] {
+    const missing: string[] = [];
+    if (images.length === 0) missing.push('a photo');
+    if (!name) missing.push('a title');
+    if (!category) missing.push('a category');
+    if (!condition) missing.push('a condition');
+    if (!serial) missing.push('a serial number');
+    if (listNow && !price) missing.push('a price');
+    return missing;
+  }
+
   async function handleMint(e: React.FormEvent) {
     e.preventDefault();
     if (!walletAddress) { setError('Connect your wallet first'); return; }
-    if (!name || !serial || !category || !condition) { setError('Fill in all required fields'); return; }
-    if (listNow && !price) { setError('Enter a price to list'); return; }
+    const missing = missingFields();
+    if (missing.length > 0) { setError(`Add ${missing.join(', ')} before minting`); return; }
 
     setError('');
     setStatus('uploading');
@@ -186,7 +197,8 @@ export default function MintPage() {
   }
 
   const busy = status === 'uploading' || status === 'minting';
-  const canSubmit = name && serial && category && condition && (!listNow || price);
+  const missing = missingFields();
+  const canSubmit = missing.length === 0;
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
@@ -338,6 +350,12 @@ export default function MintPage() {
             Minting to: <span style={{ color: 'var(--text-strong)' }}>{walletAddress ? `${walletAddress.slice(0,6)}…${walletAddress.slice(-6)}` : 'No wallet'}</span>
           </div>
         </div>
+
+        {!error && status !== 'error' && !busy && missing.length > 0 && (
+          <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[3], textAlign: 'center' }}>
+            Add {missing.join(', ')} to mint
+          </div>
+        )}
 
         {/* Submit */}
         <button type="submit" disabled={busy || !canSubmit}

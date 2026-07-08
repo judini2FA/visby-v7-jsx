@@ -31,7 +31,7 @@ function SecRow({ icon, label, sublabel, right, border = true }: {
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
-    <button onClick={onToggle} style={{ width: 44, height: 26, borderRadius: 13, background: on ? T.gradBrand : 'var(--surface-bg)', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, position: 'relative', cursor: 'pointer', flexShrink: 0, padding: 0 }}>
+    <button onClick={onToggle} style={{ width: 44, height: 26, borderRadius: 13, background: on ? T.gradBrand : 'var(--surface-bg)', backgroundClip: 'border-box', backgroundOrigin: 'border-box', backgroundSize: '100% 100%', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,.28)', position: 'relative', cursor: 'pointer', flexShrink: 0, padding: 0 }}>
       <div style={{ width: 20, height: 20, borderRadius: '50%', background: on ? '#fff' : 'var(--text-muted)', position: 'absolute', top: 1, left: on ? 20 : 1, transition: 'left .2s' }} />
     </button>
   );
@@ -42,7 +42,6 @@ const stroke = { fill: 'none', stroke: 'var(--text-muted)', strokeWidth: 1.8, st
 export default function SecuritySettings() {
   const privy = usePrivy() as any;
   const { user, getAccessToken } = privy;
-  const mfaMethods: string[] = (user?.mfaMethods ?? []) as string[];
   const passkeyCount = ((user?.linkedAccounts ?? []) as any[]).filter((a) => a.type === 'passkey').length;
 
   const [appLock, setAppLock] = useState(false);
@@ -198,12 +197,7 @@ export default function SecuritySettings() {
     }
   }
 
-  // Privy raises its own modal for these; both require MFA/passkeys enabled in the Privy dashboard.
-  async function manage2fa() {
-    setErr('');
-    try { await privy.enrollInMfa?.(); }
-    catch { setErr('Two-factor sign-in isn’t available yet — it’s being enabled.'); }
-  }
+  // Privy raises its own modal for this; requires passkeys enabled in the Privy dashboard.
   async function addPasskey() {
     setErr('');
     try { await privy.linkPasskey?.(); }
@@ -274,12 +268,6 @@ export default function SecuritySettings() {
 
   return (
     <div>
-      <SecRow
-        icon={<svg width="16" height="16" viewBox="0 0 24 24" {...stroke}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>}
-        label="Two-factor authentication"
-        sublabel={mfaMethods.length ? `On — ${mfaMethods.join(', ')}` : 'Authenticator-app code, required to sign in'}
-        right={<button onClick={manage2fa} style={{ ...btn('secondary', { pill: false }), padding: '7px 14px', color: T.textMuted }}>{mfaMethods.length ? 'Manage' : 'Set up'}</button>}
-      />
       <SecRow
         icon={<svg width="16" height="16" viewBox="0 0 24 24" {...stroke}><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><circle cx="12" cy="15" r="1.4" fill="var(--text-muted)" stroke="none" /></svg>}
         label="Password"
@@ -396,7 +384,7 @@ export default function SecuritySettings() {
             <button
               onClick={confirmDelete}
               disabled={deleteBusy || deleteText !== 'DELETE'}
-              style={{ ...btn('primary'), background: 'var(--danger)', flex: 1, fontSize: 13, opacity: deleteBusy ? 0.7 : 1 }}
+              style={{ ...btn('primary'), background: 'var(--danger)', color: '#fff', flex: 1, fontSize: 13, opacity: deleteBusy ? 0.7 : 1 }}
             >
               {deleteBusy ? 'Deleting…' : 'Delete my account'}
             </button>

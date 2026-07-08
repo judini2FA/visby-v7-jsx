@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
+import { listAdmins } from '@/lib/admin';
+import { notifyMany } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +55,24 @@ export async function POST(req: Request) {
       }
       console.error('[reports/POST] insert error:', error);
       return NextResponse.json({ error: 'Could not save report' }, { status: 500 });
+    }
+
+    // Proactively ping the admin roster so a user-filed flag surfaces without someone happening to open
+    // the queue. Best-effort: never block or fail the report on a notification hiccup.
+    try {
+      const admins = await listAdmins();
+      if (admins.length) {
+        await notifyMany(admins.map((a) => ({
+          recipient_wallet: a.wallet,
+          type: 'report_filed',
+          title: 'New counterfeit / abuse report',
+          body: `A ${target_type} was flagged: ${reason.trim().slice(0, 80)}`,
+          link: '/admin/reports',
+          data: { target_type, target_id },
+        })));
+      }
+    } catch (notifyErr) {
+      console.error('[reports/POST] admin notify failed (report still saved):', notifyErr);
     }
 
     return NextResponse.json({ ok: true });

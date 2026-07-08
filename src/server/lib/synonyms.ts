@@ -52,24 +52,33 @@ function curatedSynonyms(term: string): string[] {
   return Array.from(CURATED.get(term.toLowerCase()) ?? []);
 }
 
-async function datamuseSynonyms(term: string): Promise<string[]> {
+async function datamuseWords(param: string, term: string, max: number): Promise<string[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 1500);
   try {
-    const url = `https://api.datamuse.com/words?rel_syn=${encodeURIComponent(term)}&max=6`;
+    const url = `https://api.datamuse.com/words?${param}=${encodeURIComponent(term)}&max=${max}`;
     const res = await fetch(url, { signal: ctrl.signal });
     if (!res.ok) return [];
     const raw: unknown = await res.json();
     if (!Array.isArray(raw)) return [];
     return (raw as any[])
       .map((r) => String(r?.word ?? '').trim().toLowerCase())
-      .filter(Boolean)
-      .slice(0, 4);
+      .filter(Boolean);
   } catch {
     return [];
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Strict synonyms (rel_syn) plus loosely-related/co-occurring concepts (rel_trg, e.g. "succulent" →
+// "cactus"). Widens recall beyond exact synonymy so near-relatives surface without going full free-text AI.
+async function datamuseSynonyms(term: string): Promise<string[]> {
+  const [syn, trg] = await Promise.all([
+    datamuseWords('rel_syn', term, 6),
+    datamuseWords('rel_trg', term, 4),
+  ]);
+  return Array.from(new Set([...syn, ...trg])).slice(0, 8);
 }
 
 const cache = new Map<string, string[]>();

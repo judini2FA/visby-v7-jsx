@@ -81,7 +81,7 @@ export default function SettingsPage() {
   );
 
   const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <button onClick={onToggle} style={{ width: 44, height: 26, borderRadius: 13, background: on ? T.gradBrand : 'var(--surface-bg)', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, position: 'relative', cursor: 'pointer', transition: 'all .2s', flexShrink: 0, padding: 0 }}>
+    <button onClick={onToggle} style={{ width: 44, height: 26, borderRadius: 13, background: on ? T.gradBrand : 'var(--surface-bg)', backgroundClip: 'border-box', backgroundOrigin: 'border-box', backgroundSize: '100% 100%', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,.28)', position: 'relative', cursor: 'pointer', transition: 'all .2s', flexShrink: 0, padding: 0 }}>
       <div style={{ width: 20, height: 20, borderRadius: '50%', background: on ? '#fff' : 'var(--text-muted)', position: 'absolute', top: 1, left: on ? 20 : 1, transition: 'left .2s, background .2s' }} />
     </button>
   );
@@ -158,7 +158,8 @@ export default function SettingsPage() {
             border={false}
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
             label="Crypto (SOL, USDC)"
-            right={<span style={{ ...t('micro'), color: T.textMuted }}>SOON</span>}
+            sublabel="Pay directly from your Visby wallet"
+            right={<span style={{ ...t('micro'), color: 'var(--ok)' }}>Active</span>}
           />
         </Section>
 

@@ -114,6 +114,13 @@ export const listingsRouter = createTRPCRouter({
         return visible;
       };
 
+      // `search` omitted entirely → browse-all (unchanged Market Square behavior). `search` present
+      // but blank/whitespace ("", "  ") is an explicit empty query — return no results instead of
+      // silently degrading to "no filter applied", which used to leak the whole catalog.
+      if (input.search !== undefined && input.search.trim() === '') {
+        return await withOwners([]);
+      }
+
       // Text search fail-soft chain: semantic (AI) when an embeddings key is set → Orama BM25 engine
       // (typo tolerance, synonyms) → SQL ilike below. Any layer throwing just tries the next.
       if (input.search) {
