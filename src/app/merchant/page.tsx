@@ -614,6 +614,195 @@ function OrdersCard({ merchant, wallet, orders, onRefresh }: {
   );
 }
 
+// ───────────────────────── install tutorial (opt-in, opens only on the header button) ─────────────────────────
+function HelpIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+function CloseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function TutorialStep({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', gap: S[3] }}>
+      <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: 'var(--grad-brand)', backgroundSize: 'cover', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, fontFamily: "'Manrope',sans-serif" }}>{n}</div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: S[2] }}>
+        <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>{title}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// A code block with a copy button, matching EmbedCard's monospace style.
+function TutorialCode({ code }: { code: string }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1 }}><CopyBtn value={code} label="Copy" /></div>
+      <pre style={{ ...surface({ pad: '14px 14px' }), margin: 0, overflowX: 'auto', fontFamily: MONO, fontSize: 12, lineHeight: 1.6, color: 'var(--text-strong)', whiteSpace: 'pre' }}>
+        {code}
+      </pre>
+    </div>
+  );
+}
+
+function InstallTutorial({ onClose }: { onClose: () => void }) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://YOUR_DOMAIN';
+
+  const sessionSnippet =
+`curl -X POST ${origin}/api/sdk/checkout \\
+  -H "Authorization: Bearer sk_visby_YOUR_SECRET" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "product_name": "Air Max 1 '\\''86 OG",
+    "serial_number": "SN-000123",
+    "price": 99.00,
+    "currency": "USD",
+    "success_url": "https://yoursite.com/thanks"
+  }'`;
+
+  const buttonSnippet =
+`<script src="${origin}/sdk/v1/button.js" async></script>
+<visby-button checkout-url="CHECKOUT_URL_FROM_STEP_2"></visby-button>`;
+
+  const completeSnippet =
+`document.querySelector('visby-button')
+  .addEventListener('visby:complete', (e) => {
+    // e.detail = { order_id, nft_address }
+    window.location = '/thanks?order=' + e.detail.order_id;
+  });`;
+
+  const verifySnippet =
+`const crypto = require('crypto');
+
+// Header: "Visby-Signature: t=<timestamp>,v1=<hmac>"
+function verifyVisby(rawBody, header, secret) {
+  const parts = Object.fromEntries(
+    header.split(',').map(p => p.split('='))
+  );
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(parts.t + '.' + rawBody)
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(parts.v1), Buffer.from(expected)
+  );
+}`;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(6,6,10,0.55)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: S[4], overflowY: 'auto' }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="How to install Pay with Visby"
+    >
+      <div onClick={e => e.stopPropagation()} style={{ ...card({ pad: S[5] }), width: '100%', maxWidth: 640, margin: 'auto', display: 'flex', flexDirection: 'column', gap: S[5] }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: S[2] }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: S[1] }}>
+            <div style={{ ...t('title'), color: 'var(--text-strong)' }}>Pay with Visby</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>How it works &mdash; and how to add it to your store.</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ ...btn('text', { pill: false }), color: 'var(--text-muted)', padding: 6, flexShrink: 0 }}>
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[5] }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>What it is</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+              Pay with Visby lets you sell an item and hand the buyer a <strong style={{ color: 'var(--text-strong)' }}>Tally</strong> &mdash; a tamper-proof certificate of authenticity and ownership, recorded on-chain. Buyers pay by card, bank, or crypto; you&rsquo;re paid your net automatically. Visby never holds your funds.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>What your buyer experiences</div>
+            {[
+              'They click the Pay with Visby button on your site.',
+              'They pay in a secure popup — card, bank, or crypto — seeing the full price up front.',
+              'They receive the item’s Tally; you’re paid your net (fee is 3.5%, minimum $0.50).',
+            ].map((line, i) => (
+              <div key={i} style={{ display: 'flex', gap: S[2], alignItems: 'flex-start' }}>
+                <span style={{ flexShrink: 0, marginTop: 7, width: 6, height: 6, borderRadius: '50%', background: 'var(--grad-brand)' }} />
+                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{line}</div>
+              </div>
+            ))}
+            <div style={{ ...surface({ pad: '20px 16px' }), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: S[2], marginTop: S[1] }}>
+              {/* Static replica of the real <visby-button> (public/sdk/v1/button.js) so merchants see the button without embedding the live SDK. Gradient/mark/wordmark match button.js exactly. */}
+              <div aria-label="Pay with Visby button preview" style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '15px 28px', borderRadius: 999,
+                fontFamily: '"Quicksand",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
+                fontStyle: 'italic', fontWeight: 600, fontSize: 18, letterSpacing: '-0.01em', lineHeight: 1,
+                color: '#33303D',
+                background: 'linear-gradient(95deg,#3FD0BA 0%,#86A9F0 50%,#CF6FE0 100%)',
+                boxShadow: '0 2px 12px rgba(120,110,160,.30),0 1px 2px rgba(16,18,21,.12)',
+              }}>
+                <img src="/visby-logo-mark.png" alt="" aria-hidden="true"
+                  style={{ height: 23, width: 'auto', display: 'block', marginLeft: -6, filter: 'brightness(0)', opacity: 0.92 }} />
+                <span style={{ whiteSpace: 'nowrap' }}>VisbyPay</span>
+              </div>
+              <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>The button buyers click &mdash; looks the same in light and dark.</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>Add it to your store</div>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Not technical? Hand these five steps to whoever builds your site.</div>
+          </div>
+
+          <TutorialStep n={1} title="Create your merchant account">
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+              Close this and create your account below to get your <strong style={{ color: 'var(--text-strong)' }}>publishable key</strong> (safe to embed) and <strong style={{ color: 'var(--text-strong)' }}>secret key</strong> (server-only, shown once). Add a webhook URL now or later.
+            </div>
+          </TutorialStep>
+
+          <TutorialStep n={2} title="Create a checkout session on your server">
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Call this from your backend with your secret key — never from the browser. It returns <code style={{ fontFamily: MONO }}>{`{ session_id, checkout_url }`}</code>.</div>
+            <TutorialCode code={sessionSnippet} />
+          </TutorialStep>
+
+          <TutorialStep n={3} title="Drop the button on your product page">
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Pass the <code style={{ fontFamily: MONO }}>checkout_url</code> from step 2. The button opens checkout in a popup — it holds no secret.</div>
+            <TutorialCode code={buttonSnippet} />
+          </TutorialStep>
+
+          <TutorialStep n={4} title="React when the sale completes">
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>The button fires a <code style={{ fontFamily: MONO }}>visby:complete</code> event with the order id and the minted Tally NFT address.</div>
+            <TutorialCode code={completeSnippet} />
+          </TutorialStep>
+
+          <TutorialStep n={5} title="Verify webhooks (recommended)">
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>We POST signed sale events to your webhook URL with a <code style={{ fontFamily: MONO }}>Visby-Signature</code> header. Verify it with your webhook signing secret before trusting the payload.</div>
+            <TutorialCode code={verifySnippet} />
+          </TutorialStep>
+        </div>
+
+        <div style={{ ...surface({ pad: '12px 14px' }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
+          <div style={{ ...t('meta'), color: 'var(--text-strong)', fontWeight: 600 }}>Test before going live</div>
+          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+            Everything runs on sandbox keys today. Pay with Stripe test card <code style={{ fontFamily: MONO }}>4242 4242 4242 4242</code> to run a full order end-to-end.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], flexWrap: 'wrap' }}>
+          <a href="/sdk" style={{ ...t('meta'), color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>Full integration guide &rarr;</a>
+          <button type="button" onClick={onClose} style={{ ...btn('secondary', { pill: false }) }}>Got it</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ───────────────────────────── page ─────────────────────────────
 export default function MerchantPage() {
   const { ready, authenticated, getAccessToken } = usePrivy();
@@ -625,6 +814,7 @@ export default function MerchantPage() {
   const [orders, setOrders]     = useState<Order[] | null>(null);
   const [summary, setSummary]   = useState<Summary | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     if (!ready || !authenticated || !wallet) { if (ready) setLoading(false); return; }
@@ -677,8 +867,15 @@ export default function MerchantPage() {
         <div className="visby-page" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center', gap: S[2] }}>
           <span style={{ color: 'var(--text-strong)' }}><KeyIcon /></span>
           <div style={{ flex: 1, ...t('heading'), color: 'var(--text-strong)' }}>Pay with Visby</div>
+          <button type="button" onClick={() => setShowHelp(true)} aria-label="How it works"
+            style={{ ...btn('secondary', { pill: true }), gap: S[1], padding: '6px 12px', flexShrink: 0, marginLeft: 'auto' }}>
+            <HelpIcon />
+            <span style={{ ...t('meta') }}>How it works</span>
+          </button>
         </div>
       </div>
+
+      {showHelp && <InstallTutorial onClose={() => setShowHelp(false)} />}
 
       <div className="visby-page" style={{ paddingTop: S[5], paddingBottom: 100, display: 'flex', flexDirection: 'column', gap: S[4] }}>
 
