@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/service';
 import { createIdentitySession } from '@/lib/stripe-identity';
-import { setKycStatus, type AccountType } from '@/lib/kyc';
+import { setKycStatus, getKycStatus } from '@/lib/kyc';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -18,9 +18,10 @@ export async function POST(req: Request) {
   const rl = await rateLimit(`kyc-start:${ctx.userId}`, { limit: 6, windowSec: 3600 });
   if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
-  const body = await req.json().catch(() => ({}));
-  const accountType: AccountType = body?.account_type === 'business' ? 'business' : 'personal';
+  // account_type is never taken from the request: business status comes only from the
+  // business_verifications approval flow. The profile's current value is recorded for context.
   const wallet = ctx.wallets[0];
+  const { account_type: accountType } = await getKycStatus(wallet);
 
   const origin = req.headers.get('origin') || new URL(req.url).origin;
   const session = await createIdentitySession({ wallet, accountType, returnUrl: `${origin}/profile?kyc=done` });
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
     inquiry_id: session.sessionId,
     status: 'created',
   });
-  await setKycStatus(wallet, 'pending', { account_type: accountType });
+  await setKycStatus(wallet, 'pending');
 
   return NextResponse.json({ ok: true, url: session.url });
 }

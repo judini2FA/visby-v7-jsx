@@ -20,6 +20,19 @@ type Verification = {
   updated_at: string;
 };
 
+type BizVerification = {
+  id: string;
+  wallet: string;
+  legal_name: string | null;
+  ein: string | null;
+  business_type: string | null;
+  website: string | null;
+  doc_url: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  updated_at: string;
+};
+
 const short = (w: string) => (w && w.length > 10 ? `${w.slice(0, 4)}…${w.slice(-4)}` : w);
 
 const GREEN = '#00C48C';
@@ -38,6 +51,7 @@ export default function AdminKycPage() {
   const [token, setToken] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'forbidden' | 'ready'>('loading');
   const [rows, setRows] = useState<Verification[]>([]);
+  const [bizRows, setBizRows] = useState<BizVerification[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState('');
 
@@ -45,10 +59,17 @@ export default function AdminKycPage() {
 
   const load = useCallback(async () => {
     if (!wallet || !token) return;
-    const res = await fetch(`/api/admin/kyc?wallet=${encodeURIComponent(wallet)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const [res, bizRes] = await Promise.all([
+      fetch(`/api/admin/kyc?wallet=${encodeURIComponent(wallet)}`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`/api/admin/business-verifications?wallet=${encodeURIComponent(wallet)}`, { headers: { Authorization: `Bearer ${token}` } }),
+    ]);
     if (!res.ok) { setState('forbidden'); return; }
     const j = await res.json();
     setRows(Array.isArray(j.verifications) ? j.verifications : []);
+    if (bizRes.ok) {
+      const bj = await bizRes.json().catch(() => ({}));
+      setBizRows(Array.isArray(bj.verifications) ? bj.verifications : []);
+    }
     setState('ready');
   }, [wallet, token]);
   useEffect(() => { load(); }, [load]);
@@ -58,6 +79,21 @@ export default function AdminKycPage() {
     setBusy(target_wallet + status); setErr('');
     try {
       const res = await fetch('/api/admin/kyc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ wallet, target_wallet, status }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(j.error ?? 'Could not update'); return; }
+      await load();
+    } finally { setBusy(null); }
+  }
+
+  async function overrideBiz(target_wallet: string, status: 'approved' | 'rejected') {
+    if (busy) return;
+    setBusy('biz' + target_wallet + status); setErr('');
+    try {
+      const res = await fetch('/api/admin/business-verifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ wallet, target_wallet, status }),
@@ -143,6 +179,45 @@ export default function AdminKycPage() {
                 <button onClick={() => override(r.wallet, 'declined')} disabled={!!busy}
                   style={{ ...btn('danger', { pill: false }), flex: 1, padding: '8px', fontSize: 13, opacity: busy ? 0.6 : 1 }}>
                   {busy === r.wallet + 'declined' ? '…' : 'Decline'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <span style={{ ...sectionLabel(), display: 'block', marginTop: S[3] }}>Business verifications ({bizRows.length})</span>
+
+        {bizRows.length === 0 && state === 'ready' && (
+          <div style={{ ...t('meta'), color: T.textMuted }}>No business verifications yet.</div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          {bizRows.map(r => (
+            <div key={r.id} style={{ ...surface({ radius: 'var(--r-sm)', pad: '12px 14px' }), display: 'flex', flexDirection: 'column', gap: S[2] }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ ...t('body'), color: T.textStrong, fontWeight: 700 }}>{r.legal_name ?? 'Unnamed business'}</div>
+                <div style={{ display: 'flex', gap: S[2], alignItems: 'center', marginTop: S[1], flexWrap: 'wrap' }}>
+                  <span style={statusStyle(r.status)}>{r.status}</span>
+                  <span style={{ ...t('micro'), color: T.textMuted, fontFamily: 'monospace', textTransform: 'none', letterSpacing: 0 }}>{short(r.wallet)}</span>
+                  {r.business_type && <span style={{ ...t('micro'), color: T.textMuted }}>{r.business_type}</span>}
+                  {r.ein && <span style={{ ...t('micro'), color: T.textMuted, textTransform: 'none', letterSpacing: 0 }}>EIN {r.ein}</span>}
+                  <span style={{ ...t('micro'), color: T.textMuted, textTransform: 'none', letterSpacing: 0 }}>{new Date(r.updated_at).toLocaleString()}</span>
+                </div>
+                {(r.website || r.doc_url) && (
+                  <div style={{ display: 'flex', gap: S[3], marginTop: S[1] }}>
+                    {r.website && <a href={/^https?:\/\//i.test(r.website) ? r.website : `https://${r.website}`} target="_blank" rel="noreferrer" style={{ ...t('micro'), color: 'var(--accent)' }}>Website</a>}
+                    {r.doc_url && <a href={r.doc_url} target="_blank" rel="noreferrer" style={{ ...t('micro'), color: 'var(--accent)' }}>Document</a>}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: S[2] }}>
+                <button onClick={() => overrideBiz(r.wallet, 'approved')} disabled={!!busy}
+                  style={{ ...btn('secondary', { pill: false }), flex: 1, padding: '8px', fontSize: 13, color: GREEN, opacity: busy ? 0.6 : 1 }}>
+                  {busy === 'biz' + r.wallet + 'approved' ? '…' : 'Approve'}
+                </button>
+                <button onClick={() => overrideBiz(r.wallet, 'rejected')} disabled={!!busy}
+                  style={{ ...btn('danger', { pill: false }), flex: 1, padding: '8px', fontSize: 13, opacity: busy ? 0.6 : 1 }}>
+                  {busy === 'biz' + r.wallet + 'rejected' ? '…' : 'Reject'}
                 </button>
               </div>
             </div>

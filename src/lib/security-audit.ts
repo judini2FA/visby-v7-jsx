@@ -21,6 +21,7 @@ export type SecurityEvent =
   | 'admin_granted'
   | 'admin_revoked'
   | 'kyc_override'
+  | 'business_verification_override'
   | 'listing_delisted'
   | 'user_flagged'
   | 'user_suspended'

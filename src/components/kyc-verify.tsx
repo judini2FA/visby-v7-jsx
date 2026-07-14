@@ -5,11 +5,9 @@ import { usePrivy } from '@privy-io/react-auth';
 import { t, S, card, btn, badge, T } from '@/lib/ui';
 
 type KycStatus = 'unverified' | 'pending' | 'approved' | 'declined' | 'review';
-type AccountType = 'personal' | 'business';
 
 type StatusResponse = {
   kyc_status: KycStatus;
-  account_type: AccountType;
   kyc_verified_at: string | null;
   required: boolean;
 };
@@ -27,7 +25,6 @@ const ShieldCheck = ({ size = 16, color = GREEN }: { size?: number; color?: stri
 export default function KycVerify() {
   const { getAccessToken } = usePrivy();
   const [data, setData] = useState<StatusResponse | null>(null);
-  const [accountType, setAccountType] = useState<AccountType>('personal');
   const [starting, setStarting] = useState(false);
   const [opened, setOpened] = useState(false);
   const [err, setErr] = useState('');
@@ -40,7 +37,6 @@ export default function KycVerify() {
       if (!res.ok) return;
       const j: StatusResponse = await res.json();
       setData(j);
-      if (j.account_type) setAccountType(j.account_type);
     } catch { /* non-fatal */ }
   }, [getAccessToken]);
   useEffect(() => { load(); }, [load]);
@@ -53,7 +49,7 @@ export default function KycVerify() {
       const res = await fetch('/api/kyc/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ account_type: accountType }),
+        body: JSON.stringify({}),
       });
       const j = await res.json().catch(() => ({}));
       if (res.status === 503) { setErr("Verification isn't available yet."); return; }
@@ -100,18 +96,7 @@ export default function KycVerify() {
       </div>
       <div style={{ ...t('meta'), color: T.textMuted, lineHeight: 1.5 }}>
         A one-time ID check keeps Visby trusted. Buying stays open — this is only needed to list items.
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[2] }}>
-        {(['personal', 'business'] as const).map(at => {
-          const sel = accountType === at;
-          return (
-            <button key={at} type="button" onClick={() => setAccountType(at)}
-              style={{ ...btn(sel ? 'primary' : 'secondary'), padding: '9px 12px', fontSize: 13 }}>
-              {at === 'personal' ? 'Personal' : 'Business'}
-            </button>
-          );
-        })}
+        Selling as a business? Verify your business separately in Settings.
       </div>
 
       {statusPill && (

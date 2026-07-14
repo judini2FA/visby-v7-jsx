@@ -85,13 +85,15 @@ export async function getKycStatusForUser(wallets: string[]): Promise<{ kyc_stat
 
 // Source of truth for the gate's denormalized flag on profiles. Webhook + admin override both call this.
 // Best-effort (kyc_verifications holds the durable per-inquiry record); never throws into the caller.
-export async function setKycStatus(wallet: string, status: KycStatus, opts?: { account_type?: AccountType }): Promise<void> {
+// Deliberately CANNOT touch profiles.account_type: business status is granted only by the
+// business_verifications approval flow (/api/admin/business-verifications), never by an identity check —
+// otherwise picking "business" before a KYC would bypass EIN/legal-name verification.
+export async function setKycStatus(wallet: string, status: KycStatus): Promise<void> {
   if (!wallet) return;
   try {
     const supabase = createServiceClient();
     const patch: Record<string, unknown> = { kyc_status: status };
     if (status === 'approved') patch.kyc_verified_at = new Date().toISOString();
-    if (opts?.account_type) patch.account_type = opts.account_type;
     await supabase.from('profiles').update(patch).eq('wallet', wallet);
   } catch { /* durable record lives in kyc_verifications */ }
 }
