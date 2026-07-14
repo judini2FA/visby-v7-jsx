@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,11 +44,66 @@ async function upsertDefaultShippingAddress(supabase: ReturnType<typeof createSe
   }
 }
 
+function addrKey(line1: unknown, postal: unknown): string {
+  return `${String(line1 ?? '').trim().toLowerCase()}|${String(postal ?? '').trim().toLowerCase()}`;
+}
+
+// POL3: saving a NEW default address must not silently lose the address it's replacing. Before
+// overwriting profiles.ship_to, if the OLD address materially differs from the incoming one (different
+// street1+zip, case-insensitive), archive it into the address book as a non-default entry — skipping
+// silently if it's already in the book (matched the same way) or the book is already at its cap. Mirrors
+// upsertDefaultShippingAddress's fail-soft style: never blocks the checkout-critical ship_to write.
+async function preserveOldAddressIfDifferent(
+  supabase: ReturnType<typeof createServiceClient>,
+  wallet: string,
+  oldShipTo: unknown,
+  newClean: { line1: string; postal: string },
+) {
+  try {
+    if (typeof oldShipTo !== 'object' || oldShipTo === null || Array.isArray(oldShipTo)) return;
+    const o = oldShipTo as Record<string, unknown>;
+    if (!o.line1 || !String(o.line1).trim() || !o.postal || !String(o.postal).trim()) return;
+    if (addrKey(o.line1, o.postal) === addrKey(newClean.line1, newClean.postal)) return; // unchanged — nothing to preserve
+
+    const oldAddr = {
+      name:    o.name ? String(o.name).trim() : null,
+      line1:   String(o.line1).trim(),
+      line2:   o.line2 ? String(o.line2).trim() : '',
+      city:    o.city ? String(o.city).trim() : '',
+      state:   o.state ? String(o.state).trim() : '',
+      postal:  String(o.postal).trim(),
+      country: o.country ? String(o.country).trim() : 'US',
+    };
+
+    const { data: existingRows } = await supabase
+      .from('shipping_addresses')
+      .select('line1, postal')
+      .eq('wallet', wallet);
+    const alreadyBooked = ((existingRows ?? []) as { line1: string; postal: string }[])
+      .some((r) => addrKey(r.line1, r.postal) === addrKey(oldAddr.line1, oldAddr.postal));
+    if (alreadyBooked) return;
+
+    const { count } = await supabase
+      .from('shipping_addresses')
+      .select('id', { count: 'exact', head: true })
+      .eq('wallet', wallet);
+    if ((count ?? 0) >= 20) return; // address book full — best-effort preservation, never blocks the save
+
+    await supabase.from('shipping_addresses').insert({ wallet, ...oldAddr, is_default: false });
+  } catch {
+    // Best-effort — never fail the checkout-critical ship_to save over this.
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const wallet = new URL(req.url).searchParams.get('wallet');
     if (!wallet) return NextResponse.json({ ship_to: null });
     if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const rl = await rateLimit(`ship-to-get:${wallet}`, { limit: 30, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
     const supabase = createServiceClient();
     const { data } = await supabase.from('profiles').select('ship_to').eq('wallet', wallet).maybeSingle();
     return NextResponse.json({ ship_to: data?.ship_to ?? null });
@@ -60,6 +117,9 @@ export async function POST(req: Request) {
     const { buyer_wallet, ship_to } = await req.json();
     if (!buyer_wallet || !ship_to) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     if (!(await callerOwnsWallet(req, buyer_wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const rl = await rateLimit(`ship-to:${buyer_wallet}`, { limit: 20, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
     if (typeof ship_to !== 'object' || Array.isArray(ship_to)) {
       return NextResponse.json({ error: 'Invalid ship_to' }, { status: 400 });
@@ -99,10 +159,18 @@ export async function POST(req: Request) {
     };
 
     const supabase = createServiceClient();
+
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('ship_to')
+      .eq('wallet', buyer_wallet)
+      .maybeSingle();
+    await preserveOldAddressIfDifferent(supabase, buyer_wallet, existingProfile?.ship_to, clean);
+
     const { error } = await supabase
       .from('profiles')
       .upsert({ wallet: buyer_wallet, ship_to: clean, updated_at: new Date().toISOString() }, { onConflict: 'wallet' });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: friendlyError(error, 'Could not save shipping address') }, { status: 500 });
 
     await upsertDefaultShippingAddress(supabase, buyer_wallet, clean);
 

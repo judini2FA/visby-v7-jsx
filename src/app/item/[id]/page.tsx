@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -18,12 +18,11 @@ import { feeBreakdown } from '@/lib/fees';
 import { AuthBadge } from '@/components/auth-badge';
 import { BrandBadge } from '@/components/brand-badge';
 import { AvatarCircle } from '@/components/owner-stack';
-import { ReportButton } from '@/components/report-button';
 import { isAdminWallet } from '@/lib/admin';
-import { useCurrency } from '@/lib/currency';
+import { useCurrency, formatCurrency, CURRENCIES, type Currency } from '@/lib/currency';
 import { HeaderMenu } from '@/components/layout/header-menu';
-import { TallyQr } from '@/components/tally-qr';
 import { TallyExplainerCard } from '@/components/tally-explainer';
+import { friendlyError } from '@/lib/friendly-error';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -43,6 +42,11 @@ function timeAgo(iso: string) {
   if (d < 86400) return `${Math.floor(d/3600)}h ago`;
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+// L4c: a seller's saved preferred_currency is an arbitrary string from the profiles table —
+// this narrows it to a known Currency before it's ever passed to formatCurrency().
+function isValidCurrency(c: string): c is Currency {
+  return (CURRENCIES as readonly string[]).includes(c);
+}
 
 interface OwnershipRecord {
   id: string; owner_wallet: string; from_wallet?: string;
@@ -57,7 +61,7 @@ interface Item {
   weight_oz?: number; ship_service_pref?: string;
   auth_status?: string;
   ownership_history?: OwnershipRecord[];
-  profiles?: Record<string, { avatar_url: string | null; display_name: string | null }>;
+  profiles?: Record<string, { avatar_url: string | null; display_name: string | null; preferred_currency?: string | null }>;
 }
 
 const MAX_EXTRA_PHOTOS = 8;
@@ -163,7 +167,7 @@ function EditListingSheet({
         ...(uploadedUrls.length ? { extra_image_urls: [...(item.extra_image_urls ?? []), ...uploadedUrls] } : {}),
       });
     } catch (e: any) {
-      setErr(e.message ?? 'Failed to save changes');
+      setErr(friendlyError(e, 'Failed to save changes — try again.'));
     } finally {
       setBusy(false);
     }
@@ -216,7 +220,7 @@ function EditListingSheet({
             {item.image_url && (
               <div style={{ position: 'relative', width: 72, height: 72, borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-bg)' }}>
                 <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                <span style={{ position: 'absolute', bottom: 2, left: 2, ...t('micro'), fontSize: 9, color: '#fff', background: 'rgba(0,0,0,.55)', borderRadius: 4, padding: '1px 4px' }}>Original</span>
+                <span style={{ position: 'absolute', bottom: 2, left: 2, ...t('micro'), fontSize: 9, color: '#fff', background: 'var(--img-scrim)', borderRadius: 4, padding: '1px 4px' }}>Original</span>
               </div>
             )}
             {(item.extra_image_urls ?? []).map((url) => (
@@ -228,11 +232,11 @@ function EditListingSheet({
               <div key={p.id} style={{ position: 'relative', width: 72, height: 72, borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--surface-bg)' }}>
                 <img src={p.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 <button onClick={() => removePhoto(p.id)} aria-label="Remove"
-                  style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                  style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'var(--img-scrim)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
                 <button onClick={() => setEditId(p.id)}
-                  style={{ position: 'absolute', bottom: 2, right: 2, ...t('micro'), fontSize: 9, color: '#fff', background: 'rgba(0,0,0,.55)', border: 'none', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}>
+                  style={{ position: 'absolute', bottom: 2, right: 2, ...t('micro'), fontSize: 9, color: '#fff', background: 'var(--img-scrim)', border: 'none', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}>
                   Cutout
                 </button>
               </div>
@@ -266,6 +270,196 @@ function EditListingSheet({
   );
 }
 
+const REPORT_REASONS = ['Counterfeit', 'Stolen', 'Prohibited item', 'Other'] as const;
+
+// S2: the report flow's own 3-step sheet. Payload + auth header mirror ReportButton's
+// POST /api/reports (src/components/report-button.tsx) — built inline here rather than
+// reusing that component so the trigger can live in the "•••" menu next to the like button.
+function ListingReportFlow({
+  itemId,
+  reporterWallet,
+  getAccessToken,
+  onClose,
+}: {
+  itemId: string;
+  reporterWallet: string;
+  getAccessToken: () => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
+  const [details, setDetails] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function submit() {
+    if (busy) return;
+    setBusy(true);
+    setErr('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          reporter_wallet: reporterWallet,
+          target_type: 'listing',
+          target_id: itemId,
+          reason,
+          details: details.slice(0, 2000) || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).error ?? 'Failed to submit report');
+      }
+      setDone(true);
+    } catch (e: any) {
+      setErr(friendlyError(e, 'Could not submit report — try again.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'var(--img-scrim)' }}
+    >
+      <div style={{ ...sheet(), width: '100%', maxWidth: 480, padding: S[5], display: 'flex', flexDirection: 'column', gap: S[4], borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ ...t('heading'), color: T.textStrong }}>Report listing</span>
+          <button onClick={onClose} style={{ ...btn('text'), padding: S[1] }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {done ? (
+          <div style={{ ...t('body'), color: T.text, padding: `${S[4]}px 0`, textAlign: 'center' }}>
+            Reported — our team will review.
+          </div>
+        ) : step === 1 ? (
+          <>
+            <div style={{ ...t('meta'), color: T.textMuted }}>Step 1 of 3 · What&rsquo;s wrong with this listing?</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+              {REPORT_REASONS.map((r) => (
+                <label key={r} style={{ display: 'flex', alignItems: 'center', gap: S[3], ...t('body'), color: T.text, cursor: 'pointer', padding: `${S[2]}px 0` }}>
+                  <input type="radio" name="report-reason" value={r} checked={reason === r} onChange={() => setReason(r)} />
+                  {r}
+                </label>
+              ))}
+            </div>
+            <button onClick={() => setStep(2)} style={btn('primary', { full: true })}>Next</button>
+          </>
+        ) : step === 2 ? (
+          <>
+            <div style={{ ...t('meta'), color: T.textMuted }}>Step 2 of 3 · Add detail (optional)</div>
+            <textarea
+              value={details}
+              onChange={(e) => setDetails(e.target.value.slice(0, 2000))}
+              rows={4}
+              placeholder="Describe the issue..."
+              style={{ ...input(), resize: 'vertical', minHeight: 80, fontFamily: 'inherit' }}
+            />
+            <div style={{ display: 'flex', gap: S[2] }}>
+              <button onClick={() => setStep(1)} style={{ ...btn('secondary', { full: true }), flex: 1 }}>Back</button>
+              <button onClick={() => setStep(3)} style={{ ...btn('primary', { full: true }), flex: 1 }}>Next</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ ...t('meta'), color: T.textMuted }}>Step 3 of 3 · Review &amp; submit</div>
+            <div style={{ ...surface({ pad: S[4] }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
+              <span style={{ ...t('meta'), color: T.textMuted }}>Reason</span>
+              <span style={{ ...t('body'), color: T.text }}>{reason}</span>
+              {details && (
+                <>
+                  <span style={{ ...t('meta'), color: T.textMuted, marginTop: S[2] }}>Detail</span>
+                  <span style={{ ...t('body'), color: T.text }}>{details}</span>
+                </>
+              )}
+            </div>
+            {err && <span style={{ ...t('meta'), color: 'var(--danger)' }}>{err}</span>}
+            <div style={{ display: 'flex', gap: S[2] }}>
+              <button onClick={() => setStep(2)} style={{ ...btn('secondary', { full: true }), flex: 1 }}>Back</button>
+              <button onClick={submit} disabled={busy} style={{ ...btn('primary', { full: true }), flex: 1, opacity: busy ? 0.6 : 1 }}>
+                {busy ? 'Submitting…' : 'Submit Report'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// S2: the obvious report/flag entry point — a "•••" button next to the like button that opens a
+// tiny dropdown. Signed-out visitors get a sign-in prompt instead of the reason picker.
+function ListingMoreMenu({
+  itemId,
+  walletAddress,
+  getAccessToken,
+}: {
+  itemId: string;
+  walletAddress: string | null;
+  getAccessToken: () => Promise<string | null>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label="More options"
+        title="More options"
+        style={{ ...btn('text'), padding: S[1], minWidth: 0 }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 200 }} />
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: S[1], zIndex: 201, ...surface({ pad: 0, radius: 'var(--r-sm)' }), minWidth: 170, overflow: 'hidden' }}>
+            {walletAddress ? (
+              <button
+                onClick={() => { setOpen(false); setShowReport(true); }}
+                style={{ display: 'flex', alignItems: 'center', gap: S[2], width: '100%', padding: `${S[3]}px ${S[4]}px`, background: 'none', border: 'none', cursor: 'pointer', ...t('body'), color: 'var(--text)' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                Report
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setOpen(false)}
+                style={{ display: 'flex', alignItems: 'center', gap: S[2], width: '100%', padding: `${S[3]}px ${S[4]}px`, ...t('body'), color: 'var(--text-muted)', textDecoration: 'none' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                Sign in to report
+              </Link>
+            )}
+          </div>
+        </>
+      )}
+
+      {showReport && walletAddress && (
+        <ListingReportFlow
+          itemId={itemId}
+          reporterWallet={walletAddress}
+          getAccessToken={getAccessToken}
+          onClose={() => setShowReport(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function ItemPage() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
@@ -280,13 +474,14 @@ export default function ItemPage() {
   const [unlistStatus, setUnlistStatus] = useState<'idle' | 'unlisting'>('idle');
   const [editingPrice, setEditingPrice] = useState(false);
   const [buyStatus,  setBuyStatus]      = useState<'idle' | 'done'>('idle');
-  const [showDesc, setShowDesc]       = useState(false);
+  const [showFullDesc, setShowFullDesc] = useState(false);
+  const [descOverflows, setDescOverflows] = useState(false);
+  const descRef = useRef<HTMLDivElement>(null);
   const [copiedTx, setCopiedTx]       = useState<string | null>(null);
   const [showCheckout, setShowCheckout] = useState(false);
   const [privateMode, setPrivateMode] = useState(false);
   const [itemOrder, setItemOrder] = useState<{ status: string; shipped_at: string | null; delivered_at: string | null } | null | undefined>(undefined);
   const [shipEst, setShipEst] = useState<number | null>(null);
-  const [showQr, setShowQr] = useState(false);
   const [showEditListing, setShowEditListing] = useState(false);
   const [activeImage, setActiveImage] = useState<string | undefined>(undefined);
 
@@ -339,10 +534,10 @@ export default function ItemPage() {
       .then(async r => {
         const text = await r.text();
         try { return JSON.parse(text); }
-        catch { throw new Error(`Server error (${r.status}): ${text.slice(0, 120)}`); }
+        catch { throw new Error('Could not load this item — try again.'); }
       })
       .then(d => { if (d.error) setErr(d.error); else { setItem(d); setActiveImage(d.image_url); } })
-      .catch((e: any) => setErr(e.message ?? 'Failed to load'))
+      .catch((e: any) => setErr(friendlyError(e, 'Failed to load — try again.')))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -358,6 +553,14 @@ export default function ItemPage() {
       .then(d => { if (typeof d.amount === 'number') setShipEst(d.amount); })
       .catch(() => {});
   }, [item]);
+
+  // L4b: only show the Show more/less toggle when the clamped description is actually cut off.
+  useEffect(() => {
+    const el = descRef.current;
+    if (!el) { setDescOverflows(false); return; }
+    setShowFullDesc(false);
+    setDescOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [item?.description]);
 
   async function handleList(e: React.FormEvent) {
     e.preventDefault();
@@ -377,7 +580,7 @@ export default function ItemPage() {
       setTimeout(() => setListStatus('idle'), 2500);
     } catch (err: any) {
       console.error('[handleList]', err);
-      alert(err.message || 'Failed to list item');
+      alert(friendlyError(err, 'Failed to list item — try again.'));
       setListStatus('idle');
     }
   }
@@ -424,6 +627,11 @@ export default function ItemPage() {
   // (e.g. person1 -> person2 -> back to person1 reads as 3 owners), so this
   // counts ownership_history rows rather than deduping by owner_wallet.
   const ownerCount = history.length || 1;
+  // L4c: the seller's saved display currency, shown as a secondary line only when it's set
+  // and differs from what the viewer is currently looking at — never a raw "≈ … USDC" figure.
+  const rawSellerCurrency = sellerProfile?.preferred_currency ?? null;
+  const sellerCurrency: Currency | undefined = rawSellerCurrency && isValidCurrency(rawSellerCurrency) ? rawSellerCurrency : undefined;
+  const showSellerCurrency = !!(sellerCurrency && sellerCurrency !== currency);
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
@@ -451,7 +659,7 @@ export default function ItemPage() {
           )}
           {/* Condition badge */}
           <span style={{ ...badge('onImage'), position: 'absolute', bottom: S[3], left: S[3] }}>
-            {(item as any).transfer_count > 0 ? 'Used' : item.condition}
+            {history.length > 1 ? 'Used' : item.condition}
           </span>
         </div>
         {/* Additional owner-added photos — original cover always shown first */}
@@ -462,7 +670,8 @@ export default function ItemPage() {
                 style={{
                   width: 64, height: 64, borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0,
                   padding: 0, cursor: 'pointer', background: 'var(--surface-bg)',
-                  border: activeImage === url ? '2px solid var(--accent)' : '1px solid var(--glass-border)',
+                  border: '1px solid var(--glass-border)',
+                  boxShadow: activeImage === url ? '0 4px 14px rgba(42,138,237,.32)' : 'none',
                 }}>
                 <img src={url as string} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </button>
@@ -485,12 +694,7 @@ export default function ItemPage() {
             <AuthBadge status={item.auth_status} />
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}><title>Name is locked at mint</title><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <LikeButton itemId={item.id} variant="inline" showCount />
-          </div>
-          <div style={{ ...t('meta'), color: C.muted, marginTop: S[2] }}>
-            {isOwner
-              ? `SN: ${item.serial_number}`
-              : <span>SN: <span style={{ letterSpacing: '0.1em' }}>••••••••</span> <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>· visible to owner</span></span>
-            }
+            <ListingMoreMenu itemId={item.id} walletAddress={walletAddress ?? null} getAccessToken={getAccessToken} />
           </div>
         </div>
 
@@ -582,12 +786,17 @@ export default function ItemPage() {
             /* ── BUYER VIEW ── */
             item.is_listed && item.price_usdc ? (
               <>
-                <div style={price('lg')}>
+                {/* L4c: primary price is always the viewer's own preferred currency — never a raw
+                    "≈ … USDC" figure. A secondary line only appears when the seller's saved
+                    preferred currency is known and differs from what the viewer is looking at. */}
+                <div style={{ ...price('lg'), marginBottom: showSellerCurrency ? S[2] : S[3] }}>
                   {fmtPrice(item.price_usdc)}
                 </div>
-                <div style={{ ...sectionLabel(), marginTop: S[2], marginBottom: S[3] }}>
-                  {currency === 'USD' ? 'USDC' : `≈ $${item.price_usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`}
-                </div>
+                {showSellerCurrency && sellerCurrency && (
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[3] }}>
+                    Seller sees ≈ {formatCurrency(item.price_usdc, sellerCurrency)}
+                  </div>
+                )}
 
                 {/* Universal Visby free shipping — buyer pays only the listed price */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginBottom: S[5] }}>
@@ -649,7 +858,10 @@ export default function ItemPage() {
         <div style={{ padding: `${S[5]}px 0`, borderBottom: `1px solid var(--divider)` }}>
           <div style={{ ...sectionLabel(), marginBottom: S[3] }}>Seller</div>
           <div style={{ ...card({ pad: S[4] }) }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+            {/* P3a: avatar + name link to the seller's public profile; Message Seller / Report /
+                Admin controls stay outside the link as siblings so they don't fight it for clicks. */}
+            <Link href={`/p/${item.current_owner_wallet}`}
+              style={{ display: 'flex', alignItems: 'center', gap: S[3], textDecoration: 'none' }}>
               <div style={{ ...avatar('md'), background: sellerAvatar ? 'var(--surface-bg)' : GH }}>
                 {sellerAvatar ? <img src={sellerAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : sellerInitial}
               </div>
@@ -665,24 +877,13 @@ export default function ItemPage() {
                       : <span style={{ ...t('meta'), color: C.muted }}>New seller</span>}
                 </div>
               </div>
-            </div>
+            </Link>
             {!isOwner && !privateMode && (
               <Link href={`/dashboard?msg=${item.current_owner_wallet}`}
                 style={{ ...btn('secondary', { full: true }), marginTop: S[4] }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 Message Seller
               </Link>
-            )}
-            {!isOwner && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: S[2] }}>
-                <ReportButton
-                  targetType="listing"
-                  targetId={item.id}
-                  reporterWallet={walletAddress ?? undefined}
-                  getAccessToken={getAccessToken}
-                  compact
-                />
-              </div>
             )}
             {isAdmin && (
               <div style={{ marginTop: S[4], paddingTop: S[4], borderTop: '1px solid var(--divider)' }}>
@@ -696,17 +897,26 @@ export default function ItemPage() {
           </div>
         </div>
 
-        {/* Description */}
+        {/* Description — L4b: visible immediately, clamped to 4 lines; Show more/less only
+            appears once the measured content actually overflows the clamp. */}
         {item.description && (
           <div style={{ padding: `${S[5]}px 0`, borderBottom: `1px solid var(--divider)` }}>
-            <button onClick={() => setShowDesc(s => !s)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-              <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>Description</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" style={{ transform: showDesc ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-            {showDesc && <div style={{ ...t('body'), color: 'var(--text)', lineHeight: 1.75, marginTop: S[3] }}>{item.description}</div>}
+            <span style={{ ...t('heading'), color: 'var(--text-strong)' }}>Description</span>
+            <div
+              ref={descRef}
+              style={{
+                ...t('body'), color: 'var(--text)', lineHeight: 1.75, marginTop: S[3],
+                ...(showFullDesc ? null : { display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }),
+              }}
+            >
+              {item.description}
+            </div>
+            {descOverflows && (
+              <button onClick={() => setShowFullDesc(s => !s)}
+                style={{ ...btn('text'), padding: 0, marginTop: S[2] }}>
+                {showFullDesc ? 'Show less' : 'Show more'}
+              </button>
+            )}
           </div>
         )}
 
@@ -720,21 +930,14 @@ export default function ItemPage() {
               {/* Header */}
               <TallyExplainerCard />
 
-              {/* Owner-only: print/affix a QR to the physical item, linking back to this page */}
-              {isOwner && (
-                <div style={{ marginBottom: S[5] }}>
-                  <button onClick={() => setShowQr(s => !s)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: S[1], background: 'rgba(255,255,255,.5)', border: '1px solid rgba(21,18,28,.18)', borderRadius: 'var(--pill)', padding: '8px 14px', cursor: 'pointer', ...t('meta'), color: '#15121C', fontWeight: 700 }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="21"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="17" y1="17" x2="17" y2="17.01"/></svg>
-                    {showQr ? 'Hide item QR' : 'Show item QR'}
-                  </button>
-                  {showQr && (
-                    <div style={{ marginTop: S[3] }}>
-                      <TallyQr itemId={item.id} />
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* L4a: serial number lives in the provenance panel, not the listing-info area above.
+                  Owner-masking is unchanged — only the owner ever sees the real value. */}
+              <div style={{ ...t('meta'), color: 'rgba(21,18,28,.6)', marginBottom: S[5] }}>
+                {isOwner
+                  ? `SN: ${item.serial_number}`
+                  : <span>SN: <span style={{ letterSpacing: '0.1em' }}>••••••••</span> <span style={{ fontStyle: 'italic' }}>· visible to owner</span></span>
+                }
+              </div>
 
               {/* Provenance — mint address */}
               <div style={{ ...t('micro'), color: 'rgba(21,18,28,.5)', letterSpacing: '.06em', marginBottom: S[1] }}>MINT ADDRESS</div>
@@ -795,6 +998,7 @@ export default function ItemPage() {
           itemName={item.name}
           priceUsdc={item.price_usdc!}
           buyerWallet={walletAddress}
+          sellerCurrency={sellerCurrency}
           onClose={() => setShowCheckout(false)}
           onSuccess={(purchasedItemId) => {
             setShowCheckout(false);

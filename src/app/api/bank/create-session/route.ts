@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getAuthedContext } from '@/lib/auth';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +59,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ client_secret: session.client_secret, session_id: session.id });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? 'Could not start bank link session' }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not start bank link session.') }, { status: 500 });
   }
 }

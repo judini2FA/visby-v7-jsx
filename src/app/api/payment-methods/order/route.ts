@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
     const { error } = await supabase
       .from('profiles')
       .upsert({ wallet, payment_order: order, updated_at: new Date().toISOString() }, { onConflict: 'wallet' });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: friendlyError(error, 'Could not save order') }, { status: 500 });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[payment-methods/order] error:', err);

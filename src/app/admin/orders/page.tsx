@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 type Order = {
   id: string;
@@ -62,7 +63,7 @@ export default function AdminOrders() {
         if (!res.ok) throw new Error(d.error || 'Failed to load');
         setOrders(Array.isArray(d.orders) ? d.orders : []);
       } catch (e: any) {
-        if (!cancelled) setErr(e?.message ?? 'Failed to load');
+        if (!cancelled) setErr(friendlyError(e, 'Failed to load — try again.'));
       }
     })();
     return () => { cancelled = true; };
@@ -78,6 +79,9 @@ export default function AdminOrders() {
       whiteSpace: 'nowrap',
       border: '1px solid var(--glass-hairline)',
       background: active ? 'var(--grad-brand)' : 'var(--surface-bg)',
+      backgroundClip: 'border-box',
+      backgroundOrigin: 'border-box',
+      backgroundSize: '100% 100%',
       color: active ? 'var(--text-on-cta)' : 'var(--text-muted)',
       boxShadow: active ? '0 4px 14px rgba(89,180,245,.22)' : 'var(--box-shadow-soft)',
     }),

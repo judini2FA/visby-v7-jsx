@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card, surface, btn, badge, avatar, input } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 type AccountStatus = 'active' | 'suspended' | 'banned';
 
@@ -69,7 +70,7 @@ export default function AdminUsersPage() {
       if (!res.ok) throw new Error(d.error || 'Failed to load');
       setUsers(Array.isArray(d.users) ? d.users : []);
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to load');
+      setErr(friendlyError(e, 'Failed to load — try again.'));
       setUsers([]);
     }
   }, [ready, wallet, getAccessToken, filter, q]);

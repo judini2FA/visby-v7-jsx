@@ -10,9 +10,13 @@ import { btn, S } from '@/lib/ui';
 export const MOOV_ENABLED = process.env.NEXT_PUBLIC_MOOV_ENABLED === '1';
 
 export function MoovCardForm({
+  buyerWallet,
   onCardID,
   onError,
 }: {
+  // Optional: when present, /api/moov/card-token reuses this wallet's existing Moov account (if any
+  // card is already on file) instead of provisioning a fresh anonymous one for every new card added.
+  buyerWallet?: string;
   onCardID: (accountID: string, cardID: string) => void;
   onError?: (msg: string) => void;
 }) {
@@ -28,7 +32,11 @@ export function MoovCardForm({
     (async () => {
       try {
         const token = await getAccessToken();
-        const res = await fetch('/api/moov/card-token', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch('/api/moov/card-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ wallet: buyerWallet ?? null }),
+        });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error ?? 'card token failed');
         await import('@moovio/moov-js'); // registers the <moov-card-link> custom element
@@ -48,7 +56,7 @@ export function MoovCardForm({
       }
     })();
     return () => { cancelled = true; };
-  }, [getAccessToken, onCardID, onError]);
+  }, [getAccessToken, buyerWallet, onCardID, onError]);
 
   if (!MOOV_ENABLED) return null;
 

@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     type: 'payment_request',
     title: `${who} requested ${amount} ${token}`,
     body: note ?? undefined,
-    link: '/wallet?tab=pay',
+    link: `/request/${row.id}`,
     data: { request_id: row.id, requester_wallet, amount, token },
   });
 
@@ -112,7 +112,7 @@ export async function PATCH(req: Request) {
       recipient_wallet: pr.requester_wallet,
       type: 'payment_request_paid',
       title: 'Your payment request was paid',
-      link: '/wallet?tab=pay',
+      link: `/request/${request_id}`,
       data: { request_id },
     });
   }

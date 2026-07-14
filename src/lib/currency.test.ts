@@ -65,8 +65,11 @@ describe('currency — toUsdc (fiat)', () => {
   });
 
   it('round-trips formatCurrency amounts back through toUsdc within rounding', () => {
-    for (const c of FIAT_CURRENCIES) {
-      const back = toUsdc(100 * ({ USD: 1, EUR: 0.92, GBP: 0.79, JPY: 149.5, AUD: 1.53, CAD: 1.36 }[c]), c);
+    // Only the original 6 codes have a hardcoded expected seed rate here — this guards that their
+    // values didn't drift when the registry grew to ~100 currencies, not every new currency's rate.
+    const KNOWN_RATES = { USD: 1, EUR: 0.92, GBP: 0.79, JPY: 149.5, AUD: 1.53, CAD: 1.36 } as const;
+    for (const c of Object.keys(KNOWN_RATES) as (keyof typeof KNOWN_RATES)[]) {
+      const back = toUsdc(100 * KNOWN_RATES[c], c);
       expect(back).toBeCloseTo(100, 4);
     }
   });

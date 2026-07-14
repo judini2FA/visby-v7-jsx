@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
 import { isAdminRole } from '@/lib/admin';
 import { createServiceClient } from '@/lib/supabase/service';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Admin review queue for OFAC-held payouts (blueprint 6.4). Lists payouts that were held because the
 // seller's wallet matched the OFAC list or screening was unavailable. Read-only; gated to finance/moderator
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
     .eq('status', 'open')
     .order('created_at', { ascending: false })
     .limit(200);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: friendlyError(error, 'Could not load payout holds.') }, { status: 500 });
 
   return NextResponse.json({ holds: data ?? [] });
 }

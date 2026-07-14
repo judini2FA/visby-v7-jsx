@@ -96,6 +96,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Could not create merchant' }, { status: 500 });
     }
 
+    // Non-fatal nudge: creating a merchant account is a strong signal the owner is a real business, so
+    // flip profiles.account_type and seed a pending business_verifications stub (admin reviews it the
+    // same way as the Settings self-serve flow). Best-effort — must never fail merchant creation itself.
+    try {
+      const [{ data: profile }, { data: existingVerification }] = await Promise.all([
+        supabase.from('profiles').select('account_type').eq('wallet', owner_wallet).maybeSingle(),
+        supabase.from('business_verifications').select('id').eq('wallet', owner_wallet).maybeSingle(),
+      ]);
+      if ((profile?.account_type ?? 'personal') !== 'business') {
+        await supabase.from('profiles').update({ account_type: 'business' }).eq('wallet', owner_wallet);
+      }
+      if (!existingVerification) {
+        await supabase.from('business_verifications').insert({ wallet: owner_wallet, status: 'pending' });
+      }
+    } catch (nudgeErr) {
+      console.error('[merchant] business-account nudge (non-fatal):', nudgeErr);
+    }
+
     // Plaintext secret_key + webhook_secret are returned ONCE, here only — never stored in plaintext,
     // never returned by GET.
     return NextResponse.json({

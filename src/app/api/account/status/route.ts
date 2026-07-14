@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
 import { getWorstStatus } from '@/lib/account-status';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,9 @@ export async function GET(req: Request) {
     if (!(await callerOwnsWallet(req, wallet))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const rl = await rateLimit(`acct-status-get:${wallet}`, { limit: 30, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
     const status = await getWorstStatus([wallet]);
 

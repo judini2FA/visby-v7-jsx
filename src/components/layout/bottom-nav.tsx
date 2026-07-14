@@ -83,7 +83,7 @@ export function BottomNav() {
 
           return (
             <Link
-              key={t.id} href={t.href} aria-label={t.label}
+              key={t.id} href={t.href} aria-label={t.label} prefetch={true}
               style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               <div style={{
@@ -98,11 +98,11 @@ export function BottomNav() {
                 {t.id === 'messages' && unreadTotal > 0 && (
                   <span style={{
                     position: 'absolute', top: 6, right: 6,
-                    minWidth: 16, height: 16,
+                    minWidth: 16, height: 16, boxSizing: 'border-box',
                     background: 'var(--danger)', color: '#fff',
                     borderRadius: 8, border: '2px solid var(--surface-bg)',
-                    fontSize: 10, fontWeight: 700, lineHeight: '12px',
-                    textAlign: 'center', padding: unreadTotal > 9 ? '0 3px' : '0',
+                    fontSize: 10, fontWeight: 700, lineHeight: 1,
+                    padding: unreadTotal > 9 ? '0 3px' : 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     pointerEvents: 'none',
                   }}>

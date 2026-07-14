@@ -4,7 +4,8 @@ import crypto from 'crypto';
 // no extra dep). Fail-soft: moovConfigured() is false until keys land, and callers no-op accordingly.
 // Card COLLECTION must happen in the browser via Moov.js (raw PAN never touches our server, PCI-safe);
 // this server lib issues the scoped token for that, then handles accounts / capabilities / transfers /
-// webhooks. Not yet wired into checkout — the active card rail is still Stripe.
+// webhooks / saved-card lookup. Wired into checkout as the CARD tab's sole rail behind
+// NEXT_PUBLIC_MOOV_ENABLED — Stripe stays live only as the flag-off fallback and for ACH.
 
 const CLIENT_ID = process.env.MOOV_PUBLIC_KEY;
 const CLIENT_SECRET = process.env.MOOV_SECRET_KEY;
@@ -88,11 +89,24 @@ export async function issueCardToken(accountID: string): Promise<string> {
 }
 
 // A linked card generates payment methods; find the card-payment one to use as a transfer source.
-export async function findCardPaymentMethod(accountID: string): Promise<string | null> {
+// cardID narrows to one specific card (a buyer's saved-card account can hold more than one) — omit it
+// to keep the prior "first card-payment method on the account" behavior for a fresh single-card link.
+export async function findCardPaymentMethod(accountID: string, cardID?: string): Promise<string | null> {
   const token = await getMoovToken([`/accounts/${accountID}/payment-methods.read`]);
   const list = await moovFetch(`/accounts/${accountID}/payment-methods`, token, { method: 'GET' });
-  const pm = (Array.isArray(list) ? list : []).find((m: any) => m.paymentMethodType === 'card-payment');
+  const methods = Array.isArray(list) ? list : [];
+  const pm = cardID
+    ? methods.find((m: any) => m.paymentMethodType === 'card-payment' && m.card?.cardID === cardID)
+    : methods.find((m: any) => m.paymentMethodType === 'card-payment');
   return pm?.paymentMethodID ?? null;
+}
+
+// All cards linked to a Moov account — the source of truth for brand/last4/expiration (Moov has no
+// "default card" concept of its own; that preference is tracked in our moov_cards table instead).
+export async function listMoovCards(accountID: string): Promise<any[]> {
+  const token = await getMoovToken([`/accounts/${accountID}/cards.read`]);
+  const list = await moovFetch(`/accounts/${accountID}/cards`, token, { method: 'GET' });
+  return Array.isArray(list) ? list : [];
 }
 
 // The moov-wallet payment method for an account — the collect-to-platform destination for a charge.

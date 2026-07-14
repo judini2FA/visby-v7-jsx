@@ -4,6 +4,7 @@ import { mplCore, transferV1 } from '@metaplex-foundation/mpl-core';
 import { createNoopSigner, publicKey as umiKey } from '@metaplex-foundation/umi';
 import { toWeb3JsTransaction } from '@metaplex-foundation/umi-web3js-adapters';
 import { getMintAuthority, getRpcUrl } from '@/lib/nft';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Returns a serialized unsigned MPL Core transfer transaction:
 // asset (owner wallet) → mint authority escrow
@@ -47,6 +48,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ transaction: serialized, is_versioned: isVersioned, escrow_wallet: escrowWallet });
   } catch (err: any) {
     console.error('[escrow-tx]', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not prepare the transfer — try again.') }, { status: 500 });
   }
 }

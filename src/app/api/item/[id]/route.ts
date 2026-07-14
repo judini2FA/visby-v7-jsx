@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { fetchProfileMap } from '@/lib/owners';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export async function GET(
       .single();
 
     if (error || !data) {
-      return NextResponse.json({ error: 'Item not found', detail: error?.message }, { status: 404 });
+      return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
     // Resolve every owner's profile (avatar + name) so the seller block and history list can show
@@ -31,6 +32,6 @@ export async function GET(
 
     return NextResponse.json({ ...data, profiles });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not load this item — try again.') }, { status: 500 });
   }
 }

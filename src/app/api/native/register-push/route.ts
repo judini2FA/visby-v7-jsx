@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
+import { friendlyError } from '@/lib/friendly-error';
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -63,7 +64,7 @@ export async function POST(req: Request) {
         { status: 503 }
       );
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(error, 'Could not register for notifications.') }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

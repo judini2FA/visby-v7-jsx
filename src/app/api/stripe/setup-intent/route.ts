@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
+import { friendlyError } from '@/lib/friendly-error';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -45,6 +46,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ client_secret: setupIntent.client_secret });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not prepare card entry — try again.') }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { disburseOnramp } from '@/lib/onramp-disburse';
 import { isBanned } from '@/lib/account-status';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,6 @@ export async function POST(req: Request) {
     const { ok, already_fulfilled, asset, token_amount, sol_amount, tx, new_balance } = result;
     return NextResponse.json({ ok, already_fulfilled, asset, token_amount, sol_amount, tx, new_balance });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not finish delivering your purchase — try again.') }, { status: 500 });
   }
 }

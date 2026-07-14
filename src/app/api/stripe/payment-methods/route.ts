@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -38,6 +39,6 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ methods });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not load your payment methods.') }, { status: 500 });
   }
 }

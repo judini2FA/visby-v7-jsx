@@ -8,6 +8,7 @@ import { transferFromAuthority } from '@/lib/nft';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
 import { requireStepUp } from '@/lib/step-up';
 import { tallyTransferAction } from '@/lib/step-up-shared';
+import { friendlyError } from '@/lib/friendly-error';
 
 const isSolAddr = (a: unknown): a is string =>
   typeof a === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
   try {
     tx = await transferFromAuthority(item.nft_mint_address, to_wallet);
   } catch (e: any) {
-    return NextResponse.json({ error: `On-chain transfer failed: ${e?.message ?? 'unknown'}` }, { status: 502 });
+    return NextResponse.json({ error: friendlyError(e, 'Could not complete the on-chain transfer — try again.') }, { status: 502 });
   }
 
   // Reflect the new owner + log provenance. CAS on the previous owner guards against a race.

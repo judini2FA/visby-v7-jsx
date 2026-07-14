@@ -263,7 +263,7 @@ export default function HomePage() {
         <div style={{ marginTop: S[4] }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: S[2], overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: S[3] }}>
             <button onClick={() => setFiltersOpen(true)}
-              style={{ ...btn('secondary'), padding: '6px 13px', fontSize: 12, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, ...(hasFilters ? { borderColor: 'var(--text-muted)', color: 'var(--text-strong)' } : { color: 'var(--text-muted)' }) }}>
+              style={{ ...btn(hasFilters ? 'primary' : 'secondary'), padding: '6px 13px', fontSize: 12, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, ...(hasFilters ? {} : { color: 'var(--text-muted)' }) }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
               Filters{hasFilters ? ' ·' : ''}
             </button>
@@ -345,7 +345,7 @@ export default function HomePage() {
 
                 {/* Price range */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-                  <div style={sectionLabel()}>Price range (USDC)</div>
+                  <div style={sectionLabel()}>Price range (USD)</div>
                   <div style={{ display: 'flex', gap: S[3], alignItems: 'center' }}>
                     <div style={{ position: 'relative', flex: 1 }}>
                       <span style={{ position: 'absolute', left: S[3], top: '50%', transform: 'translateY(-50%)', ...t('body'), color: 'var(--text-muted)' }}>$</span>

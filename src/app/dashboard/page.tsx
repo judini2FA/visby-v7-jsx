@@ -13,7 +13,7 @@ import { EmptyState } from '@/components/empty-state';
 import PayRequest from '@/components/pay-request';
 import { PresetComposer, StructuredBubble, type MessagePreset } from '@/components/preset-composer';
 import { feeBreakdown } from '@/lib/fees';
-import type { ShipRate } from '@/lib/shipping/types';
+import { ShipLabelFlow } from '@/components/ship-label-flow';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -272,10 +272,77 @@ function NotificationsTab({ wallet }: { wallet: string }) {
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [offerErr, setOfferErr] = useState<Record<string, string>>({});
 
+  // Pinned "sold, needs a label" / "you got paid" cards (N1) — computed from the seller's own
+  // orders, no migration needed. Sharing the fetch here (rather than lifting SalesTab's) keeps the
+  // Notifications tab self-contained and matches the file-ownership boundary for this pass.
+  const [sellerOrders, setSellerOrders] = useState<Order[]>([]);
+  const [sellerOrdersLoading, setSellerOrdersLoading] = useState(true);
+  const [shipOrder, setShipOrder] = useState<Order | null>(null);
+  const [dismissedPaid, setDismissedPaid] = useState<Set<string>>(new Set());
+  const [showUnshippedPopup, setShowUnshippedPopup] = useState(false);
+
   const { data: likeNotifs = [], isLoading: likesLoading } = trpc.likes.getForOwner.useQuery(
     { owner_wallet: wallet },
     { enabled: !!wallet }
   );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('visby_dismissed_payout_cards');
+      if (raw) setDismissedPaid(new Set(JSON.parse(raw)));
+    } catch { /* cosmetic — ignore */ }
+  }, []);
+
+  function dismissPaidCard(orderId: string) {
+    setDismissedPaid(prev => {
+      const next = new Set(prev);
+      next.add(orderId);
+      try { localStorage.setItem('visby_dismissed_payout_cards', JSON.stringify([...next])); } catch { /* cosmetic */ }
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if (!wallet) { setSellerOrdersLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      setSellerOrdersLoading(true);
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(`/api/orders?wallet=${encodeURIComponent(wallet)}&role=seller`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (!cancelled) setSellerOrders(json.orders ?? []);
+      } catch {
+        if (!cancelled) setSellerOrders([]);
+      } finally {
+        if (!cancelled) setSellerOrdersLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, getAccessToken]);
+
+  const unshippedPaid = sellerOrders.filter(o => o.status === 'paid');
+  const gotPaidCards = sellerOrders.filter(o => o.status === 'delivered' && o.payout_released && !dismissedPaid.has(o.id));
+
+  // One-time-per-session popup summarizing unshipped sold orders, the moment they're known.
+  useEffect(() => {
+    if (sellerOrdersLoading || !unshippedPaid.length) return;
+    try {
+      if (sessionStorage.getItem('visby_unshipped_popup_shown')) return;
+      sessionStorage.setItem('visby_unshipped_popup_shown', '1');
+      setShowUnshippedPopup(true);
+    } catch { /* cosmetic — sessionStorage unavailable */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerOrdersLoading, unshippedPaid.length]);
+
+  function netForOrder(order: Order): number {
+    const shipCost = order.shipping_cost != null ? Number(order.shipping_cost) : 0;
+    const price = Number(order.price_usdc);
+    const feeUsd = order.platform_fee_usd != null ? Number(order.platform_fee_usd) : feeBreakdown(price, 0, order.sale_channel).platform_fee_usd;
+    return order.seller_net_usd != null ? Number(order.seller_net_usd) : Math.max(0, price - feeUsd - shipCost);
+  }
 
   async function loadOffers() {
     if (!wallet) return;
@@ -392,14 +459,15 @@ function NotificationsTab({ wallet }: { wallet: string }) {
     }
   }
 
-  if (loading || likesLoading || offersLoading) return (
+  if (loading || likesLoading || offersLoading || sellerOrdersLoading) return (
     <div style={{ paddingTop: S[5], display: 'flex', flexDirection: 'column', gap: S[2] }}>
       {[1,2,3].map(i => <div key={i} style={{ ...card(), height: 64, animation: 'pulse 2s infinite' }} />)}
     </div>
   );
 
   const unreadCount = notifs.filter(n => !n.read).length;
-  const isEmpty = notifs.length === 0 && likeNotifs.length === 0 && offers.length === 0;
+  const isEmpty = notifs.length === 0 && likeNotifs.length === 0 && offers.length === 0
+    && unshippedPaid.length === 0 && gotPaidCards.length === 0;
 
   if (isEmpty) return (
     <div style={{ paddingTop: S[4] }}>
@@ -414,6 +482,55 @@ function NotificationsTab({ wallet }: { wallet: string }) {
 
   return (
     <div style={{ paddingTop: S[4] }}>
+      {(unshippedPaid.length > 0 || gotPaidCards.length > 0) && (
+        <div style={{ marginBottom: S[6], display: 'flex', flexDirection: 'column', gap: S[2] }}>
+          {unshippedPaid.map(order => (
+            <div key={order.id} style={{ ...card({ pad: S[4] }), borderColor: '#2A8AED', borderWidth: 1.5, borderStyle: 'solid' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
+                <div style={{ ...surface(), width: 44, height: 44, overflow: 'hidden', flexShrink: 0 }}>
+                  {order.items?.image_url
+                    ? <img src={order.items.image_url} alt={order.items.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{ width: '100%', height: '100%', background: 'var(--surface-bg)' }} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    You sold {order.items?.name ?? 'an item'} — create a shipping label
+                  </div>
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>
+                    ${netForOrder(order).toFixed(2)} on the way — payout releases on delivery
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setShipOrder(order)} style={{ ...btn('primary', { full: true }), marginTop: S[3] }}>
+                Create shipping label
+              </button>
+            </div>
+          ))}
+          {gotPaidCards.map(order => (
+            <div key={order.id} style={{ ...card({ pad: S[4] }), position: 'relative' }}>
+              <button
+                onClick={() => dismissPaidCard(order.id)}
+                aria-label="Dismiss"
+                style={{ position: 'absolute', top: S[3], right: S[3], background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: S[3], paddingRight: S[5] }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--ok-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    You got paid ${netForOrder(order).toFixed(2)} for {order.items?.name ?? 'your item'}
+                  </div>
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>Delivered · payout released</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {offers.length > 0 && (
         <div style={{ marginBottom: S[6] }}>
           <div style={{ ...sectionLabel(), marginBottom: S[2] }}>Offers</div>
@@ -489,8 +606,15 @@ function NotificationsTab({ wallet }: { wallet: string }) {
                   </div>
                 </div>
               );
-              return n.link ? (
-                <Link key={n.id} href={n.link} onClick={() => { if (!n.read) markRead(n.id); }} style={{ textDecoration: 'none' }}>
+              // A payment-request notification used to fall through to its generic `link`
+              // (/wallet?tab=pay — a context-free "blank pay page"). Route it to the specific
+              // request instead, now that /request/[id] exists.
+              const requestId = (n.type === 'payment_request' || n.type === 'payment_request_paid')
+                ? (n.data?.request_id as string | undefined)
+                : undefined;
+              const effectiveLink = requestId ? `/request/${requestId}` : n.link;
+              return effectiveLink ? (
+                <Link key={n.id} href={effectiveLink} onClick={() => { if (!n.read) markRead(n.id); }} style={{ textDecoration: 'none' }}>
                   {Row}
                 </Link>
               ) : (
@@ -522,6 +646,45 @@ function NotificationsTab({ wallet }: { wallet: string }) {
           </div>
         </div>
       )}
+
+      {showUnshippedPopup && typeof document !== 'undefined' && createPortal(
+        <>
+          <div onClick={() => setShowUnshippedPopup(false)} style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'var(--modal-scrim)' }} />
+          <div style={{ ...sheet({ radius: 'var(--r-xl)' }), position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'calc(100% - 48px)', maxWidth: 420, zIndex: 251, padding: S[5], display: 'flex', flexDirection: 'column', gap: S[3] }}>
+            <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>
+              {unshippedPaid.length} order{unshippedPaid.length !== 1 ? 's' : ''} waiting on a shipping label
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: S[2], maxHeight: '40vh', overflowY: 'auto' }}>
+              {unshippedPaid.map(order => (
+                <div key={order.id} style={{ ...surface({ pad: '10px 12px' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
+                  <div style={{ flex: 1, minWidth: 0, ...t('body'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {order.items?.name ?? 'Item'}
+                  </div>
+                  <button
+                    onClick={() => { setShowUnshippedPopup(false); setShipOrder(order); }}
+                    style={{ ...btn('secondary'), fontSize: 13, padding: '7px 12px', flexShrink: 0 }}
+                  >
+                    Create label
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowUnshippedPopup(false)} style={{ ...btn('primary', { full: true }) }}>Got it</button>
+          </div>
+        </>,
+        document.body,
+      )}
+
+      {shipOrder && (
+        <ShipLabelFlow
+          order={shipOrder}
+          onClose={() => setShipOrder(null)}
+          onShipped={(updated) => {
+            setSellerOrders(prev => prev.map(o => o.id === shipOrder.id ? { ...o, ...updated } as Order : o));
+            setShipOrder(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -532,91 +695,15 @@ function NotificationsTab({ wallet }: { wallet: string }) {
 
 interface FulfillRowProps {
   order: Order;
-  shippingEnabled: boolean;
-  onShipped: (order: Order) => void;
+  onCreateLabel: (order: Order) => void;
 }
 
-// Tie the rate-picker to the shipping contract (carrier is the 'UPS'|'FedEx'|'USPS' union, not a bare
-// string). Type-only import → erased at build, so no server carrier code leaks into the client bundle.
-type ShipRateOption = ShipRate;
-
-function FulfillRow({ order, shippingEnabled, onShipped }: FulfillRowProps) {
-  const { getAccessToken } = usePrivy();
-  const [carrier, setCarrier] = useState('');
-  const [tracking, setTracking] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-  const [errCode, setErrCode] = useState('');
-  const [manual, setManual] = useState(false);
-  const [rates, setRates] = useState<ShipRateOption[] | null>(null);
-  const [selectedId, setSelectedId] = useState('');
-  const [ratesLoading, setRatesLoading] = useState(false);
+// Compact "to fulfill" row (SH2) — the rate-shop/buy/manual-tracking steps now live in the shared
+// ShipLabelFlow modal (src/components/ship-label-flow.tsx) so the exact same walkthrough is reachable
+// from here AND from the Notifications pinned card, instead of two divergent inline implementations.
+function FulfillRow({ order, onCreateLabel }: FulfillRowProps) {
   const item = order.items;
   const hasAddress = !!order.ship_address;
-
-  async function ship(body: Record<string, unknown>) {
-    setSaving(true);
-    setErr('');
-    setErrCode('');
-    try {
-      const token = await getAccessToken();
-      const res = await fetch('/api/orders/ship', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ order_id: order.id, seller_wallet: order.seller_wallet, ...body }),
-      });
-      const json = await res.json();
-      if (json.ok) { onShipped({ ...order, ...json.order, items: order.items }); }
-      else { setErr(json.error ?? 'Something went wrong'); setErrCode(json.code ?? ''); }
-    } catch {
-      setErr('Network error');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function getRates() {
-    setRatesLoading(true);
-    setErr('');
-    setErrCode('');
-    try {
-      const token = await getAccessToken();
-      const res = await fetch('/api/shipping/rates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ order_id: order.id, seller_wallet: order.seller_wallet }),
-      });
-      const json = await res.json();
-      if (Array.isArray(json.rates) && json.rates.length) {
-        const list = json.rates as ShipRateOption[];
-        setRates(list);
-        const rec = json.recommended_id || list.find(r => r.recommended)?.id || list[0]?.id || '';
-        setSelectedId(rec);
-      } else {
-        setRates(null);
-        setErr(json.error ?? 'No carrier rates were returned for this shipment.');
-        setErrCode(json.code ?? '');
-      }
-    } catch {
-      setErr('Network error');
-    } finally {
-      setRatesLoading(false);
-    }
-  }
-
-  function buyChosenLabel() {
-    const chosen = rates?.find(r => r.id === selectedId);
-    if (!chosen) { setErr('Select a shipping rate first'); return; }
-    ship({ auto_label: true, selected_carrier: chosen.carrier, selected_service: chosen.service_code });
-  }
-
-  function markShippedManual() {
-    if (!carrier.trim() || !tracking.trim()) { setErr('Enter carrier and tracking number'); return; }
-    ship({ carrier: carrier.trim(), tracking_number: tracking.trim() });
-  }
-
-  const selectedRate = rates?.find(r => r.id === selectedId) ?? null;
-  const showAuto = shippingEnabled && !manual;
 
   return (
     <div style={{ ...card({ pad: S[4] }), marginBottom: S[3] }}>
@@ -640,103 +727,10 @@ function FulfillRow({ order, shippingEnabled, onShipped }: FulfillRowProps) {
 
       {!hasAddress ? (
         <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Waiting for the buyer to enter their shipping address.</div>
-      ) : showAuto ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-            Rate-shop UPS, FedEx and USPS, then buy the label you choose. Its cost is deducted from your payout.
-          </div>
-          {err && (
-            <div style={{ ...t('meta'), color: C.red }}>
-              {err}{' '}
-              {errCode === 'no_ship_from' && <Link href="/dashboard/seller" style={{ color: 'var(--text-strong)' }}>Set ship-from address</Link>}
-              {errCode === 'no_weight' && item?.id && <Link href={`/item/${item.id}`} style={{ color: 'var(--text-strong)' }}>Edit listing</Link>}
-            </div>
-          )}
-
-          {!rates ? (
-            <button onClick={getRates} disabled={ratesLoading} style={{ ...btn('secondary', { full: true, pill: false }), opacity: ratesLoading ? 0.6 : 1 }}>
-              {ratesLoading ? 'Getting rates…' : 'Get shipping rates'}
-            </button>
-          ) : (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-                {rates.map(r => {
-                  const sel = r.id === selectedId;
-                  return (
-                    <button
-                      key={r.id}
-                      onClick={() => setSelectedId(r.id)}
-                      style={{
-                        ...surface({ pad: S[3] }),
-                        display: 'flex', alignItems: 'center', gap: S[3], width: '100%',
-                        textAlign: 'left', cursor: 'pointer',
-                        borderColor: sel ? C.blue : 'var(--glass-hairline)',
-                        borderWidth: sel ? 2 : 1, borderStyle: 'solid',
-                      }}
-                    >
-                      <div style={{
-                        width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        border: `1.5px solid ${sel ? C.blue : 'var(--glass-border)'}`,
-                        background: sel ? C.blue : 'transparent',
-                      }}>
-                        {sel && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        )}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700 }}>
-                          {r.carrier} {r.service}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginTop: 2 }}>
-                          {r.delivery_days != null && (
-                            <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>~{r.delivery_days}-day</span>
-                          )}
-                          {r.recommended && (
-                            <span style={{ ...badge('success') }}>
-                              Recommended · cheapest{r.delivery_days != null && r.delivery_days <= 2 ? ' 2-day' : ''}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div style={{ ...t('heading'), color: 'var(--text-strong)', flexShrink: 0 }}>
-                        ${Number(r.rate).toFixed(2)}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {selectedRate && (
-                <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                  ${Number(selectedRate.rate).toFixed(2)} label cost will be deducted from your payout.
-                </div>
-              )}
-
-              <button onClick={buyChosenLabel} disabled={saving || !selectedRate} style={{ ...btn('primary', { full: true, pill: false }), opacity: (saving || !selectedRate) ? 0.6 : 1 }}>
-                {saving ? 'Buying label…' : 'Buy label & ship'}
-              </button>
-            </>
-          )}
-
-          <button onClick={() => { setManual(true); setErr(''); }} style={{ ...btn('text'), alignSelf: 'center' }}>
-            Enter tracking manually
-          </button>
-        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-          <input value={carrier} onChange={e => setCarrier(e.target.value)} placeholder="Carrier (e.g. UPS, FedEx)" style={{ ...input(), boxSizing: 'border-box' }} />
-          <input value={tracking} onChange={e => setTracking(e.target.value)} placeholder="Tracking number" style={{ ...input(), boxSizing: 'border-box' }} />
-          {err && <div style={{ ...t('meta'), color: C.red }}>{err}</div>}
-          <button onClick={markShippedManual} disabled={saving} style={{ ...btn('primary', { full: true, pill: false }), opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Mark shipped'}
-          </button>
-          {shippingEnabled && (
-            <button onClick={() => { setManual(false); setErr(''); }} style={{ ...btn('text'), alignSelf: 'center' }}>
-              Buy a label automatically instead
-            </button>
-          )}
-        </div>
+        <button onClick={() => onCreateLabel(order)} style={{ ...btn('primary', { full: true, pill: false }) }}>
+          Create label
+        </button>
       )}
     </div>
   );
@@ -751,11 +745,7 @@ function SalesTab({ wallet }: { wallet: string }) {
 
   const [sellerOrders, setSellerOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [shippingEnabled, setShippingEnabled] = useState(false);
-
-  useEffect(() => {
-    fetch('/api/shipping/config').then(r => r.json()).then(d => setShippingEnabled(!!d.configured)).catch(() => {});
-  }, []);
+  const [shipOrder, setShipOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     if (!wallet) return;
@@ -803,12 +793,7 @@ function SalesTab({ wallet }: { wallet: string }) {
             <div style={{ ...t('meta'), color: 'var(--text-muted)', paddingBottom: S[2] }}>All orders fulfilled</div>
           )}
           {toFulfill.map(order => (
-            <FulfillRow
-              key={order.id}
-              order={order}
-              shippingEnabled={shippingEnabled}
-              onShipped={updated => setSellerOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o))}
-            />
+            <FulfillRow key={order.id} order={order} onCreateLabel={setShipOrder} />
           ))}
           {alreadyHandled.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
@@ -945,6 +930,72 @@ function SalesTab({ wallet }: { wallet: string }) {
           })}
         </>
       )}
+
+      {shipOrder && (
+        <ShipLabelFlow
+          order={shipOrder}
+          onClose={() => setShipOrder(null)}
+          onShipped={(updated) => {
+            setSellerOrders(prev => prev.map(o => o.id === shipOrder.id ? { ...o, ...updated } as Order : o));
+            setShipOrder(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Inline payment-request preview card (B3) — a pending request between the two people in this
+// thread, shown in place in the message flow instead of only being visible in the generic
+// Pay/Request sheet. Decline (and Cancel, for the requester's own outgoing request) call the SAME
+// endpoint the old sheet used (PATCH /api/transfer/request). Accept opens that same sheet, already
+// addressed to the right person — paying still needs the full sign/confirm flow that lives there,
+// so this card previews + routes rather than re-implementing custody-sensitive signing.
+type PaymentRequestRow = {
+  id: string;
+  requester_wallet: string;
+  payer_wallet: string;
+  token: string;
+  amount: number;
+  note: string | null;
+  status: string;
+  created_at: string;
+  other: { display_name: string | null; avatar_url: string | null } | null;
+};
+
+function RequestCard({ r, wallet, busy, onRespond, onAccept }: {
+  r: PaymentRequestRow;
+  wallet: string;
+  busy: boolean;
+  onRespond: (id: string, action: 'decline' | 'cancel') => void;
+  onAccept: () => void;
+}) {
+  const isPayer = r.payer_wallet === wallet;
+  const otherLabel = r.other?.display_name || shortWallet(isPayer ? r.requester_wallet : r.payer_wallet);
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <div style={{ ...surface({ pad: S[3], radius: 16 }), width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: S[2] }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2] }}>
+          <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+            {isPayer ? `${otherLabel} requested` : `You requested from ${otherLabel}`}
+          </span>
+          <span style={{ ...badge('default') }}>Pending</span>
+        </div>
+        <div style={{ ...t('title'), color: 'var(--text-strong)' }}>{r.amount} {r.token}</div>
+        {r.note && <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{r.note}</div>}
+        <div style={{ display: 'flex', gap: S[2] }}>
+          {isPayer ? (
+            <>
+              <button onClick={() => onRespond(r.id, 'decline')} disabled={busy} style={{ ...btn('secondary'), flex: 1, fontSize: 13, padding: '8px 12px' }}>Decline</button>
+              <button onClick={onAccept} disabled={busy} style={{ ...btn('primary'), flex: 1, fontSize: 13, padding: '8px 12px' }}>Accept</button>
+            </>
+          ) : (
+            <button onClick={() => onRespond(r.id, 'cancel')} disabled={busy} style={{ ...btn('secondary'), flex: 1, fontSize: 13, padding: '8px 12px' }}>Cancel request</button>
+          )}
+        </div>
+        <Link href={`/request/${r.id}`} style={{ ...t('meta'), color: 'var(--text-strong)', textAlign: 'center', textDecoration: 'underline' }}>View request</Link>
+      </div>
     </div>
   );
 }
@@ -958,6 +1009,7 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
   const [sending, setSending] = useState(false);
   const [offerMax, setOfferMax] = useState<number | null>(null);
   const [showPaySheet, setShowPaySheet] = useState(false);
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
 
   const { data: conversations = [], isLoading, refetch } = trpc.messages.getConversations.useQuery(
     { wallet },
@@ -968,6 +1020,36 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
     { wallet_a: wallet, wallet_b: activeConv ?? '' },
     { enabled: !!wallet && !!activeConv, refetchInterval: 8000 }
   );
+
+  const { data: requestsData, refetch: refetchRequests } = trpc.transfers.requests.useQuery(
+    { wallet },
+    { enabled: !!wallet, refetchInterval: 15000 }
+  );
+
+  const threadRequests: PaymentRequestRow[] = [
+    ...((requestsData?.incoming ?? []) as PaymentRequestRow[]),
+    ...((requestsData?.outgoing ?? []) as PaymentRequestRow[]),
+  ].filter(r => r.status === 'pending' && activeConv && (
+    (r.requester_wallet === activeConv && r.payer_wallet === wallet) ||
+    (r.requester_wallet === wallet && r.payer_wallet === activeConv)
+  ));
+
+  async function respondRequest(request_id: string, action: 'decline' | 'cancel') {
+    setRespondingRequestId(request_id);
+    try {
+      const token = await getAccessToken();
+      await fetch('/api/transfer/request', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ request_id, action }),
+      });
+    } catch {
+      // non-fatal — refetch reflects the true state
+    } finally {
+      setRespondingRequestId(null);
+      refetchRequests();
+    }
+  }
 
   // Open a conversation: mark messages from that partner as read via authed API route.
   async function openConv(partnerWallet: string) {
@@ -1056,18 +1138,36 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
           </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: S[2], marginBottom: S[3] }}>
-          {thread.map((msg: any) => {
-            const isMine = msg.from_wallet === wallet;
-            return (
-              <div key={msg.id} style={{ display: 'flex', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
-                <div style={{ maxWidth: '72%', ...(isMine ? { background: T.gradBrand } : surface({ radius: 18 })), borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', padding: '10px 14px' }}>
-                  <StructuredBubble content={msg.content} preset={msg.preset} mine={isMine} />
-                  <div style={{ ...t('meta'), color: isMine ? 'rgba(255,255,255,.7)' : 'var(--text-muted)', marginTop: S[1] }}>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+          {[
+            ...thread.map((msg: any) => ({ kind: 'message' as const, at: msg.created_at, msg })),
+            ...threadRequests.map((r) => ({ kind: 'request' as const, at: r.created_at, r })),
+          ]
+            .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+            .map((entry) => {
+              if (entry.kind === 'request') {
+                return (
+                  <RequestCard
+                    key={`req-${entry.r.id}`}
+                    r={entry.r}
+                    wallet={wallet}
+                    busy={respondingRequestId === entry.r.id}
+                    onRespond={respondRequest}
+                    onAccept={() => setShowPaySheet(true)}
+                  />
+                );
+              }
+              const msg = entry.msg;
+              const isMine = msg.from_wallet === wallet;
+              return (
+                <div key={msg.id} style={{ display: 'flex', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+                  <div style={{ maxWidth: '72%', ...(isMine ? { background: T.gradBrand } : surface({ radius: 18 })), borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', padding: '10px 14px' }}>
+                    <StructuredBubble content={msg.content} preset={msg.preset} mine={isMine} />
+                    <div style={{ ...t('meta'), color: isMine ? 'rgba(255,255,255,.7)' : 'var(--text-muted)', marginTop: S[1] }}>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-          {thread.length === 0 && !threadLoading && <div style={{ textAlign: 'center', ...t('meta'), color: 'var(--text-muted)', paddingTop: S[5] }}>Start the conversation</div>}
+              );
+            })}
+          {thread.length === 0 && threadRequests.length === 0 && !threadLoading && <div style={{ textAlign: 'center', ...t('meta'), color: 'var(--text-muted)', paddingTop: S[5] }}>Start the conversation</div>}
         </div>
         <PresetComposer onSend={sendMessage} sending={sending} maxOffer={offerMax} />
 
@@ -1109,13 +1209,11 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: S[2], marginBottom: S[1] }}>
-                  <UserLink
-                    wallet={conv.partner_wallet}
-                    viewerWallet={wallet}
-                    style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}
-                  >
+                  {/* The whole row opens the thread — the name here is plain text, not a profile link
+                      (the profile link lives on the header once inside the thread). */}
+                  <span style={{ ...t('heading'), color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
                     {conv.partner_name ?? shortWallet(conv.partner_wallet)}
-                  </UserLink>
+                  </span>
                   <div style={{ ...t('meta'), color: 'var(--text-muted)', flexShrink: 0 }}>{new Date(conv.last_at).toLocaleDateString()}</div>
                 </div>
                 <div style={{ ...t('meta'), color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.last_message}</div>

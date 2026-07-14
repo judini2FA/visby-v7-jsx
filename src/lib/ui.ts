@@ -60,6 +60,7 @@ export function cta(o: { radius?: number | string; pad?: string } = {}): CSSProp
     padding: o.pad ?? '13px 22px',
     fontWeight: 600,
     cursor: 'pointer',
+    userSelect: 'none',
     boxShadow: '0 8px 24px rgba(89,180,245,.25)',
     transition: 'transform .25s var(--ease), box-shadow .25s var(--ease)',
   };
@@ -173,15 +174,21 @@ export function btn(variant: BtnVariant = 'primary', o: { full?: boolean; pill?:
     borderRadius: o.pill === false ? 'var(--r)' : 'var(--pill)',
     border: '1px solid transparent',
     cursor: 'pointer',
+    userSelect: 'none',
     textDecoration: 'none',
     whiteSpace: 'nowrap',
     transition: 'transform .2s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease)',
     ...(o.full ? { width: '100%' } : null),
   };
+  // Every variant sets the borderColor LONGHAND explicitly. Relying on the base `border` shorthand
+  // alone regrows a near-black border at runtime: when a button re-renders across variants (a chip
+  // toggling secondary→primary), React clears the stale borderColor longhand but never re-applies the
+  // unchanged shorthand, so border-color falls back to currentColor — the recurring "black line on
+  // selected buttons" bug that never showed in static review.
   const variants: Record<BtnVariant, CSSProperties> = {
-    primary:   { background: 'var(--grad-brand)', color: 'var(--text-on-cta)', boxShadow: '0 8px 24px rgba(89,180,245,.22)' },
+    primary:   { background: 'var(--grad-brand)', color: 'var(--text-on-cta)', borderColor: 'transparent', boxShadow: '0 8px 24px rgba(89,180,245,.22)' },
     secondary: { background: 'var(--glass-bg-strong)', color: 'var(--text-strong)', borderColor: 'var(--glass-border)', backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))' },
-    text:      { background: 'transparent', color: 'var(--text-muted)', padding: '8px 12px' },
+    text:      { background: 'transparent', color: 'var(--text-muted)', borderColor: 'transparent', padding: '8px 12px' },
     danger:    { background: 'var(--danger-soft)', color: 'var(--danger)', borderColor: 'var(--danger-soft)' },
   };
   return { ...base, ...variants[variant] };

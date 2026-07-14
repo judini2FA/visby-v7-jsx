@@ -8,6 +8,7 @@ import { useVisbWallet } from '@/lib/wallet';
 import { StarRating } from '@/components/reviews';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, card, btn, input, T } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 interface Verified {
   order_id: string;
@@ -71,7 +72,7 @@ export default function ReviewPage() {
       if (!res.ok) throw new Error((body as any).error ?? 'Could not submit your review.');
       setDone(true);
     } catch (e: any) {
-      setSubmitErr(e?.message ?? 'Something went wrong.');
+      setSubmitErr(friendlyError(e, 'Could not submit your review — try again.'));
     } finally {
       setBusy(false);
     }

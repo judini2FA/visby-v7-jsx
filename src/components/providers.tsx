@@ -8,7 +8,7 @@ import { registerTrpcToken } from '@/lib/trpc/token-bridge';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 import { NativeBootstrap } from '@/components/native-bootstrap';
 import { AppLock } from '@/components/app-lock';
-import { PasswordGate } from '@/components/password-gate';
+import { OnboardingGate } from '@/components/onboarding-gate';
 import { AccountGate } from '@/components/account-gate';
 import { CurrencySync } from '@/components/currency-sync';
 import { captureError } from '@/lib/monitoring';
@@ -89,16 +89,19 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
       config={{
-        loginMethods: ['email', 'wallet'],
+        loginMethods: ['email', 'sms', 'google', 'apple', 'wallet'],
         appearance: {
           theme: mode === 'dark' ? 'dark' : 'light',
           accentColor: '#2A8AED',
           logo: '/visby-logo-mark.png',
-          // Solana-only, direct-connect wallets. Dropping 'wallet_connect' (and the EVM-only
-          // metamask/coinbase/rainbow entries — irrelevant on a Solana-only app) removes the
-          // pairing-QR/raw-URI step from external-wallet sign-in: 'detected_wallets' +
-          // 'phantom' connect in one click via the browser extension, no code ever shown (A3).
-          walletList: ['detected_wallets', 'phantom'],
+          // Solana-only wallet buttons. 'detected_solana_wallets' auto-surfaces every installed
+          // Solana extension (Phantom/Solflare/Backpack/Glow/…) in one click, no pairing-QR/raw-URI
+          // shown (A3) — those wallets have no explicit WalletListEntry id in Privy 1.99.1, so
+          // detection is the only way to list them. The named entries below are the Solana-relevant
+          // subset that DO type-check as WalletListEntry in this version; the rest of the union is
+          // EVM-only and irrelevant on a solana-only app. 'wallet_connect' reaches mobile Solana
+          // wallets that aren't a browser extension.
+          walletList: ['detected_solana_wallets', 'phantom', 'coinbase_wallet', 'okx_wallet', 'wallet_connect'],
           walletChainType: 'solana-only',
         },
         embeddedWallets: {
@@ -118,11 +121,11 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
             <CurrencySync />
-            <PasswordGate>
-              <AppLock>
-                <AccountGate>{children}</AccountGate>
-              </AppLock>
-            </PasswordGate>
+            <AppLock>
+              <AccountGate>
+                <OnboardingGate>{children}</OnboardingGate>
+              </AccountGate>
+            </AppLock>
           </QueryClientProvider>
         </trpc.Provider>
       </EnsureSolanaWallet>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getAuthorityUsdcBalance } from '@/lib/solana-fund';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,6 +53,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ client_secret: paymentIntent.client_secret });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not start the payment — try again.') }, { status: 500 });
   }
 }

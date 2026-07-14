@@ -3,6 +3,9 @@ const { withSentryConfig } = require('@sentry/nextjs');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     reactStrictMode: true,
+    // Gzip/Brotli compression for all responses (PERF1). This is Next's own default, but the flag
+    // was absent from this config — making it explicit so it can't silently regress.
+    compress: true,
     // Next 14 needs this flag for instrumentation.ts (Sentry server/edge init) to load.
     experimental: {
           instrumentationHook: true,

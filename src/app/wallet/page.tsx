@@ -4,8 +4,8 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useVisbWallet } from '@/lib/wallet';
-import { t, S, btn, surface, sectionLabel, tabSlider, badge } from '@/lib/ui';
-import { useCurrency, CURRENCIES } from '@/lib/currency';
+import { t, S, surface, sectionLabel, tabSlider, badge } from '@/lib/ui';
+import { useCurrency } from '@/lib/currency';
 import { trpc } from '@/lib/trpc/client';
 import PayRequest from '@/components/pay-request';
 import PaymentMethodsManager from '@/components/payment-methods-manager';
@@ -15,6 +15,7 @@ import PendingPayouts from '@/components/pending-payouts';
 import { SellerAnalytics } from '@/components/seller-analytics';
 import { TallyWallets } from '@/components/tally-wallets';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { CurrencyPicker } from '@/components/currency-picker';
 
 type WTab = 'wallets' | 'pay' | 'payouts';
 
@@ -116,14 +117,7 @@ export default function WalletPage() {
               <div style={{ ...t('meta'), color: 'var(--text-muted)', marginBottom: S[3] }}>
                 Prices show in this currency; payouts settle in USDC / SOL.
               </div>
-              <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
-                {CURRENCIES.map(c => (
-                  <button key={c} onClick={() => setCurrency(c)}
-                    style={{ ...btn(currency === c ? 'primary' : 'secondary'), padding: '7px 14px', ...(currency === c ? {} : { color: 'var(--text-muted)' }) }}>
-                    {c}
-                  </button>
-                ))}
-              </div>
+              <CurrencyPicker value={currency} onChange={setCurrency} />
             </div>
           </div>
         )}

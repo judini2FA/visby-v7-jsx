@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { notify } from '@/lib/notifications';
 import { logSecurityEvent } from '@/lib/security-audit';
 import { clientIp } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 const VALID_STATUSES = ['unverified', 'authenticated', 'flagged'] as const;
 type AuthStatus = (typeof VALID_STATUSES)[number];
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
       error.code === '42703' || error.code === '42P01' || error.code === 'PGRST205' ||
       !!error.message?.includes('does not exist') || !!error.message?.includes('column');
     return NextResponse.json(
-      { error: 'Item authentication is not available yet', detail: error.message },
+      { error: missing ? 'Item authentication is not available yet' : friendlyError(error, 'Could not save authentication status.') },
       { status: missing ? 503 : 500 },
     );
   }

@@ -3,13 +3,16 @@
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ThemeToggle, useTheme } from '@/lib/theme';
-import { CURRENCIES, useCurrency } from '@/lib/currency';
+import { useCurrency } from '@/lib/currency';
 import { S, t, surface, btn, sectionLabel, T } from '@/lib/ui';
-import ShipToSettings from '@/components/ship-to-settings';
 import AddressBook from '@/components/address-book';
+import BusinessSettings from '@/components/business-settings';
 import SecuritySettings from '@/components/security-settings';
+import { CurrencyPicker } from '@/components/currency-picker';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { useAdminRole } from '@/lib/use-admin-role';
 
 const C = {
   red: 'var(--danger)',
@@ -46,6 +49,7 @@ export default function SettingsPage() {
   const { wallets: solanaWallets, createWallet } = useSolanaWallets();
   const { mode } = useTheme();
   const { currency, setCurrency } = useCurrency();
+  const { isAdmin } = useAdminRole();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [privacyHistory, setPrivacyHistory] = useState(false);
@@ -117,24 +121,9 @@ export default function SettingsPage() {
         <Section title="Default Currency">
           <div style={{ padding: '12px 16px' }}>
             <div style={{ ...t('meta'), color: T.textMuted, marginBottom: S[3] }}>Prices are shown in your chosen currency. Transactions always settle in USDC.</div>
-            <div style={{ display: 'flex', gap: S[2], flexWrap: 'wrap' }}>
-              {CURRENCIES.map(c => (
-                currency === c
-                  ? <button key={c} onClick={() => setCurrency(c)} style={{ ...btn('primary'), padding: '7px 14px' }}>{c}</button>
-                  : <button key={c} onClick={() => setCurrency(c)} style={{ ...btn('secondary'), padding: '7px 14px', color: T.textMuted }}>{c}</button>
-              ))}
-            </div>
+            <CurrencyPicker value={currency} onChange={setCurrency} />
           </div>
         </Section>
-
-        {/* Shipping address */}
-        {solanaWallets[0]?.address && (
-          <Section title="Shipping">
-            <div style={{ padding: '14px 16px' }}>
-              <ShipToSettings wallet={solanaWallets[0].address} />
-            </div>
-          </Section>
-        )}
 
         {/* Address book */}
         {solanaWallets[0]?.address && (
@@ -145,26 +134,15 @@ export default function SettingsPage() {
           </Section>
         )}
 
-        {/* Payment Methods */}
-        <Section title="Payment Methods">
-          <Row
-            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}
-            label="Credit / Debit Cards"
-            sublabel="Secure card payments"
-            right={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>}
-            onClick={() => router.push('/profile')}
-          />
-          <Row
-            border={false}
-            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
-            label="Crypto (SOL, USDC)"
-            sublabel="Pay directly from your Visby wallet"
-            right={<span style={{ ...t('micro'), color: 'var(--ok)' }}>Active</span>}
-          />
-        </Section>
+        {/* Business account */}
+        {solanaWallets[0]?.address && (
+          <Section title="Business">
+            <BusinessSettings wallet={solanaWallets[0].address} />
+          </Section>
+        )}
 
         {/* Wallets */}
-        <Section title="Wallets">
+        <Section title="Visby native wallets">
           {solanaWallets.length === 0 ? (
             <Row
               border={false}
@@ -224,6 +202,12 @@ export default function SettingsPage() {
             Sign Out
           </button>
         </div>
+
+        {isAdmin && (
+          <div style={{ textAlign: 'center', marginTop: S[2] }}>
+            <Link href="/admin" style={{ ...t('micro'), color: 'var(--text-muted)', textDecoration: 'none' }}>admin</Link>
+          </div>
+        )}
 
       </div>
     </div>

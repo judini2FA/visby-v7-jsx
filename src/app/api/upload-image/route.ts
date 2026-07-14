@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedWallets } from '@/lib/auth';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
   await supabase.storage.createBucket('item-images', { public: true }).catch(() => {});
 
   const { error } = await supabase.storage.from('item-images').upload(path, buffer, { contentType, upsert: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: friendlyError(error, 'Could not upload the image — try again.') }, { status: 500 });
 
   const { data } = supabase.storage.from('item-images').getPublicUrl(path);
   return NextResponse.json({ url: data.publicUrl });

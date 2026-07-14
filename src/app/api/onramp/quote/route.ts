@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { solUsd } from '@/lib/price-oracle';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,6 +53,6 @@ export async function GET(req: Request) {
       lamports,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not get a price quote — try again.') }, { status: 500 });
   }
 }

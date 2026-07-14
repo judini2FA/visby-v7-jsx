@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card, surface, btn, badge, tabSlider, input } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 type Item = {
   id: string;
@@ -52,7 +53,7 @@ export default function AdminListings() {
       if (!res.ok) throw new Error(d.error || 'Failed to load');
       setItems(d.items ?? []);
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to load');
+      setErr(friendlyError(e, 'Failed to load — try again.'));
       setItems([]);
     }
   }, [ready, wallet, getAccessToken, filter, q]);
@@ -90,7 +91,7 @@ export default function AdminListings() {
           : prev,
       );
     } catch (e: any) {
-      setErr(e?.message ?? 'Update failed');
+      setErr(friendlyError(e, 'Update failed — try again.'));
     } finally {
       setBusy(null);
     }

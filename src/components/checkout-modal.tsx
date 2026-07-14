@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { MoovCardForm, MOOV_ENABLED } from '@/components/moov-card-form';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
-import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useTheme } from '@/lib/theme';
 import { AddressForm, EMPTY_SHIP_TO, shipToValid, shipToSummary, type ShipTo } from '@/components/address-form';
-import { visibleTokens, isSwapToken } from '@/lib/payable-tokens';
+import { visibleTokens, isSwapToken, tokenDisplay } from '@/lib/payable-tokens';
+import { sendSol } from '@/lib/transfer-client';
+import { t, price } from '@/lib/ui';
+import { useCurrency, formatCurrency, type Currency as PrefCurrency } from '@/lib/currency';
 
 const C = {
   navy: 'var(--bg-0)', teal: '#22C6B7', cyan: '#25CDB8',
@@ -20,12 +22,31 @@ const GH = `linear-gradient(90deg,${C.cyan},${C.blue} 50%,${C.mag})`;
 const TREASURY = process.env.NEXT_PUBLIC_TREASURY_WALLET!;
 const RPC      = process.env.NEXT_PUBLIC_HELIUS_RPC_URL ?? 'https://api.devnet.solana.com';
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+// 12b B2b — Coinbase Commerce, a SECOND crypto rail (max compatibility: any wallet/exchange, not just
+// Solana) alongside the native SOL/USDC/Li.Fi flow. Flag-dark until Judah sets the Coinbase keys + flips
+// this; adds one additional tab and never touches the existing SOL/USDC/Li.Fi/CARD tabs.
+const COINBASE_ENABLED = process.env.NEXT_PUBLIC_COINBASE_ENABLED === '1';
 
 // Payable currencies are driven by src/lib/payable-tokens.ts (the gated set only appears once
 // NEXT_PUBLIC_MULTICRYPTO_ENABLED is on), so this is a plain symbol string.
 type Currency = string;
 interface Quote  { amount: number; display: string; rate_source: string; }
 interface Quotes { USDC: Quote|null; SOL: Quote|null; ETH: Quote|null; BTC: Quote|null; }
+
+// Mirrors ORDER_KEY in src/components/payment-methods-manager.tsx (not exported there, so the literal
+// is repeated here rather than imported — that file is read-only for this change).
+const PAYMENT_ORDER_KEY = 'visby-payment-order';
+
+// Maps a payment-order id (see payment-methods-manager.tsx's `methods` builder) to the matching checkout
+// tab. 'cw:'-prefixed ids are connected EXTERNAL wallets — receive-only today ("Paying from an external
+// wallet is coming soon" per that file), so they're not a payable checkout method and are skipped rather
+// than mapped to a tab.
+function methodIdToCheckoutCurrency(id: string): Currency | null {
+  if (id === 'wallet') return 'SOL';
+  if (id.startsWith('cw:')) return null;
+  if (id.startsWith('pm_')) return 'CARD'; // Stripe payment method id
+  return 'ACH'; // remaining ids are linked_bank_accounts rows
+}
 
 interface Props {
   itemId: string; itemName: string; priceUsdc: number;
@@ -34,6 +55,10 @@ interface Props {
   // pending_serials row id, mint happens at settlement). Only SOL is wired for that endpoint today,
   // so non-SOL tabs are hidden rather than left to fail against an endpoint that doesn't support them.
   mode?: 'item' | 'pending';
+  // B4: the seller's preferred display currency, only if the caller already has it in hand (e.g. an
+  // item page's item.profiles[owner].preferred_currency). Never fetched here — omitted from the
+  // summary when absent, so this is a no-op until a caller threads it through.
+  sellerCurrency?: PrefCurrency;
 }
 
 // Stripe CardElement renders in an iframe and can't read CSS vars — pass concrete colors per mode.
@@ -104,23 +129,57 @@ function CardPayForm({ priceUsdc, payAmount, clientSecret, onSuccess, onError }:
 }
 
 // ── Main modal ─────────────────────────────────────────────────
-export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet, onClose, onSuccess, mode = 'item' }: Props) {
+export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet, onClose, onSuccess, mode = 'item', sellerCurrency }: Props) {
   const { getAccessToken } = usePrivy();
   const { wallets } = useSolanaWallets();
-  const solWallet   = wallets.find((w: any) => w.walletClientType === 'privy') ?? wallets[0];
+  // Must match buyerWallet exactly — Privy's live wallets[] can transiently hold a different-address
+  // wallet than the persisted buyerWallet right after login (see the wallet-flip note in src/lib/wallet.ts).
+  // Signing with a mismatched wallet produces an invalid signature for this tx's feePayer, which the chain
+  // rejects — that used to surface as a generic "Payment failed" with no clue why (B2a root cause #1).
+  const solWallet = wallets.find((w: any) => w.address === buyerWallet);
   const isPending = mode === 'pending';
+  const { currency: prefCurrency, format: formatPref } = useCurrency();
 
-  const [currency, setCurrency] = useState<Currency>(isPending ? 'SOL' : 'CARD');
+  // B4: auto-select the buyer's primary payment method from their saved order (localStorage is instant;
+  // reconciled against the server copy below). Falls back to the prior default (SOL for pending, else Card)
+  // when there's no usable order yet.
+  const [currency, setCurrency] = useState<Currency>(() => {
+    if (isPending) return 'SOL';
+    try {
+      const stored = JSON.parse(localStorage.getItem(PAYMENT_ORDER_KEY) || '[]');
+      if (Array.isArray(stored)) {
+        const visible = new Set(visibleTokens().map(tk => tk.symbol));
+        for (const id of stored) {
+          if (typeof id !== 'string') continue;
+          const c = methodIdToCheckoutCurrency(id);
+          if (c && visible.has(c)) return c;
+        }
+      }
+    } catch { /* fall through to default */ }
+    return 'CARD';
+  });
+  // Whether the buyer has picked a tab by hand — once true, the server-order reconciliation effect below
+  // must never override their choice.
+  const userPickedMethodRef = useRef(false);
+  // Compact "Paying with X — Change" row, expands to the tab strip on tap.
+  const [methodExpanded, setMethodExpanded] = useState(false);
   const [quotes,   setQuotes]   = useState<Quotes | null>(null);
   const [piSecret, setPiSecret] = useState<string | null>(null);
   const [taxCents, setTaxCents] = useState(0);
-  const [status,   setStatus]   = useState<'idle'|'paying'|'done'|'ach_processing'|'error'>('idle');
+  const [status,   setStatus]   = useState<'idle'|'paying'|'done'|'ach_processing'|'coinbase_pending'|'error'>('idle');
   const [achBanks, setAchBanks] = useState<{ fc_account_id: string; institution_name: string | null; last4: string | null }[] | null>(null);
   const [achBank,  setAchBank]  = useState<{ institution_name: string | null; last4: string | null } | null>(null);
+  // Coinbase Commerce (gated): the hosted charge URL we opened in a new tab, kept around so the "waiting
+  // for confirmation" panel can offer a "Reopen payment page" link if the buyer closed it early.
+  const [coinbaseUrl, setCoinbaseUrl] = useState<string | null>(null);
   const [errMsg,   setErrMsg]   = useState('');
   const [swapQuote,   setSwapQuote]   = useState<any | null>(null);
   const [swapLoading, setSwapLoading] = useState(false);
   const [solBalance,  setSolBalance]  = useState<number | null>(null);
+  // Moov saved cards (gated) — null = not loaded yet, [] = loaded, none on file. showNewCard forces the
+  // Card Link Drop back open even when a default exists ("Use a different card").
+  const [moovCards,   setMoovCards]   = useState<{ account_id: string; card_id: string; brand: string | null; last4: string | null; is_default: boolean }[] | null>(null);
+  const [showNewCard, setShowNewCard] = useState(false);
   // Effective checkout price for THIS buyer = accepted-offer price (if any) else the list price prop.
   // Display/quote convenience only — every rail independently re-resolves + enforces the price server-side.
   const [effPrice,    setEffPrice]    = useState(priceUsdc);
@@ -133,6 +192,29 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   const [addrDraft,   setAddrDraft]   = useState<ShipTo>(EMPTY_SHIP_TO);
   const [addrSaving,  setAddrSaving]  = useState(false);
   const [addrErr,     setAddrErr]     = useState('');
+
+  // B4: reconcile the auto-selected tab with the buyer's SERVER-side payment order once it loads — the
+  // localStorage read in the currency initializer above is instant but can be stale/empty on a new
+  // device. Never overrides a tab the buyer already picked by hand.
+  useEffect(() => {
+    if (isPending || !buyerWallet) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const r = await fetch(`/api/payment-methods/order?wallet=${buyerWallet}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        const d = await r.json();
+        if (cancelled || userPickedMethodRef.current || !Array.isArray(d.order)) return;
+        const visible = new Set(visibleTokens().map(tk => tk.symbol));
+        for (const id of d.order) {
+          if (typeof id !== 'string') continue;
+          const c = methodIdToCheckoutCurrency(id);
+          if (c && visible.has(c)) { setCurrency(c); break; }
+        }
+      } catch { /* fail soft — keep the localStorage-derived selection */ }
+    })();
+    return () => { cancelled = true; };
+  }, [buyerWallet, isPending, getAccessToken]);
 
   // Load price quotes — non-blocking, modal works fine without them. /api/lifi/quote resolves its
   // price off the `items` table, which doesn't have a row yet for a pending (unminted) serial — so
@@ -182,8 +264,11 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
 
   // Create PaymentIntent as soon as the card tab is active. Sends the Privy token — the route now
   // authenticates the buyer (offer pricing keys off buyer_wallet), so an unauthed call 401s.
+  // Skipped while Moov is the active card rail — CARD renders MoovCardForm/saved-card UI exclusively
+  // in that case, so a Stripe PaymentIntent here would be a stray, never-used, never-charged silent
+  // fallback (B1: Moov-only CARD tab when the flag is on).
   useEffect(() => {
-    if (isPending || currency !== 'CARD' || piSecret || !buyerWallet || shipLoading) return;
+    if (MOOV_ENABLED || isPending || currency !== 'CARD' || piSecret || !buyerWallet || shipLoading) return;
     let cancelled = false;
     (async () => {
       try {
@@ -200,6 +285,22 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     })();
     return () => { cancelled = true; };
   }, [currency, itemId, buyerWallet, piSecret, shipLoading, isPending, getAccessToken]);
+
+  // Moov saved cards (gated): loads once when the CARD tab opens so a returning buyer with a card on
+  // file sees the one-tap "Pay with {brand} ····{last4}" button instead of the Card Link Drop.
+  useEffect(() => {
+    if (!MOOV_ENABLED || isPending || currency !== 'CARD' || !buyerWallet || moovCards !== null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const r = await fetch(`/api/moov/cards?wallet=${buyerWallet}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        const d = await r.json();
+        if (!cancelled) setMoovCards(Array.isArray(d.cards) ? d.cards : []);
+      } catch { if (!cancelled) setMoovCards([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [currency, buyerWallet, isPending, moovCards, getAccessToken]);
 
   // Check the buyer's SOL balance when the SOL tab opens, so we can warn before a failed tx
   useEffect(() => {
@@ -271,15 +372,16 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     } catch (err: any) { setErrMsg(err.message ?? 'Payment failed'); setStatus('error'); }
   }
 
-  // Moov card rail (gated). The Card Link Drop returns (accountID, cardID); the server charges the card
-  // to the platform wallet and settles via the same fulfill path as Stripe.
-  async function payWithMoov(accountID: string, _cardID: string) {
+  // Moov card rail (gated). Called either with a freshly-linked (accountID, cardID) from the Card Link
+  // Drop, or a saved card's ids for one-tap reuse — either way the server charges that exact card to the
+  // platform wallet, settles via the same fulfill path as Stripe, and saves the card on file on success.
+  async function payWithMoov(accountID: string, cardID: string) {
     setStatus('paying'); setErrMsg('');
     try {
       const token = await getAccessToken();
       const res = await fetch('/api/moov/charge', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ account_id: accountID, item_id: itemId, buyer_wallet: buyerWallet }),
+        body: JSON.stringify({ account_id: accountID, item_id: itemId, buyer_wallet: buyerWallet, card_id: cardID }),
       });
       const data = await res.json();
       if (data.ok) { setStatus('done'); onSuccess(itemId); }
@@ -303,22 +405,48 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     } catch (err: any) { setErrMsg(err.message ?? 'Could not start the bank payment.'); setStatus('error'); }
   }
 
+  // Coinbase Commerce (gated) — a second, max-compatibility crypto rail. Opens Coinbase's hosted charge
+  // page in a new tab; nothing settles here. The item transfers later, in /api/coinbase/webhook, once the
+  // on-chain payment confirms (mirrors ACH's initiate-here/fulfill-async shape).
+  async function payWithCoinbase() {
+    setStatus('paying'); setErrMsg('');
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/coinbase/create-charge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ item_id: itemId, buyer_wallet: buyerWallet }),
+      });
+      const data = await res.json();
+      if (data.ok && data.hosted_url) {
+        setCoinbaseUrl(data.hosted_url);
+        window.open(data.hosted_url, '_blank', 'noopener,noreferrer');
+        setStatus('coinbase_pending');
+      } else {
+        setErrMsg(data.error ?? 'Could not start crypto checkout'); setStatus('error');
+      }
+    } catch (err: any) { setErrMsg(err.message ?? 'Could not start crypto checkout'); setStatus('error'); }
+  }
+
   async function payWithSol() {
-    if (!solWallet || !quotes?.SOL) return;
+    if (!quotes?.SOL) return;
+    // B2a root cause #1: solWallet is resolved by matching buyerWallet exactly (see the const above) —
+    // if Privy's wallets[] hasn't caught up yet, surface that instead of silently no-op'ing the tap.
+    if (!solWallet || typeof (solWallet as any).signTransaction !== 'function') {
+      setErrMsg('Your Solana wallet isn’t ready yet. Wait a moment and try again.');
+      setStatus('error');
+      return;
+    }
     setStatus('paying');
     setErrMsg('');
     try {
-      const solAmount  = isPending ? quotes.SOL.amount : (solPay ?? quotes.SOL.amount);
-      const lamports   = Math.round(solAmount * LAMPORTS_PER_SOL);
-      const connection = new Connection(RPC, 'confirmed');
-      const { blockhash } = await connection.getLatestBlockhash();
-      const tx = new Transaction();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(buyerWallet);
-      tx.add(SystemProgram.transfer({ fromPubkey: new PublicKey(buyerWallet), toPubkey: new PublicKey(TREASURY), lamports }));
-      const signed    = await (solWallet as any).signTransaction(tx);
-      const signature = await connection.sendRawTransaction(signed.serialize());
-      await connection.confirmTransaction(signature, 'confirmed');
+      const solAmount = isPending ? quotes.SOL.amount : (solPay ?? quotes.SOL.amount);
+      // B2a root cause #2: use the shared sendSol() (src/lib/transfer-client.ts) instead of the old
+      // inline Connection/sendRawTransaction/confirmTransaction(sig,'confirmed') sequence. That deprecated
+      // single-arg confirmTransaction overload THROWS on an RPC timeout even after the transfer already
+      // landed on-chain — which swallowed a real, successful payment as a generic "Payment failed" and
+      // never reached the fetch below to finalize the order. sendSol polls signature status, tolerates a
+      // confirmation timeout (the server verifies on-chain independently), and retries the broadcast.
+      const signature = await sendSol({ fromWallet: buyerWallet, toWallet: TREASURY, amountSol: solAmount, solWallet });
       // Pending mode mints at settlement, so the id the caller must route to (the new items row) only
       // exists in the response — itemId here is still the pending_serials row id.
       const res  = await fetch(isPending ? '/api/business/buy-pending' : '/api/sol-pay', {
@@ -333,9 +461,12 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
     } catch (err: any) {
       const m = String(err?.message ?? '');
       const lowFunds = /insufficient|prior credit|debit an account|0x1\b/i.test(m);
+      const rejected = /reject|denied|declined|cancel/i.test(m);
       setErrMsg(lowFunds
         ? 'Not enough SOL to cover this purchase plus network fees. Tap Add funds, then try again.'
-        : (m || 'Payment failed'));
+        : rejected
+        ? 'Payment was cancelled.'
+        : (m || 'Payment failed — please try again.'));
       setStatus('error');
     }
   }
@@ -372,17 +503,39 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
   const solPay = quotes?.SOL ? quotes.SOL.amount * priceRatio : null;
   const solPayDisplay = solPay != null ? `${solPay.toFixed(4)} SOL` : '…';
   const hasOfferDiscount = effPrice < priceUsdc - 0.005;
+  const chargeUsd = effPrice + taxCents / 100;
 
   // What the buyer pays in network/transfer fees, by method (shipping is always free to the buyer).
   const transferFeeNote =
     currency === 'SOL' ? 'Solana network fee · paid by you'
+    : currency === 'COINBASE' ? 'Network fee · paid by you'
     : isSwapToken(currency) ? 'Network + bridge fees included'
     : 'None';
   // buy-pending only supports the SOL/crypto rail today — CARD/USDC/Li.Fi swap all assume an `items`
   // row that doesn't exist yet for a pending serial, so pending mode offers SOL only, no tab strip.
+  // Coinbase Commerce (gated) is appended as an ADDITIONAL tab, never replacing the native crypto tabs.
   const tabs: { id: Currency; label: string; soon?: boolean }[] = isPending
     ? [{ id: 'SOL', label: 'SOL' }]
-    : visibleTokens().map(t => ({ id: t.symbol, label: t.label }));
+    : [
+        ...visibleTokens().map(tok => ({ id: tok.symbol, label: tok.label })),
+        ...(COINBASE_ENABLED ? [{ id: 'COINBASE', label: 'More crypto' }] : []),
+      ];
+  const selectedTabLabel = tabs.find(tb => tb.id === currency)?.label ?? currency;
+
+  // B4 — Apple-Pay-style summary. The headline is always the buyer's PREFERRED display currency; these
+  // lines show what's actually being spent on the selected method, ONLY when that differs from the
+  // headline. Never mentions USDC unless USDC is literally the paying asset — USDC isn't a selectable
+  // preferred currency (see src/lib/currency.ts CURRENCIES), so that guard is automatic below.
+  const totalUsd = currency === 'CARD' ? chargeUsd : effPrice;
+  const usingText: string | null =
+    currency === 'CARD' ? (prefCurrency !== 'USD' ? formatCurrency(chargeUsd, 'USD') : null)
+    : currency === 'ACH' ? (prefCurrency !== 'USD' ? formatCurrency(effPrice, 'USD') : null)
+    : currency === 'SOL' ? (solPay != null && prefCurrency !== currency ? tokenDisplay('SOL', solPay) : null)
+    : currency === 'USDC' ? tokenDisplay('USDC', effPrice)
+    : (isSwapToken(currency) && swapQuote && prefCurrency !== currency) ? (swapQuote.from_amount_display as string)
+    : null;
+  const sellerReceivesText: string | null =
+    sellerCurrency && sellerCurrency !== prefCurrency ? formatCurrency(effPrice, sellerCurrency) : null;
 
   return (
     <div onClick={status === 'done' ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'var(--modal-scrim)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -403,37 +556,26 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
           )}
         </div>
 
-        {/* Price summary */}
-        <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>You pay</span>
-            <span style={{ fontSize: 22, fontWeight: 800, background: GH, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: "'Inter',sans-serif" }}>
-              {currency === 'CARD' && taxCents > 0
-                ? `$${(effPrice + taxCents / 100).toFixed(2)}`
-                : currency === 'CARD' || currency === 'USDC' || currency === 'ACH'
-                ? `$${effPrice.toFixed(2)}`
-                : isSwapToken(currency)
-                  ? (swapQuote?.from_amount_display ?? '…')
-                  : currency === 'SOL' ? solPayDisplay
-                  : quote?.display ?? '…'}
-            </span>
+        {/* Price summary — Apple-Pay style: the headline is always the buyer's preferred display
+            currency; "Using"/"Seller receives" only appear when they'd say something the headline
+            doesn't already. */}
+        <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '18px 16px', marginBottom: 20 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>You pay</div>
+            <div style={{ ...price('lg'), margin: '2px auto 0' }}>{formatPref(totalUsd)}</div>
+            {hasOfferDiscount && (
+              <div style={{ ...t('meta'), color: C.green, fontWeight: 700, marginTop: 4 }}>
+                Offer accepted · was {formatPref(priceUsdc)}
+              </div>
+            )}
+            {usingText && (
+              <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: 4 }}>Using: {usingText}</div>
+            )}
+            {sellerReceivesText && (
+              <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: 2 }}>Seller receives: {sellerReceivesText}</div>
+            )}
           </div>
-          {hasOfferDiscount && (
-            <div style={{ fontSize: 11, color: C.green, textAlign: 'right', marginTop: 3, fontWeight: 700, fontFamily: "'Inter',sans-serif" }}>
-              Offer accepted · was ${priceUsdc.toFixed(2)}
-            </div>
-          )}
-          {currency === 'SOL' && quote && (
-            <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Inter',sans-serif" }}>
-              ≈ ${effPrice.toFixed(2)} USD
-            </div>
-          )}
-          {isSwapToken(currency) && swapQuote && (
-            <div style={{ fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 3, fontFamily: "'Inter',sans-serif" }}>
-              ≈ ${effPrice.toFixed(2)} USD
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
             <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Shipping</span>
             <span style={{ fontSize: 12, color: C.green, fontWeight: 700, fontFamily: "'Inter',sans-serif" }}>Free</span>
           </div>
@@ -477,19 +619,27 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
           </div>
         )}
 
-        {/* Tabs — pending mode only ever has one payable method, so a note replaces the tab strip */}
+        {/* Payment method — pending mode has only one payable method (a note replaces the picker); item
+            mode collapses to a compact "Paying with X — Change" row (B4), which expands into the same
+            tab strip as before on tap. */}
         {hasShip && !editingAddr && status !== 'done' && (
           isPending ? (
             <div style={{ fontSize: 12, color: C.muted, fontFamily: "'Manrope',sans-serif", marginBottom: 20 }}>
               Pay with SOL — the only method available for this item today.
             </div>
+          ) : !methodExpanded ? (
+            <button onClick={() => setMethodExpanded(true)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 16px', cursor: 'pointer' }}>
+              <span style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>Paying with {selectedTabLabel}</span>
+              <span style={{ ...t('meta'), color: C.blue, fontWeight: 700 }}>Change</span>
+            </button>
           ) : (
             <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'var(--glass-bg)', borderRadius: 16, padding: 4 }}>
-              {tabs.map(t => (
-                <button key={t.id} onClick={() => { setCurrency(t.id); setErrMsg(''); setStatus('idle'); setSwapQuote(null); }}
-                  style={{ flex: 1, position: 'relative', background: currency === t.id ? 'var(--glass-bg-strong)' : 'none', border: `1px solid ${currency === t.id ? 'var(--glass-border)' : 'transparent'}`, borderRadius: 12, padding: '9px 4px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", transition: 'all .15s', opacity: t.soon ? 0.5 : 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: currency === t.id ? 700 : 500, color: currency === t.id ? 'var(--text-strong)' : 'var(--text-muted)' }}>{t.label}</div>
-                  {t.soon && <div style={{ position: 'absolute', top: -5, right: -2, fontSize: 7, background: 'var(--glass-bg-strong)', color: C.muted, borderRadius: 4, padding: '1px 4px', fontFamily: "'Inter',sans-serif" }}>SOON</div>}
+              {tabs.map(tb => (
+                <button key={tb.id} onClick={() => { setCurrency(tb.id); userPickedMethodRef.current = true; setErrMsg(''); setStatus('idle'); setSwapQuote(null); setMethodExpanded(false); }}
+                  style={{ flex: 1, position: 'relative', background: currency === tb.id ? 'var(--glass-bg-strong)' : 'none', border: `1px solid ${currency === tb.id ? 'var(--glass-border)' : 'transparent'}`, borderRadius: 12, padding: '9px 4px', cursor: 'pointer', fontFamily: "'Inter',sans-serif", transition: 'all .15s', opacity: tb.soon ? 0.5 : 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: currency === tb.id ? 700 : 500, color: currency === tb.id ? 'var(--text-strong)' : 'var(--text-muted)' }}>{tb.label}</div>
+                  {tb.soon && <div style={{ position: 'absolute', top: -5, right: -2, fontSize: 7, background: 'var(--glass-bg-strong)', color: C.muted, borderRadius: 4, padding: '1px 4px', fontFamily: "'Inter',sans-serif" }}>SOON</div>}
                 </button>
               ))}
             </div>
@@ -518,6 +668,24 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
               Done
             </button>
           </div>
+        ) : status === 'coinbase_pending' ? (
+          <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--glass-bg-strong)', border: `2px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-strong)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-strong)', fontFamily: "'Inter',sans-serif" }}>Waiting for payment confirmation</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, fontFamily: "'Manrope',sans-serif" }}>
+              Finish paying in the Coinbase tab we opened. Your item transfers to you automatically once the payment confirms on-chain — this usually takes a few minutes, and we&apos;ll email you.
+            </div>
+            {coinbaseUrl && (
+              <a href={coinbaseUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 700, color: C.blue, fontFamily: "'Manrope',sans-serif", textDecoration: 'none' }}>
+                Reopen payment page
+              </a>
+            )}
+            <button onClick={onClose} style={{ marginTop: 6, width: '100%', background: GH, border: 'none', borderRadius: 16, padding: '13px 20px', fontWeight: 800, fontSize: 15, color: '#fff', cursor: 'pointer', fontFamily: "'Inter',sans-serif" }}>
+              Done
+            </button>
+          </div>
         ) : (hasShip && !editingAddr) ? (
           <>
             {errMsg && (
@@ -529,13 +697,33 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
             {/* ── CARD TAB ── */}
             {currency === 'CARD' && (
               MOOV_ENABLED ? (
-                <MoovCardForm onCardID={payWithMoov} onError={msg => { setErrMsg(msg); setStatus('error'); }} />
+                moovCards === null ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: C.muted, fontSize: 13 }}><Spinner />Loading…</div>
+                ) : (() => {
+                  const defaultCard = moovCards.find(c => c.is_default) ?? moovCards[0] ?? null;
+                  if (defaultCard && !showNewCard) {
+                    const label = `Pay with ${defaultCard.brand ?? 'card'}${defaultCard.last4 ? ` ····${defaultCard.last4}` : ''}`;
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <button onClick={() => payWithMoov(defaultCard.account_id, defaultCard.card_id)} disabled={status === 'paying'}
+                          style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                          {status === 'paying' ? <><Spinner />Processing…</> : label}
+                        </button>
+                        <button onClick={() => setShowNewCard(true)} disabled={status === 'paying'}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-strong)', cursor: status === 'paying' ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'Manrope',sans-serif", textAlign: 'center' }}>
+                          Use a different card
+                        </button>
+                      </div>
+                    );
+                  }
+                  return <MoovCardForm buyerWallet={buyerWallet} onCardID={payWithMoov} onError={msg => { setErrMsg(msg); setStatus('error'); }} />;
+                })()
               ) : piSecret ? (
                 // Elements provides Stripe context only — no clientSecret means no Link, no branding
                 <Elements stripe={stripePromise}>
                   <CardPayForm
                     priceUsdc={effPrice}
-                    payAmount={effPrice + taxCents / 100}
+                    payAmount={chargeUsd}
                     clientSecret={piSecret}
                     onSuccess={() => { setStatus('done'); onSuccess(itemId); }}
                     onError={msg => { setErrMsg(msg); setStatus('error'); }}
@@ -672,6 +860,29 @@ export default function CheckoutModal({ itemId, itemName, priceUsdc, buyerWallet
                   </button>
                 </div>
               )
+            )}
+
+            {/* ── Coinbase Commerce (gated, 12b B2b) — second crypto rail, any wallet/exchange ── */}
+            {currency === 'COINBASE' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: 'var(--glass-bg)', border: `1px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Inter',sans-serif" }}>You pay</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', fontFamily: "'Manrope',sans-serif" }}>${effPrice.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingTop: 9, borderTop: '1px solid var(--divider)' }}>
+                    <span style={{ fontSize: 11, color: C.muted, fontFamily: "'Inter',sans-serif" }}>Seller receives</span>
+                    <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: "'Inter',sans-serif" }}>${effPrice.toFixed(2)} USD</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, fontFamily: "'Manrope',sans-serif" }}>
+                  Pay with any wallet or exchange via Coinbase — BTC, ETH, USDC and more. Opens a secure Coinbase payment page in a new tab; your item transfers once the payment confirms on-chain.
+                </div>
+                <button onClick={payWithCoinbase} disabled={status === 'paying'}
+                  style={{ width: '100%', background: status === 'paying' ? 'var(--glass-bg)' : GH, border: 'none', borderRadius: 16, padding: '15px 20px', fontWeight: 800, fontSize: 16, color: '#fff', cursor: status === 'paying' ? 'not-allowed' : 'pointer', fontFamily: "'Inter',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                  {status === 'paying' ? <><Spinner />Starting…</> : `Pay $${effPrice.toFixed(2)} with Coinbase`}
+                </button>
+              </div>
             )}
           </>
         ) : null}

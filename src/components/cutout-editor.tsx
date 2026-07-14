@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { btn, S, t, sheet } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Photo background remover with a guaranteed manual path. Flow:
 //   auto  → run @imgly in-browser (progress + real error surface, never a silent no-op)
@@ -131,9 +132,9 @@ export function CutoutEditor({
       // Auto failed — don't dead-end. Seed the manual editor from the original so a cutout is still
       // reachable, and surface the real reason (model download blocked, unsupported device, etc.).
       try { await loadOriginal(); work.current = new ImageData(new Uint8ClampedArray(origData.current!.data), dims.current.w, dims.current.h); } catch {}
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = friendlyError(err, "Auto cutout couldn't run on this device.");
       setBusy(false);
-      setNote(`Auto cutout couldn't run (${msg || 'unknown error'}). Remove the background by hand below.`);
+      setNote(`${msg} Remove the background by hand below.`);
       setPhase('review');
       renderReview();
     }

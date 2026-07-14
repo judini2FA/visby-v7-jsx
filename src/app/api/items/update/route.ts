@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
 import { isRestricted } from '@/lib/account-status';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,9 +96,9 @@ export async function POST(req: NextRequest) {
       error.code === '42703' || error.code === '42P01' || error.code === 'PGRST205' ||
       !!error.message?.includes('does not exist');
     if (missing) {
-      return NextResponse.json({ error: 'Editing is not available yet', detail: error.message }, { status: 503 });
+      return NextResponse.json({ error: 'Editing is not available yet' }, { status: 503 });
     }
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: friendlyError(error, 'Could not save these changes — try again.') }, { status: 400 });
   }
 
   return NextResponse.json(data);

@@ -8,7 +8,7 @@
 > Yes → update here AND memory.md. No → memory.md only. **Everything always goes to memory.md.**
 > Check items off here the moment they're done; evidence and detail go in memory.md.
 
-**Locked decisions (don't re-litigate):** KYC = Civic (swap Persona) · card-present = Moov (Rainforest dropped) · shipping = EasyPost (direct UPS/FedEx/USPS adapters retired) · fee = 9% marketplace / 3.5% SDK, $0.50 floor · bank linking = Stripe Financial Connections only (no Plaid/SnapTrade/pay-apps/brokerages) · Visby account = email + password + 2FA (seed phrases only when linking external wallets) · non-custodial always (Visby never holds funds) · burner card parked.
+**Locked decisions (don't re-litigate):** KYC = Civic (swap Persona) · card-present = Moov (Rainforest dropped) · shipping = EasyPost (direct UPS/FedEx/USPS adapters retired) · fee = 9% marketplace / 3.5% SDK, $0.50 floor · bank linking = Stripe Financial Connections only (no Plaid/SnapTrade/pay-apps/brokerages) · **Visby account = PASSWORDLESS (Judah 2026-07-13): email/phone OTP codes + Google/Apple + external-wallet login; Face ID as an app-lock only, NOT a sign-in step. Custom password layer being removed.** (Supersedes the old "email + password + 2FA".) Seed phrases only when linking external wallets · non-custodial always (Visby never holds funds) · burner card parked.
 
 ---
 
@@ -149,6 +149,8 @@
 - [x] E1 — Sell/Mint photo cutout dead + no manual fallback (S2) → FIXED `005aad8` (real `cutout-editor.tsx`: auto → "Looks good?" → manual erase/restore + magic-erase).
 - [x] E2 — cutout rendered tiny/floating + grey box behind it (S3) → FIXED `f1a61ff`/`33f7118` (sharp-trim to subject + fill frame + transparent backing).
 - [x] E3 — cutout crash "url.replace is not a function" (S2) → FIXED `8ddeafa` (onnxruntime-web × webpack: `parser:{url:false}`; browser-verified end-to-end). Details in `errors.md`.
+- [ ] E4 — **QA batch 12b** (Judah's full manual pass 2026-07-08, parts 1+2 — working list + fix log in `12b.md`): waves 1–2 shipped 🟢 awaiting retest; wave 3 = quick Part-2 items (S4 borders, ERR1 error sweep, D1 ratings, N2 badge, QR1 remove item-page QR [2.1 stays built, UI hidden for MVP], MOB1 touch-drag, PERF1 reactivity, RATE1 login limits, SES1 session model); wave 4 = money path (B1 Moov card rail, B2a SOL rail fix, B3 escrow/devnet/pay-request, SH1+N1 label UI + sold/payout notification pipeline, SH3–SH5); wave 5 = big lifts (A7/P1 business verification, SU1 sign-up overhaul, CART1 cart, W2 omni-currency, B4 Apple-Pay checkout, A8, B2b Coinbase Commerce, DES1 design sweep) · sev mixed S1–S3.
+- [ ] E5 — decisions locked 2026-07-09: crypto = BOTH rails (SOL/USDC fixed now + Coinbase Commerce later — unparked) · session = signed-in until 1h INACTIVITY → Face ID re-entry, full login only on unrecognized device/sign-out, refresh never logs out · cart = Amazon-style account-linked persistent cart, one-click buy stays separate.
 - **Gate:** every logged error is fixed + re-tested + checked off; ZERO open S0/S1 (crash / blocker / money) errors.
 
 ## Phase 13 — Final live-startup runbook (the go-live gate)
@@ -218,6 +220,6 @@
 ## PARKED — do NOT build now
 - Burner card (Lithic, regulated, PCI-scoped) — explicitly low priority, after core platform
 - Novo business banking — custody-directive flag; needs attorney sign-off
-- Coinbase Commerce — confirm with Judah before building (native SOL/USDC + Li.Fi may cover it)
+- ~~Coinbase Commerce~~ — UNPARKED 2026-07-09 (Judah: "both, max compatibility") → 12b **B2b**, later wave after the SOL rail fix
 - Basis Theory card vault — only at ~10k+ card sales/mo
 - KMS mint-authority custody — revisit at Phase 11 (mainnet timeline)

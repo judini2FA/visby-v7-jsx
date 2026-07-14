@@ -6,6 +6,7 @@ import { callerOwnsWallet } from '@/lib/auth';
 import { createOrder } from '@/lib/orders';
 import { resolveCheckoutPrice } from '@/lib/offers';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -90,7 +91,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, item_id: item.id, name: item.name });
   } catch (err: any) {
-    // Stripe throws StripeCardError for declined cards — surface the message
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Stripe throws StripeCardError for declined cards — friendlyError passes short,
+    // already-customer-facing Stripe decline copy through unchanged.
+    return NextResponse.json({ error: friendlyError(err, 'Payment failed — try a different card.') }, { status: 500 });
   }
 }

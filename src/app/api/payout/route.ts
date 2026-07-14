@@ -5,6 +5,7 @@ import { isBanned } from '@/lib/account-status';
 import { requireStepUp } from '@/lib/step-up';
 import { payoutAction } from '@/lib/step-up-shared';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
     .eq('seller_wallet', wallet)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: friendlyError(error, 'Could not load payout settings.') }, { status: 500 });
   return NextResponse.json({ settings: data });
 }
 
@@ -68,9 +69,9 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: friendlyError(error, 'Could not save payout settings.') }, { status: 500 });
     return NextResponse.json({ ok: true, settings: data });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not save payout settings.') }, { status: 500 });
   }
 }

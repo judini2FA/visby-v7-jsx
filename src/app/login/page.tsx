@@ -16,13 +16,15 @@ export default function LoginPage() {
   // Two clearly separate entry points (A1) that both land in the same Privy modal — "Sign in" tells
   // Privy to reject an email/wallet it doesn't already recognize instead of silently creating one,
   // so returning users can't accidentally spin up a second account. "Create account" leaves sign-up
-  // open, same as before. Every method funnels through PasswordGate afterward regardless of which
-  // button was pressed or which login method (email/social/wallet) was used.
+  // open. The "intent" flag persists across the Privy redirect/verify round-trip so OnboardingGate
+  // knows a brand-new signup should run its setup flow even before the profile row exists.
   function signIn() {
+    try { localStorage.setItem('visby-auth-intent', 'signin'); } catch {}
     login({ disableSignup: true });
   }
 
   function createAccount() {
+    try { localStorage.setItem('visby-auth-intent', 'create'); } catch {}
     login();
   }
 
@@ -53,7 +55,7 @@ export default function LoginPage() {
           <button onClick={signIn} disabled={!ready} style={{ ...btn('primary', { full: true }), opacity: ready ? 1 : 0.6, cursor: ready ? 'pointer' : 'not-allowed' }}>
             {!ready ? 'Loading…' : 'Sign in'}
           </button>
-          <button onClick={createAccount} disabled={!ready} style={{ ...btn('secondary', { full: true }), opacity: ready ? 1 : 0.6, cursor: ready ? 'pointer' : 'not-allowed' }}>
+          <button onClick={createAccount} disabled={!ready} style={{ ...btn('secondary', { full: true }), boxShadow: 'var(--glass-shadow)', opacity: ready ? 1 : 0.6, cursor: ready ? 'pointer' : 'not-allowed' }}>
             Create account
           </button>
         </div>

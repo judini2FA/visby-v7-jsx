@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { t, S, card, surface, sheet, btn, badge, input, T } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 const GREEN = 'var(--ok)';
 const RED = 'var(--danger)';
@@ -138,7 +139,7 @@ function EvidenceSection({
       setNote('');
       await fetchEvidence();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Something went wrong.');
+      setErr(friendlyError(e, 'Upload failed — try again.'));
     } finally {
       setBusy(false);
     }
@@ -313,7 +314,7 @@ export function DisputePanel({
       await fetchDispute();
       onChange?.();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Something went wrong.');
+      setErr(friendlyError(e, 'Could not submit — try again.'));
     } finally {
       setBusy(false);
     }
@@ -340,7 +341,7 @@ export function DisputePanel({
       await fetchDispute();
       onChange?.();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Something went wrong.');
+      setErr(friendlyError(e, 'Could not withdraw — try again.'));
     } finally {
       setBusy(false);
     }

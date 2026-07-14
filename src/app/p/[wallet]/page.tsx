@@ -101,7 +101,7 @@ export default function PublicProfilePage() {
     { enabled: !!wallet }
   );
 
-  const { data: rep } = trpc.reviews.getBySeller.useQuery(
+  const { data: rep, isLoading: repLoading } = trpc.reviews.getBySeller.useQuery(
     { wallet },
     { enabled: !!wallet }
   );
@@ -117,12 +117,13 @@ export default function PublicProfilePage() {
 
   const totalVolume = soldItems.reduce((acc: number, s: any) => acc + (s.price_usdc ?? 0), 0);
 
-  // Seller trust tier — derived from on-chain completed sales
+  // Seller trust tier — derived from on-chain completed sales. D1: no star rating here (that reads
+  // as a fake review score) — just a neutral verified-badge + tier label, never scaled by sales.
   const salesCount = soldItems.length;
-  const trustTier = salesCount >= 25 ? { label: 'Elite Seller',   stars: 4, color: 'var(--text-strong)' }
-                  : salesCount >= 10 ? { label: 'Top Seller',     stars: 3, color: 'var(--text-strong)' }
-                  : salesCount >= 5  ? { label: 'Trusted Seller', stars: 2, color: 'var(--text-strong)' }
-                  : salesCount >= 1  ? { label: 'Rising Seller',  stars: 1, color: 'var(--text-strong)' }
+  const trustTier = salesCount >= 25 ? { label: 'Elite Seller',   color: 'var(--text-strong)' }
+                  : salesCount >= 10 ? { label: 'Top Seller',     color: 'var(--text-strong)' }
+                  : salesCount >= 5  ? { label: 'Trusted Seller', color: 'var(--text-strong)' }
+                  : salesCount >= 1  ? { label: 'Rising Seller',  color: 'var(--text-strong)' }
                   : null;
 
   const avatarGrad = GD;
@@ -189,13 +190,11 @@ export default function PublicProfilePage() {
             </div>
             {!isLoading && trustTier && (
               <div style={{ ...surface({ radius: 'var(--pill)' }), display: 'inline-flex', alignItems: 'center', gap: S[1], padding: '5px 12px', marginTop: S[1] }}>
-                <span style={{ color: trustTier.color, display: 'flex', gap: 1 }}>
-                  {Array.from({ length: 4 }, (_, i) => (
-                    <svg key={i} width="11" height="11" viewBox="0 0 24 24" fill={i < trustTier.stars ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                    </svg>
-                  ))}
-                </span>
+                {/* D1: one neutral shield/check — never stars scaled by sales count, that read as a fake rating */}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={trustTier.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <polyline points="9 12 11 14 15 10"/>
+                </svg>
                 <span style={{ ...t('micro'), color: trustTier.color }}>
                   {trustTier.label}
                 </span>
@@ -206,11 +205,14 @@ export default function PublicProfilePage() {
                 <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>New Seller</span>
               </div>
             )}
-            {rep && rep.count > 0 && (
-              <div style={{ marginTop: S[1] }}>
+            {/* D1: real ratings only — a badge when there's data, an explicit empty state otherwise */}
+            <div style={{ marginTop: S[1] }}>
+              {repLoading ? null : rep && rep.count > 0 ? (
                 <ReputationBadge avg={rep.avg} count={rep.count} />
-              </div>
-            )}
+              ) : (
+                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>No ratings yet</span>
+              )}
+            </div>
           </div>
 
           {/* Stats — all numbers floating in one row, no boxes */}
@@ -358,42 +360,51 @@ export default function PublicProfilePage() {
               </div>
             )}
 
-            {/* Reviews */}
-            {rep && rep.count > 0 && (
+            {/* Reviews — D1: the section stays put with a "No ratings yet" body instead of
+                vanishing when there's no review data yet. */}
+            {!repLoading && (
               <div style={{ marginBottom: S[6] }}>
                 <div style={{ ...sectionLabel(), marginBottom: S[4] }}>
-                  {'Reviews · '}{rep.count}
+                  Reviews{rep && rep.count > 0 ? ` · ${rep.count}` : ''}
                 </div>
-                <div style={{ ...card(), padding: S[5], marginBottom: S[4], display: 'flex', flexDirection: 'column', gap: S[4] }}>
-                  {/* Average + stars */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: S[4] }}>
-                    <div style={{ ...t('title'), color: 'var(--text-strong)', fontWeight: 700 }}>
-                      {rep.avg.toFixed(1)}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
-                      <StarRating value={Math.round(rep.avg)} readOnly />
-                      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{rep.count} reviews</div>
-                    </div>
-                  </div>
-                  {/* Breakdown bars 5→1 */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
-                    {([5, 4, 3, 2, 1] as const).map((star) => {
-                      const starKey = String(star) as '1' | '2' | '3' | '4' | '5';
-                      const count = rep.breakdown?.[starKey] ?? 0;
-                      const pct = rep.count > 0 ? Math.round((count / rep.count) * 100) : 0;
-                      return (
-                        <div key={star} style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
-                          <div style={{ ...t('micro'), color: 'var(--text-muted)', width: 8, textAlign: 'right', flexShrink: 0 }}>{star}</div>
-                          <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'var(--surface-bg)', overflow: 'hidden' }}>
-                            <div style={{ width: `${pct}%`, height: '100%', borderRadius: 2, background: 'var(--text)', transition: 'width .3s ease' }} />
-                          </div>
-                          <div style={{ ...t('micro'), color: 'var(--text-muted)', width: 20, textAlign: 'right', flexShrink: 0 }}>{count}</div>
+                {rep && rep.count > 0 ? (
+                  <>
+                    <div style={{ ...card(), padding: S[5], marginBottom: S[4], display: 'flex', flexDirection: 'column', gap: S[4] }}>
+                      {/* Average + stars */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: S[4] }}>
+                        <div style={{ ...t('title'), color: 'var(--text-strong)', fontWeight: 700 }}>
+                          {rep.avg.toFixed(1)}
                         </div>
-                      );
-                    })}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: S[1] }}>
+                          <StarRating value={Math.round(rep.avg)} readOnly />
+                          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>{rep.count} reviews</div>
+                        </div>
+                      </div>
+                      {/* Breakdown bars 5→1 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                        {([5, 4, 3, 2, 1] as const).map((star) => {
+                          const starKey = String(star) as '1' | '2' | '3' | '4' | '5';
+                          const count = rep.breakdown?.[starKey] ?? 0;
+                          const pct = rep.count > 0 ? Math.round((count / rep.count) * 100) : 0;
+                          return (
+                            <div key={star} style={{ display: 'flex', alignItems: 'center', gap: S[2] }}>
+                              <div style={{ ...t('micro'), color: 'var(--text-muted)', width: 8, textAlign: 'right', flexShrink: 0 }}>{star}</div>
+                              <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'var(--surface-bg)', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 2, background: 'var(--text)', transition: 'width .3s ease' }} />
+                              </div>
+                              <div style={{ ...t('micro'), color: 'var(--text-muted)', width: 20, textAlign: 'right', flexShrink: 0 }}>{count}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <ReviewList reviews={rep.reviews} />
+                  </>
+                ) : (
+                  <div style={{ ...card(), padding: S[5] }}>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>No ratings yet</span>
                   </div>
-                </div>
-                <ReviewList reviews={rep.reviews} />
+                )}
               </div>
             )}
 

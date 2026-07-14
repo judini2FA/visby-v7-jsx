@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { btn, sheet, input, S, t, T } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 const REASONS: Record<'listing' | 'seller' | 'message', readonly string[]> = {
   listing: ['Counterfeit', 'Prohibited item', 'Not as described', 'Spam or scam', 'Inappropriate', 'Other'],
@@ -67,7 +68,7 @@ export function ReportButton({
       }
       setDone(true);
     } catch (e: any) {
-      setErr(e?.message ?? 'Something went wrong');
+      setErr(friendlyError(e, 'Could not submit report — try again.'));
     } finally {
       setBusy(false);
     }

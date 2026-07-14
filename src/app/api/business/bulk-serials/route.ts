@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuthedContext } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/service';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Pre-mint inventory log: a business account writes serials it physically holds as 'pending'
 // rows here. Nothing is minted — /item and /mint own that step (2.3). This route only owns
@@ -156,7 +157,7 @@ export async function POST(req: Request) {
       .from('pending_serials')
       .upsert(toInsert, { onConflict: 'business_wallet,serial_number', ignoreDuplicates: true })
       .select('serial_number');
-    if (error) return NextResponse.json({ error: 'Insert failed', detail: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: friendlyError(error, 'Insert failed — try again.') }, { status: 500 });
     inserted = data?.length ?? 0;
     skipped = toInsert.length - inserted;
   }
@@ -215,7 +216,7 @@ export async function PATCH(req: Request) {
     .eq('id', id)
     .eq('business_wallet', wallet)
     .maybeSingle();
-  if (loadError) return NextResponse.json({ error: 'Lookup failed', detail: loadError.message }, { status: 500 });
+  if (loadError) return NextResponse.json({ error: friendlyError(loadError, 'Lookup failed — try again.') }, { status: 500 });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (existing.status !== 'pending') {
     return NextResponse.json({ error: 'not_pending', message: `Row is already ${existing.status}` }, { status: 409 });
@@ -240,7 +241,7 @@ export async function PATCH(req: Request) {
     .eq('business_wallet', wallet)
     .select('*')
     .maybeSingle();
-  if (updateError) return NextResponse.json({ error: 'Update failed', detail: updateError.message }, { status: 500 });
+  if (updateError) return NextResponse.json({ error: friendlyError(updateError, 'Update failed — try again.') }, { status: 500 });
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   return NextResponse.json({ row: updated });
@@ -267,7 +268,7 @@ export async function GET(req: Request) {
     if (b.status === 'pending') return 1;
     return 0;
   });
-  if (error) return NextResponse.json({ error: 'Lookup failed', detail: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: friendlyError(error, 'Lookup failed — try again.') }, { status: 500 });
 
   return NextResponse.json({ rows: sorted });
 }

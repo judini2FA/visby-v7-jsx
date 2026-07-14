@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { coinsUsd } from '@/lib/price-oracle';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,6 @@ export async function GET(req: Request) {
       rates: { eth_usd: prices.eth, sol_usd: prices.sol, btc_usd: prices.btc },
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not get a price quote — try again.') }, { status: 500 });
   }
 }

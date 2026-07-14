@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { taxEnabled, calculateOrderTax } from '@/lib/tax';
 import { getAuthedContext } from '@/lib/auth';
 import { resolveCheckoutPrice } from '@/lib/offers';
+import { friendlyError } from '@/lib/friendly-error';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -65,6 +66,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ client_secret: paymentIntent.client_secret, tax_cents: taxCents, total_cents: priceCents + taxCents });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not start checkout — try again.') }, { status: 500 });
   }
 }

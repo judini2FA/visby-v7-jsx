@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { createTRPCRouter, protectedProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const messagesRouter = createTRPCRouter({
   // NOTE: send + markRead live as authed REST routes (/api/messages/send, /api/messages/read). These
@@ -73,7 +74,7 @@ export const messagesRouter = createTRPCRouter({
           `and(from_wallet.eq.${input.wallet_a},to_wallet.eq.${input.wallet_b}),and(from_wallet.eq.${input.wallet_b},to_wallet.eq.${input.wallet_a})`
         )
         .order('created_at', { ascending: true });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load messages — try again.'));
       return data ?? [];
     }),
 });

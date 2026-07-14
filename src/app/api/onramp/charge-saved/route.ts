@@ -8,6 +8,7 @@ import { disburseOnramp } from '@/lib/onramp-disburse';
 import { requireStepUp } from '@/lib/step-up';
 import { onrampChargeAction } from '@/lib/step-up-shared';
 import { isBanned } from '@/lib/account-status';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -89,7 +90,7 @@ export async function POST(req: Request) {
         idempotency_key ? { idempotencyKey: `onramp_${idempotency_key}` } : undefined
       );
     } catch (chargeErr: any) {
-      return NextResponse.json({ error: chargeErr.message ?? 'Card was declined' }, { status: 402 });
+      return NextResponse.json({ error: friendlyError(chargeErr, 'Card was declined.') }, { status: 402 });
     }
 
     if (pi.status !== 'succeeded') {
@@ -108,6 +109,6 @@ export async function POST(req: Request) {
       { status: 202 }
     );
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not complete the payment — try again.') }, { status: 500 });
   }
 }

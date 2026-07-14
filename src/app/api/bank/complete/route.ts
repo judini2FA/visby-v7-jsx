@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getAuthedContext } from '@/lib/auth';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,13 +69,13 @@ export async function POST(req: Request) {
         { onConflict: 'wallet,fc_account_id' }
       );
       if (error) {
-        return NextResponse.json({ error: `Could not save linked account: ${error.message}` }, { status: 500 });
+        return NextResponse.json({ error: friendlyError(error, 'Could not save the linked account.') }, { status: 500 });
       }
       compact.push({ id: account.id, institution_name: account.institution_name ?? null, last4: account.last4 ?? null });
     }
 
     return NextResponse.json({ ok: true, accounts: compact });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? 'Could not complete bank link' }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not complete bank link.') }, { status: 500 });
   }
 }

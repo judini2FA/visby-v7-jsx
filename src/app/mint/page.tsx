@@ -10,6 +10,7 @@ import { t, S, card, surface, btn, sectionLabel, input, T } from '@/lib/ui';
 import { explorerTx } from '@/lib/explorer';
 import { feeBreakdown } from '@/lib/fees';
 import { CutoutEditor } from '@/components/cutout-editor';
+import { friendlyError } from '@/lib/friendly-error';
 
 const C = {
   green: 'var(--ok)', red: 'var(--danger)',
@@ -117,7 +118,7 @@ export default function MintPage() {
         const coverFile = cover.useCut && cover.cutFile ? cover.cutFile : cover.original;
         imageUrl = await uploadImage(coverFile, cover.useCut && !!cover.cutFile);
       } catch (err: any) {
-        setError(err.message);
+        setError(friendlyError(err, 'Could not upload the photo — try again.'));
         setStatus('idle');
         return;
       }
@@ -150,7 +151,7 @@ export default function MintPage() {
       setResult({ txHash: data.tx_hash, mintAddress: data.mint_address, itemId: data.item_id });
       setStatus('done');
     } catch (err: any) {
-      setError(err.message ?? 'Unknown error');
+      setError(friendlyError(err, 'Could not mint this item — try again.'));
       setStatus('error');
     }
   }

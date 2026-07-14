@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { usePrivy, useLinkAccount } from '@privy-io/react-auth';
 import Link from 'next/link';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
@@ -9,6 +9,7 @@ import { useTheme } from '@/lib/theme';
 import { t, S, surface, btn, input } from '@/lib/ui';
 import { solscanAccount } from '@/lib/explorer';
 import { trpc } from '@/lib/trpc/client';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Wallet "connected methods" manager — the stacked method-card layout from Judah's sketch.
 // Each tile: big amount+currency (or just the currency when no amount, e.g. cards), name + masked id,
@@ -26,7 +27,10 @@ const BOX_GRAD = 'var(--grad-brand)';                                // lighter 
 
 // Connected (external) crypto wallets share the cross-chain registry used by the Tally Destination picker.
 const CW_KEY = 'visby-connected-wallets';
-type ConnWallet = { id: string; chain: 'solana' | 'ethereum' | 'bitcoin'; address: string; label?: string };
+// `linked: true` = a real external Solana wallet linked via Privy (useLinkAccount) — it can receive Tallys
+// and is the user's own wallet, verified by signature. `linked` falsy = a manually-pasted watch-only
+// address (Ethereum/Bitcoin only) — same receive-Tallys behavior, but never verified as user-owned.
+type ConnWallet = { id: string; chain: 'solana' | 'ethereum' | 'bitcoin'; address: string; label?: string; linked?: boolean };
 const CHAIN_META: Record<ConnWallet['chain'], { sym: string; label: string }> = {
   solana:   { sym: 'SOL', label: 'Solana' },
   ethereum: { sym: 'ETH', label: 'Ethereum' },
@@ -45,6 +49,7 @@ type Method = {
   name: string;          // 'Solana wallet' | brand | institution name
   masked: string;        // 'HTLB37…' | '···· 4242'
   address?: string;      // wallet only
+  caption?: string;      // e.g. 'Receives Tallys' | 'Watch-only'
 };
 
 function brandLabel(b: string): string {
@@ -89,10 +94,10 @@ function KindIcon({ kind }: { kind: Kind }) {
 
 type MenuAction = 'default' | 'up' | 'down' | 'addfunds' | 'export' | 'explorer' | 'openapp' | 'remove' | 'disconnect';
 
-function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onAction, onDragStart, onDragOver, onDragEnd, dragging }: {
+function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onAction, onDragStart, onDragOverId, onDragEnd, dragging }: {
   m: Method; isDefault: boolean; isFirst: boolean; isLast: boolean;
   menuOpen: boolean; onToggleMenu: () => void; onAction: (a: MenuAction) => void;
-  onDragStart: () => void; onDragOver: () => void; onDragEnd: () => void; dragging: boolean;
+  onDragStart: () => void; onDragOverId: (overId: string) => void; onDragEnd: () => void; dragging: boolean;
 }) {
   const items: { a: MenuAction; label: string; danger?: boolean; href?: string }[] = [];
   if (!isDefault) items.push({ a: 'default', label: 'Make default' });
@@ -108,12 +113,35 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
   if (m.kind === 'card') items.push({ a: 'remove', label: 'Remove', danger: true });
   if (m.kind === 'bank') items.push({ a: 'disconnect', label: 'Disconnect', danger: true });
 
-  const whiteRef = useRef<HTMLDivElement>(null);
+  // Touch-capable drag reorder: one Pointer Events code path for mouse + touch. The grip captures the
+  // pointer on down, hit-tests document.elementFromPoint() on every move to find which card is hovered
+  // (via its data-mid attribute), and releases capture on up/cancel. No native HTML5 DnD — touch devices
+  // never fired dragstart/dragover reliably.
+  function handleGripPointerDown(e: React.PointerEvent<HTMLSpanElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    onDragStart();
+  }
+  function handleGripPointerMove(e: React.PointerEvent<HTMLSpanElement>) {
+    const overEl = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-mid]');
+    const overId = overEl?.dataset.mid;
+    if (overId) onDragOverId(overId);
+  }
+  function handleGripPointerEnd(e: React.PointerEvent<HTMLSpanElement>) {
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+    onDragEnd();
+  }
 
   const body = (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
-        <span style={{ color: 'var(--text-muted)', cursor: 'grab', display: 'inline-flex', touchAction: 'none' }} aria-label="Drag to reorder"><DragGrip /></span>
+        <span
+          onPointerDown={handleGripPointerDown}
+          onPointerMove={handleGripPointerMove}
+          onPointerUp={handleGripPointerEnd}
+          onPointerCancel={handleGripPointerEnd}
+          style={{ color: 'var(--text-muted)', cursor: 'grab', display: 'inline-flex', touchAction: 'none' }}
+          aria-label="Drag to reorder"
+        ><DragGrip /></span>
         <span style={{ width: 34, height: 34, borderRadius: 9, background: GRAD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><KindIcon kind={m.kind} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: "'Manrope', sans-serif", fontWeight: 800, fontSize: 22, lineHeight: 1.15, letterSpacing: '-.01em', ...(isDefault ? { background: GRAD, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: 'var(--text-strong)' }), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -122,6 +150,9 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
           <div style={{ ...t('meta'), color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {m.name} {m.masked}
           </div>
+          {m.caption && (
+            <div style={{ ...t('micro'), color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.caption}</div>
+          )}
         </div>
         <button onClick={onToggleMenu} aria-label="Method options" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--text-muted)', padding: 6, flexShrink: 0, display: 'inline-flex' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
@@ -142,24 +173,14 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
 
   return (
     <div
-      draggable
-      onDragStart={(e) => {
-        // Default tile: drag only the white card — the gradient slot stays pinned in place.
-        if (isDefault && whiteRef.current) {
-          const r = whiteRef.current.getBoundingClientRect();
-          e.dataTransfer.setDragImage(whiteRef.current, e.clientX - r.left, e.clientY - r.top);
-        }
-        onDragStart();
-      }}
-      onDragOver={e => { e.preventDefault(); onDragOver(); }}
-      onDragEnd={onDragEnd}
+      data-mid={m.id}
       style={{
         position: 'relative',
         borderRadius: 'var(--r-lg)',
-        boxShadow: isDefault ? '0 8px 28px rgba(120,110,160,.22)' : 'var(--box-shadow-soft)',
+        boxShadow: isDefault ? '0 8px 28px rgba(120,110,160,.22)' : (dragging ? '0 10px 26px rgba(0,0,0,.28)' : 'var(--box-shadow-soft)'),
         // Default: keep the gradient slot at full opacity while dragging (it stays put); the white lifts out.
         opacity: isDefault ? 1 : (dragging ? 0.5 : 1),
-        transition: 'opacity .15s',
+        transition: 'opacity .15s, box-shadow .15s',
         // Default = a gradient "slot": a thick top bar carries the PRIMARY lip, a thin frame on the
         // other sides — the white pay tile is a separate rounded card that sits into the slot.
         ...(isDefault
@@ -171,7 +192,16 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', ...t('micro'), color: 'var(--text-on-cta)', letterSpacing: '0.18em', pointerEvents: 'none' }}>PRIMARY</div>
       )}
       {isDefault ? (
-        <div ref={whiteRef} style={{ position: 'relative', background: 'var(--surface-bg)', borderRadius: 'var(--r)', padding: `${S[4]}px`, opacity: dragging ? 0 : 1, transition: 'opacity .12s' }}>
+        <div
+          style={{
+            position: 'relative', background: 'var(--surface-bg)', borderRadius: 'var(--r)', padding: `${S[4]}px`,
+            // CSS lift while dragging (in place of the old native-drag ghost-image hack).
+            transform: dragging ? 'scale(1.02)' : 'scale(1)',
+            boxShadow: dragging ? '0 12px 30px rgba(0,0,0,.22)' : 'none',
+            opacity: dragging ? 0.97 : 1,
+            transition: 'transform .15s, box-shadow .15s, opacity .15s',
+          }}
+        >
           {body}
         </div>
       ) : body}
@@ -202,7 +232,7 @@ function AddCardForm({ wallet, onAdded, onCancel }: { wallet: string; onAdded: (
       if (error) throw new Error(error.message ?? 'Card could not be saved');
       onAdded();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Could not save card');
+      setErr(friendlyError(e, 'Could not save card — try again.'));
     } finally { setSaving(false); }
   }
 
@@ -245,7 +275,7 @@ function ConnectBankButton({ wallet, onConnected, onCancel }: { wallet: string; 
       if (!completeRes.ok || completeData.error) throw new Error(completeData.error ?? 'Could not save linked bank');
       onConnected();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Could not link bank');
+      setErr(friendlyError(e, 'Could not link bank — try again.'));
     } finally { setBusy(false); }
   }
 
@@ -307,6 +337,22 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
     try { localStorage.setItem(CW_KEY, JSON.stringify(next)); } catch {}
     if (wallet) upsertProfile.mutate({ wallet, connected_wallets: next });
   }
+
+  // W1+A9: link a real external Solana wallet via Privy. providers.tsx already scopes the linking modal to
+  // Solana (walletChainType: 'solana-only' + a Solana-only walletList) — the chainType check below is a
+  // defensive backstop, not the primary guard. On success, merge into the same connWallets registry the
+  // Tally Destination picker (tally-wallets.tsx) reads/writes, marked `linked: true` so it renders as a real
+  // signed-in wallet rather than a watch-only pasted address.
+  const { linkWallet } = useLinkAccount({
+    onSuccess: (_user, _linkMethod, linkedAccount) => {
+      if (linkedAccount.type !== 'wallet' || linkedAccount.chainType !== 'solana') return;
+      const address = linkedAccount.address;
+      if (!address || connWallets.some(w => w.address === address)) { setAddMode(''); return; }
+      saveConnWallets([...connWallets, { id: `${address.slice(0, 8)}-${connWallets.length}`, chain: 'solana', address, linked: true }]);
+      setAddMode('');
+    },
+    onError: () => setErr('Could not link wallet'),
+  });
 
   // Server is the source of truth (follows the user across devices + feeds VisbyPay checkout); localStorage
   // is a fast local cache. On mount, a non-empty server order overrides the cached one.
@@ -374,7 +420,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
     if (previewMethods) return previewMethods;
     const live: Method[] = [];
     if (wallet) live.push({ id: 'wallet', kind: 'wallet', currency: 'SOL', amount: balance != null ? balance.toFixed(3) : null, name: 'Solana wallet', masked: shortAddr(wallet), address: wallet });
-    connWallets.forEach(w => live.push({ id: `cw:${w.id}`, kind: 'wallet', currency: CHAIN_META[w.chain].sym, amount: null, name: w.label || `${CHAIN_META[w.chain].label} wallet`, masked: shortAddr(w.address), address: w.address }));
+    connWallets.forEach(w => live.push({ id: `cw:${w.id}`, kind: 'wallet', currency: CHAIN_META[w.chain].sym, amount: null, name: w.label || `${CHAIN_META[w.chain].label} wallet`, masked: shortAddr(w.address), address: w.address, caption: w.linked ? 'Receives Tallys' : 'Watch-only' }));
     (cards ?? []).forEach(c => live.push({ id: c.id, kind: 'card', currency: 'USD', amount: null, name: brandLabel(c.brand), masked: `···· ${c.last4}` }));
     banks.forEach(b => live.push({ id: b.id, kind: 'bank', currency: 'USD', amount: null, name: b.institution_name || 'Bank', masked: b.last4 ? `···· ${b.last4}` : '' }));
     const byId = new Map(live.map(m => [m.id, m]));
@@ -407,7 +453,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error ?? 'Could not remove card');
       setCards(c => (c ?? []).filter(x => x.id !== id));
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : 'Could not remove card'); }
+    } catch (e: unknown) { setErr(friendlyError(e, 'Could not remove card — try again.')); }
   }
 
   async function disconnectBank(m: Method) {
@@ -418,7 +464,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error ?? 'Could not disconnect bank');
       setBanks(b => b.filter(x => x.id !== m.id));
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : 'Could not disconnect bank'); }
+    } catch (e: unknown) { setErr(friendlyError(e, 'Could not disconnect bank — try again.')); }
   }
 
   function removeWallet(m: Method) {
@@ -453,7 +499,7 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
               m={m} isDefault={i === 0} isFirst={i === 0} isLast={i === methods.length - 1}
               menuOpen={openMenu === m.id} onToggleMenu={() => setOpenMenu(openMenu === m.id ? '' : m.id)}
               onAction={a => handleAction(m, a)}
-              onDragStart={() => setDragId(m.id)} onDragOver={() => dragOver(m.id)} onDragEnd={() => setDragId('')}
+              onDragStart={() => setDragId(m.id)} onDragOverId={dragOver} onDragEnd={() => setDragId('')}
               dragging={dragId === m.id}
             />
           </div>
@@ -469,11 +515,12 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
       ) : addMode === 'bank' ? (
         <ConnectBankButton wallet={wallet} onConnected={() => { setAddMode(''); loadBanks(); }} onCancel={() => setAddMode('')} />
       ) : addMode === 'wallet' ? (
-        <ConnectWalletForm existing={connWallets} onAdd={w => { saveConnWallets([...connWallets, w]); setAddMode(''); }} onCancel={() => setAddMode('')} />
+        <WatchOnlyWalletForm existing={connWallets} onAdd={w => { saveConnWallets([...connWallets, w]); setAddMode(''); }} onCancel={() => setAddMode('')} />
       ) : addMode === 'choose' ? (
         <div style={{ ...surface({ pad: `${S[2]}px` }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
           <AddRow kind="card" label="Add a card" onClick={() => setAddMode('card')} />
-          <AddRow kind="wallet" label="Connect a wallet" onClick={() => setAddMode('wallet')} />
+          <AddRow kind="wallet" label="Link a Solana wallet" onClick={() => { setAddMode(''); linkWallet(); }} />
+          <AddRow kind="wallet" label="Add a watch-only wallet" onClick={() => setAddMode('wallet')} />
           <AddRow kind="bank" label="Connect a bank" onClick={() => setAddMode('bank')} />
           <button onClick={() => setAddMode('')} style={{ ...t('meta'), color: 'var(--text-muted)', background: 'none', border: 0, cursor: 'pointer', padding: `${S[2]}px 0 ${S[1]}px`, textAlign: 'center' }}>Cancel</button>
         </div>
@@ -487,10 +534,13 @@ export default function PaymentMethodsManager({ wallet, onExportWallet, previewM
   );
 }
 
-// Connect an external crypto wallet (paste address) into the shared cross-chain registry. Honest: a pasted
-// wallet receives Tallys + shows here, but paying FROM it (signing) needs real wallet-connect — coming soon.
-function ConnectWalletForm({ existing, onAdd, onCancel }: { existing: ConnWallet[]; onAdd: (w: ConnWallet) => void; onCancel: () => void }) {
-  const [chain, setChain] = useState<ConnWallet['chain']>('solana');
+// Watch-only external wallet (paste address) — Ethereum/Bitcoin only, since a real Solana wallet gets
+// linked (and verified by signature) via the "Link a Solana wallet" row / useLinkAccount above instead.
+// Honest: a watch-only address receives Tallys and shows here, but it cannot pay at checkout — Visby
+// never has signing access to it.
+type WatchOnlyChain = 'ethereum' | 'bitcoin';
+function WatchOnlyWalletForm({ existing, onAdd, onCancel }: { existing: ConnWallet[]; onAdd: (w: ConnWallet) => void; onCancel: () => void }) {
+  const [chain, setChain] = useState<WatchOnlyChain>('ethereum');
   const [address, setAddress] = useState('');
   const [label, setLabel] = useState('');
   const [formErr, setFormErr] = useState('');
@@ -499,14 +549,14 @@ function ConnectWalletForm({ existing, onAdd, onCancel }: { existing: ConnWallet
     const a = address.trim();
     if (!a) { setFormErr('Enter a wallet address'); return; }
     if (existing.some(w => w.address === a)) { setFormErr('That wallet is already connected'); return; }
-    onAdd({ id: `${a.slice(0, 8)}-${existing.length}`, chain, address: a, label: label.trim() || undefined });
+    onAdd({ id: `${a.slice(0, 8)}-${existing.length}`, chain, address: a, label: label.trim() || undefined, linked: false });
   }
 
   return (
     <div style={{ ...surface({ pad: S[4] }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
-      <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>Connect a wallet</div>
+      <div style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>Add a watch-only wallet</div>
       <div style={{ display: 'flex', gap: S[2] }}>
-        {(['solana', 'ethereum', 'bitcoin'] as const).map(c => (
+        {(['ethereum', 'bitcoin'] as const).map(c => (
           <button key={c} onClick={() => setChain(c)} style={{ ...btn(chain === c ? 'primary' : 'secondary'), padding: '7px 12px', fontSize: 12, flex: 1, ...(chain === c ? {} : { color: 'var(--text-muted)' }) }}>{CHAIN_META[c].label}</button>
         ))}
       </div>
@@ -514,10 +564,10 @@ function ConnectWalletForm({ existing, onAdd, onCancel }: { existing: ConnWallet
       <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Label (optional)" style={input()} />
       {formErr && <div style={{ ...t('meta'), color: RED }}>{formErr}</div>}
       <div style={{ display: 'flex', gap: S[2] }}>
-        <button onClick={add} disabled={!address.trim()} style={{ ...btn('primary', { full: true }), flex: 1, opacity: address.trim() ? 1 : 0.5 }}>Connect wallet</button>
+        <button onClick={add} disabled={!address.trim()} style={{ ...btn('primary', { full: true }), flex: 1, opacity: address.trim() ? 1 : 0.5 }}>Add wallet</button>
         <button onClick={onCancel} style={btn('secondary')}>Cancel</button>
       </div>
-      <div style={{ ...t('micro'), color: 'var(--text-muted)', lineHeight: 1.5 }}>Connected wallets receive your Tallys and appear here. Paying from an external wallet (signing) is coming soon.</div>
+      <div style={{ ...t('micro'), color: 'var(--text-muted)', lineHeight: 1.5 }}>Watch-only wallets receive your Tallys and appear here. Visby never has signing access to them, so they can't pay at checkout.</div>
     </div>
   );
 }

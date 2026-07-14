@@ -121,6 +121,10 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
         serial_number,
         category,
         description,
+        // items.condition is NOT NULL with a CHECK in ('new','like_new','good','fair'). SDK provenance
+        // mints don't collect a condition, so default to 'new' (merchant-sold authentic good). Omitting
+        // it made EVERY SDK mint fail the NOT-NULL constraint → buyer charged, no Tally delivered.
+        condition: 'new',
         nft_mint_address: mintAddress,
         current_owner_wallet: merchant_wallet,
         image_url,

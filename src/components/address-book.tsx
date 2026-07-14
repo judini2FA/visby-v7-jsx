@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { t, S, btn, surface, badge, T } from '@/lib/ui';
 import { AddressForm, EMPTY_SHIP_TO, shipToValid, shipToSummary, type ShipTo } from '@/components/address-form';
+import { friendlyError } from '@/lib/friendly-error';
 
 const GREEN = 'var(--ok)';
 const RED = 'var(--danger)';
@@ -67,7 +68,7 @@ export default function AddressBook({ wallet }: { wallet: string }) {
       await load();
       setTimeout(() => setStatus('idle'), 2000);
     } catch (err) {
-      setErrMsg(err instanceof Error ? err.message : 'Save failed');
+      setErrMsg(friendlyError(err, 'Could not save address — try again.'));
       setStatus('error');
     }
   }

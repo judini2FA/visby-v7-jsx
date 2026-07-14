@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet } from '@/lib/auth';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,9 @@ export async function GET(req: Request) {
     if (!wallet) return NextResponse.json({ addresses: [] });
     if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const rl = await rateLimit(`addresses-get:${wallet}`, { limit: 30, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('shipping_addresses')
@@ -125,7 +129,7 @@ export async function POST(req: Request) {
       .from('shipping_addresses')
       .select('id', { count: 'exact', head: true })
       .eq('wallet', wallet);
-    if (countError) return NextResponse.json({ error: countError.message }, { status: 500 });
+    if (countError) return NextResponse.json({ error: friendlyError(countError, 'Could not save address') }, { status: 500 });
     if ((count ?? 0) >= MAX_ADDRESSES) {
       return NextResponse.json({ error: `You can save up to ${MAX_ADDRESSES} addresses` }, { status: 400 });
     }
@@ -138,7 +142,7 @@ export async function POST(req: Request) {
       .insert({ wallet, ...clean, is_default: shouldBeDefault })
       .select('*')
       .single();
-    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+    if (insertError) return NextResponse.json({ error: friendlyError(insertError, 'Could not save address') }, { status: 500 });
 
     if (shouldBeDefault) {
       await clearOtherDefaults(supabase, wallet, inserted.id);
@@ -160,13 +164,16 @@ export async function DELETE(req: Request) {
     if (!wallet || !id) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     if (!(await callerOwnsWallet(req, wallet))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const rl = await rateLimit(`addresses:${wallet}`, { limit: 30, windowSec: 60 });
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
     const supabase = createServiceClient();
     const { error } = await supabase
       .from('shipping_addresses')
       .delete()
       .eq('wallet', wallet)
       .eq('id', id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: friendlyError(error, 'Could not delete address') }, { status: 500 });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -193,7 +200,7 @@ export async function PATCH(req: Request) {
       .eq('wallet', wallet)
       .eq('id', id)
       .maybeSingle();
-    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    if (fetchError) return NextResponse.json({ error: friendlyError(fetchError, 'Could not update address') }, { status: 500 });
     if (!target) return NextResponse.json({ error: 'Address not found' }, { status: 404 });
 
     const { error: updateError } = await supabase
@@ -201,7 +208,7 @@ export async function PATCH(req: Request) {
       .update({ is_default: true })
       .eq('wallet', wallet)
       .eq('id', id);
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (updateError) return NextResponse.json({ error: friendlyError(updateError, 'Could not update address') }, { status: 500 });
 
     await clearOtherDefaults(supabase, wallet, id);
     await writeShipTo(supabase, wallet, target);

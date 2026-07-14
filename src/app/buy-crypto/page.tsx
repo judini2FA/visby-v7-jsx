@@ -16,6 +16,7 @@ import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-clien
 import { onrampChargeAction } from '@/lib/step-up-shared';
 import { t, S, price, card, surface, btn, badge, sectionLabel, input } from '@/lib/ui';
 import { HeaderMenu } from '@/components/layout/header-menu';
+import { friendlyError } from '@/lib/friendly-error';
 
 type Asset = 'SOL' | 'USDC';
 
@@ -164,7 +165,7 @@ function CardPayForm({
       );
 
       if (error) {
-        onError(error.message ?? 'Payment failed');
+        onError(friendlyError(error, 'Payment failed — try again.'));
         setPaying(false);
         return;
       }
@@ -188,7 +189,7 @@ function CardPayForm({
         setPaying(false);
       }
     } catch (err: any) {
-      onError(err.message ?? 'Payment failed');
+      onError(friendlyError(err, 'Payment failed — try again.'));
       setPaying(false);
     }
   }
@@ -414,7 +415,7 @@ export default function BuyCryptoPage() {
         setCardErr(data.error ?? 'Payment failed');
       }
     } catch (err: any) {
-      setCardErr(err.message ?? 'Payment failed');
+      setCardErr(friendlyError(err, 'Payment failed — try again.'));
     } finally {
       setSavedPaying(false);
     }
@@ -440,7 +441,7 @@ export default function BuyCryptoPage() {
         setFaucetErr(data.error ?? 'Faucet request failed');
       }
     } catch (err: any) {
-      setFaucetErr(err.message ?? 'Network error');
+      setFaucetErr(friendlyError(err, 'Could not send the test funds — try again.'));
     } finally {
       setFaucetLoading(false);
     }
@@ -615,6 +616,9 @@ export default function BuyCryptoPage() {
                         fontSize: 15,
                         fontWeight: 700,
                         background: active ? 'var(--grad-brand)' : 'var(--field-input-bg)',
+                        backgroundClip: 'border-box',
+                        backgroundOrigin: 'border-box',
+                        backgroundSize: '100% 100%',
                         color: active ? 'var(--text-on-cta)' : 'var(--text-muted)',
                         borderColor: active ? 'transparent' : 'var(--glass-border)',
                       }}
@@ -780,6 +784,9 @@ export default function BuyCryptoPage() {
                           padding: '12px 14px',
                           borderRadius: 'var(--r-sm)',
                           background: active ? 'var(--grad-brand)' : 'var(--field-input-bg)',
+                          backgroundClip: 'border-box',
+                          backgroundOrigin: 'border-box',
+                          backgroundSize: '100% 100%',
                           border: `1px solid ${active ? 'transparent' : 'var(--glass-border)'}`,
                           width: '100%',
                         }}
@@ -836,6 +843,9 @@ export default function BuyCryptoPage() {
                       padding: '12px 14px',
                       borderRadius: 'var(--r-sm)',
                       background: paySource === 'new' ? 'var(--grad-brand)' : 'var(--field-input-bg)',
+                      backgroundClip: 'border-box',
+                      backgroundOrigin: 'border-box',
+                      backgroundSize: '100% 100%',
                       border: `1px solid ${paySource === 'new' ? 'transparent' : 'var(--glass-border)'}`,
                       width: '100%',
                     }}

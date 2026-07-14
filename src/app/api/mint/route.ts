@@ -21,6 +21,7 @@ import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
 import { requireKycForSaleAny } from '@/lib/kyc';
 import { isRestricted } from '@/lib/account-status';
 import { captureError } from '@/lib/monitoring';
+import { friendlyError } from '@/lib/friendly-error';
 
 export async function POST(req: Request) {
   try {
@@ -221,7 +222,7 @@ export async function POST(req: Request) {
     console.error('Mint error:', err);
     captureError(err, { stage: 'mint POST' });
     return NextResponse.json(
-      { error: err.message || 'Internal server error' },
+      { error: friendlyError(err, 'Could not mint this item — try again.') },
       { status: 500 }
     );
   }

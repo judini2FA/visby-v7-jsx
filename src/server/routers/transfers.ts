@@ -28,6 +28,40 @@ export const transfersRouter = createTRPCRouter({
       return (data ?? []).map((r: any) => ({ ...r, direction: r.from_wallet === input.wallet ? 'out' : 'in' }));
     }),
 
+  // Single payment request — powers the dedicated /request/[id] page. Either party (payer or requester)
+  // may view it; anyone else is refused so a leaked/guessed id can't expose someone else's request or its
+  // amount. When it's already paid, resolves the settling transfer's tx_hash too, for the receipt link.
+  byId: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .query(async ({ input, ctx }) => {
+      const supabase = createServiceClient();
+      const { data: pr } = await supabase.from('payment_requests').select('*').eq('id', input.id).maybeSingle();
+      if (!pr) return null;
+      const row = pr as any;
+      const isPayer = ctx.wallets.includes(row.payer_wallet);
+      const isRequester = ctx.wallets.includes(row.requester_wallet);
+      if (!isPayer && !isRequester) throw new TRPCError({ code: 'FORBIDDEN' });
+
+      const others = [...new Set([row.requester_wallet, row.payer_wallet])];
+      const { data: profs } = await supabase.from('profiles').select('wallet, display_name, avatar_url').in('wallet', others);
+      const profileMap: Record<string, { display_name: string | null; avatar_url: string | null }> = {};
+      for (const p of profs ?? []) profileMap[(p as any).wallet] = { display_name: (p as any).display_name ?? null, avatar_url: (p as any).avatar_url ?? null };
+
+      let tx_hash: string | null = null;
+      if (row.status === 'paid' && row.transfer_id) {
+        const { data: tr } = await supabase.from('transfers').select('tx_hash').eq('id', row.transfer_id).maybeSingle();
+        tx_hash = (tr as any)?.tx_hash ?? null;
+      }
+
+      return {
+        ...row,
+        viewer_role: isPayer ? 'payer' as const : 'requester' as const,
+        requester: profileMap[row.requester_wallet] ?? null,
+        payer: profileMap[row.payer_wallet] ?? null,
+        tx_hash,
+      };
+    }),
+
   // Payment requests for the "Pay" tab: `incoming` = requests waiting for the caller to pay (pending),
   // `outgoing` = requests the caller has sent. Each is enriched with the other party's profile.
   requests: protectedProcedure

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { createHash } from 'crypto';
 import { getAuthedContext } from '@/lib/auth';
 import { recordDeviceSession } from '@/lib/device-sessions';
 import { logSecurityEvent } from '@/lib/security-audit';
@@ -28,11 +27,12 @@ export async function POST(req: Request) {
   } catch { /* body optional */ }
   ua = ua ?? req.headers.get('user-agent');
   const ip = clientIp(req);
-  const fingerprint = createHash('sha256').update(`${platform ?? ''}|${ua ?? ''}`).digest('hex').slice(0, 32);
   const wallet = ctx.wallets[0] ?? null;
 
+  // recordDeviceSession derives the stable device fingerprint (platform + browser family, not the raw
+  // UA string) itself — see src/lib/device-sessions.ts for why (POL6).
   const { isNewDevice } = await recordDeviceSession({
-    userId: ctx.userId, session_id: ctx.sessionId, wallet, fingerprint, user_agent: ua, platform, ip,
+    userId: ctx.userId, session_id: ctx.sessionId, wallet, user_agent: ua, platform, ip,
   });
   if (isNewDevice && wallet) {
     void logSecurityEvent({ wallet, event: 'sign_in_new_device', detail: { platform }, ip, user_agent: ua });

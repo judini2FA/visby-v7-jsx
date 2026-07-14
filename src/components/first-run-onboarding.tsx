@@ -6,7 +6,7 @@ import { t, S, btn, card, T } from '@/lib/ui';
 // Blueprint 7.1 — first-run onboarding. A one-time, plain-English intro (what Visby is, what a Tally is,
 // how paying works) with ZERO crypto jargon — the "toddler-proof" entry. localStorage-gated so it shows
 // once per device; fully skippable. Rendered on the home page.
-const SEEN_KEY = 'visby-onboarding-seen-v2';
+const SEEN_KEY = 'visby-onboarding-seen-v3'; // bumped: v3 adds the omni-currency slide
 
 type Slide = { icon: React.ReactNode; title: string; body: string };
 
@@ -49,12 +49,20 @@ const Heart = (
     <path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 21.5l8.8-8.8a5 5 0 0 0 0-7.1z" />
   </svg>
 );
+const Globe = (
+  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="url(#g7)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <defs><linearGradient id="g7" x1="0" y1="0" x2="24" y2="24"><stop stopColor="#25CDB8" /><stop offset="0.5" stopColor="#2A8AED" /><stop offset="1" stopColor="#BC2DE6" /></linearGradient></defs>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18" /><path d="M12 3c2.8 2.6 4.2 5.7 4.2 9s-1.4 6.4-4.2 9c-2.8-2.6-4.2-5.7-4.2-9s1.4-6.4 4.2-9z" />
+  </svg>
+);
 
 const SLIDES: Slide[] = [
   { icon: ShieldCheck, title: 'Welcome to Visby', body: 'Visby is where you buy and sell real luxury goods, like sneakers, watches, and bags. The best part is that every item comes with proof it’s genuine, so you never have to wonder whether it’s the real thing.' },
   { icon: Sparkle, title: 'Every item has a Tally', body: 'A Tally is an item’s certificate of authenticity. It proves the item is real and shows everyone who has ever owned it. Tallys are NFTs used as authenticators, so they can’t be faked, copied, or tampered with. You don’t need to know anything about crypto, it just works quietly in the background.' },
   { icon: Tag, title: 'Buying is easy', body: 'Find something you love, then pay however you like, with a card, a bank transfer, or crypto. The seller ships it to you, and the item’s Tally becomes yours, so its whole history comes along with it.' },
   { icon: Box, title: 'Selling is simple too', body: 'List your item and set a price. We’ll show you exactly what you keep after our small fee, before anything is final. When it sells, we handle the payment and pass the Tally to the new owner for you.' },
+  { icon: Globe, title: 'One price, any currency', body: 'Pick the currency you think in, and every price on Visby shows in it, from US dollars to yen to euros and beyond. Pay from whatever you have, and sellers get paid out in their own preferred currency too. About 100 currencies are supported, so wherever you are, Visby speaks your numbers.' },
   { icon: Heart, title: 'You’re all set', body: 'That’s really all there is to it. No seed phrases, no confusing wallets, and no jargon. Just real items you can trust. Have a look around and enjoy.' },
 ];
 

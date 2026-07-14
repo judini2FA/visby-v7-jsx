@@ -1,6 +1,6 @@
 import { Keypair } from '@solana/web3.js';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { mplCore, transferV1 } from '@metaplex-foundation/mpl-core';
+import { mplCore, fetchAsset, transfer } from '@metaplex-foundation/mpl-core';
 import { keypairIdentity, publicKey as umiKey } from '@metaplex-foundation/umi';
 
 // SINGLE CUSTODY BOUNDARY — the only place the raw mint-authority secret is materialized into a
@@ -26,11 +26,17 @@ export function getAuthorityUmi() {
   return { umi, mintAuthority };
 }
 
-// Transfer an NFT that the mint authority currently holds to any wallet
+// Transfer an NFT to any wallet, using the authority's signing power.
+// We FETCH the asset first so mpl-core resolves the current owner + plugins before building the transfer.
+// This is REQUIRED for the SDK path, where the asset is owned by the MERCHANT and moved to the buyer by
+// the authority acting as its PermanentTransferDelegate: passing only the pubkey to transferV1 panics on
+// the delegate path (it works only when signer == owner, e.g. the normal marketplace mint). Fetch+transfer
+// works for both, so this is the single correct call site.
 export async function transferFromAuthority(assetAddress: string, toWallet: string): Promise<string> {
   const { umi } = getAuthorityUmi();
-  const { signature } = await transferV1(umi, {
-    asset: umiKey(assetAddress),
+  const asset = await fetchAsset(umi, umiKey(assetAddress));
+  const { signature } = await transfer(umi, {
+    asset,
     newOwner: umiKey(toWallet),
   }).sendAndConfirm(umi);
   return Buffer.from(signature).toString('base64');

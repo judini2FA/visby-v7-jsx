@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { captureError } from '@/lib/monitoring';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Blueprint 4.3 — Stripe Connect (Express) fiat payout rail for sellers.
 //
@@ -64,7 +65,7 @@ export async function getOrCreateConnectAccount(wallet: string): Promise<{ ok: b
     return { ok: true, stripe_account_id: account.id };
   } catch (err) {
     captureError(err, { stage: 'getOrCreateConnectAccount', wallet });
-    return { ok: false, error: err instanceof Error ? err.message : 'Could not create Connect account' };
+    return { ok: false, error: friendlyError(err, 'Could not create Connect account.') };
   }
 }
 
@@ -87,7 +88,7 @@ export async function createOnboardingLink(
     return { ok: true, url: link.url };
   } catch (err) {
     captureError(err, { stage: 'createOnboardingLink', wallet, stripe_account_id: acct.stripe_account_id });
-    return { ok: false, error: err instanceof Error ? err.message : 'Could not create onboarding link' };
+    return { ok: false, error: friendlyError(err, 'Could not create onboarding link.') };
   }
 }
 

@@ -7,6 +7,7 @@ import { useVisbWallet } from '@/lib/wallet';
 import { useAdminRole } from '@/lib/use-admin-role';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { t, S, surface, btn, glass, T } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 type Docs = { terms: string | null; privacy: string | null; acceptable_use: string | null; seller_agreement: string | null };
 
@@ -33,7 +34,7 @@ function UploadRow({ kind, label, current, wallet, token, onDone }: {
       setStatus('done'); setPicked(null); onDone();
       setTimeout(() => setStatus('idle'), 1600);
     } catch (e: any) {
-      setStatus('error'); setErr(e?.message ?? 'Upload failed');
+      setStatus('error'); setErr(friendlyError(e, 'Upload failed — try again.'));
     }
   }
 

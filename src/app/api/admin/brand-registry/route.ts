@@ -6,6 +6,7 @@ import { isAdminRole } from '@/lib/admin';
 import { createServiceClient } from '@/lib/supabase/service';
 import { logSecurityEvent } from '@/lib/security-audit';
 import { clientIp } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Admin-only management of the brand serial-number registry (brands, their serial rules, and per-serial
 // flags). Gated exactly like the other admin routes: callerOwnsWallet (proves the Privy token owns the
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
     }).select('id').maybeSingle();
     if (error) {
       if (error.code === '23505') return NextResponse.json({ error: 'A brand with that slug already exists' }, { status: 409 });
-      return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : error.message },
+      return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : friendlyError(error, 'Could not save — try again.') },
         { status: badSchema(error) ? 503 : 500 });
     }
     void logSecurityEvent({ wallet, event: 'brand_registry_updated', detail: { action: 'add_brand', slug, display_name, brand_id: data?.id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
     }).select('id').maybeSingle();
     if (error) {
       if (error.code === '23503') return NextResponse.json({ error: 'Unknown brand_id' }, { status: 400 });
-      return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : error.message },
+      return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : friendlyError(error, 'Could not save — try again.') },
         { status: badSchema(error) ? 503 : 500 });
     }
     void logSecurityEvent({ wallet, event: 'brand_registry_updated', detail: { action: 'add_rule', brand_id, rule_id: data?.id }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
     });
     if (error) {
       if (error.code === '23503') return NextResponse.json({ error: 'Unknown brand_id' }, { status: 400 });
-      return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : error.message },
+      return NextResponse.json({ error: badSchema(error) ? 'Registry not migrated yet' : friendlyError(error, 'Could not save — try again.') },
         { status: badSchema(error) ? 503 : 500 });
     }
     void logSecurityEvent({ wallet, event: 'brand_serial_flagged', detail: { serial: serial_number, brand: brand_id, flag }, ip: clientIp(req), user_agent: req.headers.get('user-agent') });

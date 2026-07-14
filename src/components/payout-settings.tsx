@@ -5,6 +5,7 @@ import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { t, S, surface, btn, sectionLabel, input } from '@/lib/ui';
 import { createStepUpProof, stepUpHeader, STEP_UP_ON } from '@/lib/step-up-client';
 import { payoutAction } from '@/lib/step-up-shared';
+import { friendlyError } from '@/lib/friendly-error';
 
 const GREEN = 'var(--ok)';
 const RED   = 'var(--danger)';
@@ -120,7 +121,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       setSavedAcct(payoutType === 'bank' ? stripeAccountId : '');
       setTestStatus('idle'); setTestMsg('');
       setTimeout(() => setStatus('idle'), 2500);
-    } catch (err: any) { setErrMsg(err.message ?? 'Save failed'); setStatus('error'); }
+    } catch (err: any) { setErrMsg(friendlyError(err, 'Could not save payout settings — try again.')); setStatus('error'); }
   }
 
   async function startConnectOnboarding() {
@@ -139,7 +140,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       setConnectMsg(data.error ?? 'Could not start bank onboarding');
       setConnectBusy(false);
     } catch (err: any) {
-      setConnectMsg(err.message ?? 'Could not start bank onboarding');
+      setConnectMsg(friendlyError(err, 'Could not start bank onboarding.'));
       setConnectBusy(false);
     }
   }
@@ -156,7 +157,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
       if (!res.ok) throw new Error(data.error ?? 'Test payout failed');
       setTestStatus('sent');
       setTestMsg(`Sent — payout ${data.payout_id} ($${(data.amount / 100).toFixed(2)}, ${data.status}). It'll arrive in your linked account shortly.`);
-    } catch (err: any) { setTestMsg(err.message ?? 'Test payout failed'); setTestStatus('error'); }
+    } catch (err: any) { setTestMsg(friendlyError(err, 'Test payout failed.')); setTestStatus('error'); }
   }
 
   const canTest = savedType === 'bank' && !!savedAcct;

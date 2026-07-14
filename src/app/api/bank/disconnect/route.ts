@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getAuthedContext } from '@/lib/auth';
 import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,9 +55,9 @@ export async function POST(req: Request) {
       .update({ status: 'disconnected', updated_at: new Date().toISOString() })
       .eq('id', id);
 
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    if (updateErr) return NextResponse.json({ error: friendlyError(updateErr, 'Could not disconnect this account.') }, { status: 500 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? 'Could not disconnect account' }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not disconnect account.') }, { status: 500 });
   }
 }

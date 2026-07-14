@@ -4,23 +4,33 @@ import type { User } from '@privy-io/react-auth';
 // Only returns Solana wallets — never an Ethereum 0x address.
 // Uses Privy's top-level ready flag so pages don't hang during wallet creation.
 //
-// Falls back to the persisted `linkedAccounts` address (via getSolanaAddress) when the live
-// useSolanaWallets() connector hasn't hydrated a wallet yet. This matters for external-wallet
-// sign-ins (Phantom/Solflare): the connector array can be transiently empty right after login (or
-// if the extension isn't actively connected this tab), and without the fallback callers gating on
-// `wallet` — notably PasswordGate — would silently skip, letting that login method bypass the
-// password step entirely.
+// EXTERNAL-WALLET-ONLY LOGIN (A9): a user can sign in with just a connected Solana wallet
+// (Phantom/Solflare/…) — no email required. Nothing here forces email; the presence of ANY Solana
+// wallet is sufficient to resolve an identity.
+//
+// Why linking used to break, and the fix: `useSolanaWallets()` can transiently return an empty (or
+// reordered) `wallets` array right after login — especially for external sign-ins where the extension
+// connector hydrates a beat late. The old code resolved `wallets.find(privy) ?? wallets[0]`, so the
+// returned address could FLIP between the embedded wallet and the external one across renders, and
+// per-wallet state (profile rows, account_security, gates) mis-keyed onto whichever won that render.
+// Fix: derive a single canonical address that prefers the persisted linkedAccounts wallet (stable
+// across hydration) and only falls back to a live connector when linkedAccounts hasn't populated yet.
+// getSolanaAddress already encodes the identity priority (Solana → Privy embedded → any wallet), so
+// leaning on it first makes the resolved address deterministic for a given user.
 export function useVisbWallet(): { address: string; ready: boolean } {
   const { ready, user } = usePrivy();
   const { wallets } = useSolanaWallets();
+  const persisted = getSolanaAddress(user);
   const live = wallets.find((w: any) => w.walletClientType === 'privy') ?? wallets[0];
-  const address = live?.address || getSolanaAddress(user);
+  const address = persisted || live?.address || '';
   return { address, ready };
 }
 
 /**
  * Non-hook fallback for one-off server-side helpers.
- * Prefers Solana → Privy embedded → any wallet in linkedAccounts.
+ * Prefers Solana → Privy embedded → any wallet in linkedAccounts. An external Solana wallet used as
+ * the primary login lands in linkedAccounts with chainType 'solana', so this resolves it too — an
+ * email is never required for a usable identity.
  */
 export function getSolanaAddress(user: User | null | undefined): string {
   if (!user) return '';

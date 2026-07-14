@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTRPCRouter, publicProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const followsRouter = createTRPCRouter({
   follow: publicProcedure
@@ -13,7 +14,7 @@ export const followsRouter = createTRPCRouter({
           { follower_wallet: input.follower_wallet, following_wallet: input.following_wallet },
           { onConflict: 'follower_wallet,following_wallet', ignoreDuplicates: true }
         );
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not follow — try again.'));
       return { following: true };
     }),
 
@@ -26,7 +27,7 @@ export const followsRouter = createTRPCRouter({
         .delete()
         .eq('follower_wallet', input.follower_wallet)
         .eq('following_wallet', input.following_wallet);
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not unfollow — try again.'));
       return { following: false };
     }),
 
@@ -162,7 +163,7 @@ export const followsRouter = createTRPCRouter({
         .select('following_wallet, created_at')
         .eq('follower_wallet', input.wallet)
         .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load — try again.'));
       if (!data?.length) return [];
 
       const wallets = data.map(r => r.following_wallet);

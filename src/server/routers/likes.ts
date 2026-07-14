@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTRPCRouter, publicProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const likesRouter = createTRPCRouter({
   toggle: publicProcedure
@@ -61,7 +62,7 @@ export const likesRouter = createTRPCRouter({
         .select('item_id, created_at, items(*)')
         .eq('wallet', input.wallet)
         .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load — try again.'));
       return (data ?? []).map(r => ({ ...(r.items as any), liked_at: r.created_at }));
     }),
 
@@ -82,7 +83,7 @@ export const likesRouter = createTRPCRouter({
         .select('item_id, wallet, created_at')
         .in('item_id', itemIds)
         .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load — try again.'));
 
       const nameMap = Object.fromEntries(ownedItems.map(i => [i.id, i.name]));
       const grouped: Record<string, { item_id: string; item_name: string; count: number; latest_at: string }> = {};

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card, surface } from '@/lib/ui';
+import { friendlyError } from '@/lib/friendly-error';
 
 type Overview = {
   orders: { total: number; byStatus: Record<string, number>; gmv: number; fees: number };
@@ -46,7 +47,7 @@ export default function AdminHome() {
         if (cancelled) return;
         if (!res.ok) throw new Error(d.error || 'Failed to load');
         setData(d);
-      } catch (e: any) { if (!cancelled) setErr(e?.message ?? 'Failed to load'); }
+      } catch (e: any) { if (!cancelled) setErr(friendlyError(e, 'Failed to load — try again.')); }
     })();
     return () => { cancelled = true; };
   }, [ready, wallet, getAccessToken]);

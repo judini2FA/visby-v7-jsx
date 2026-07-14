@@ -7,7 +7,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { S, t, price, card, surface, btn, badge, sectionLabel, input } from '@/lib/ui';
 import { solscanTx } from '@/lib/explorer';
-import { OrderReviewSection } from '@/components/reviews';
+import { RateOrder } from '@/components/rate-order';
 import { DisputePanel } from '@/components/dispute-panel';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { TallyExplainerInline } from '@/components/tally-explainer';
@@ -491,25 +491,28 @@ export default function OrderPage() {
               />
             )}
 
-            {/* Confirm receipt */}
+            {/* Confirm delivery / celebration */}
             {order.status === 'delivered' ? (
               <>
-                <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px`, radius: 'var(--r)' }), display: 'flex', alignItems: 'center', gap: S[3] }}>
-                  <span style={badge('success')}>
-                    <CheckIcon size={9} color={GREEN} />
-                    Delivered — provenance finalized
-                  </span>
+                <div style={{ ...card(), padding: S[5], display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: S[2], animation: 'pop .4s ease-out' }}>
+                  <div style={{ ...surface({ radius: '50%' }), width: 48, height: 48, background: 'var(--ok-soft)', border: '1px solid var(--ok-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckIcon size={22} color={GREEN} />
+                  </div>
+                  <div style={{ ...t('heading'), color: 'var(--text-strong)' }}>Delivered</div>
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+                    Ownership provenance is finalized on-chain.
+                    {order.payout_released ? ' The seller’s payout has been released.' : ''}
+                  </div>
                 </div>
-                {walletAddress && (
-                  <OrderReviewSection
-                    orderId={order.id}
-                    reviewerWallet={walletAddress}
-                    getAccessToken={getAccessToken}
-                  />
-                )}
+                {walletAddress && <RateOrder orderId={order.id} />}
               </>
             ) : canConfirm ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                {order.status === 'shipped' && (
+                  <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>
+                    Received your item? Confirm delivery to complete the order and release the seller's payout.
+                  </div>
+                )}
                 <button
                   onClick={confirmReceipt}
                   disabled={confirmBusy}
@@ -517,7 +520,7 @@ export default function OrderPage() {
                 >
                   {confirmBusy ? (
                     <><div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', animation: 'spin .8s linear infinite' }} /> Confirming…</>
-                  ) : 'Confirm receipt'}
+                  ) : 'Confirm delivery'}
                 </button>
                 {confirmError && (
                   <div style={{ ...t('meta'), color: 'var(--danger)', textAlign: 'center' }}>{confirmError}</div>

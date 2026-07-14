@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { createTRPCRouter, publicProcedure, protectedProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
+import { friendlyError } from '@/lib/friendly-error';
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 
@@ -101,12 +102,12 @@ export const profilesRouter = createTRPCRouter({
               if (retry.error.code === '23505' && retry.error.message?.includes('username')) {
                 throw new TRPCError({ code: 'CONFLICT', message: 'That username is taken.' });
               }
-              throw new Error(retry.error.message);
+              throw new Error(friendlyError(retry.error, 'Could not save — check your connection and try again.'));
             }
             return retry.data;
           }
         }
-        throw new Error(error.message);
+        throw new Error(friendlyError(error, 'Could not save — check your connection and try again.'));
       }
       return data;
     }),

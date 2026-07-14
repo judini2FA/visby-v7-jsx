@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { callerOwnsWallet, getAuthedContext } from '@/lib/auth';
 import { requireKycForSaleAny } from '@/lib/kyc';
 import { isRestricted } from '@/lib/account-status';
+import { friendlyError } from '@/lib/friendly-error';
 
 export async function POST(req: Request) {
     try {
@@ -50,12 +51,12 @@ export async function POST(req: Request) {
             .single();
 
           if (error) {
-                  return NextResponse.json({ error: error.message }, { status: 400 });
+                  return NextResponse.json({ error: friendlyError(error, 'Could not list this item — try again.') }, { status: 400 });
                 }
 
           return NextResponse.json(data);
         } catch (err: any) {
-          return NextResponse.json({ error: err.message }, { status: 500 });
+          return NextResponse.json({ error: friendlyError(err, 'Could not list this item — try again.') }, { status: 500 });
         }
   }
 
@@ -83,9 +84,9 @@ export async function DELETE(req: Request) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return NextResponse.json({ error: friendlyError(error, 'Could not unlist this item — try again.') }, { status: 400 });
     return NextResponse.json(data);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not unlist this item — try again.') }, { status: 500 });
   }
 }

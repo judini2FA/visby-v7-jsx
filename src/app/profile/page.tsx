@@ -15,6 +15,7 @@ import { TallyCard } from '@/components/tally-card';
 import { ListingCard } from '@/components/listing-card';
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { EmptyState } from '@/components/empty-state';
+import { friendlyError } from '@/lib/friendly-error';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -104,7 +105,7 @@ function MyItemsTab({ wallet }: { wallet: string }) {
       setXfer('done');
       await refetch();
       setTimeout(() => { setTransferItem(null); setDestAddr(''); setXfer('idle'); }, 1100);
-    } catch (e: any) { setXfer('idle'); setXferErr(e?.message ?? 'Transfer failed'); }
+    } catch (e: any) { setXfer('idle'); setXferErr(friendlyError(e, 'Transfer failed — try again.')); }
   }
 
   if (isLoading) return (
@@ -165,7 +166,7 @@ function MyItemsTab({ wallet }: { wallet: string }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
                 {destsFor(transferItem).map(d => (
                   <button key={d.address} onClick={() => setDestAddr(d.address)}
-                    style={{ ...surface({ pad: '12px 14px' }), display: 'flex', alignItems: 'center', gap: S[3], textAlign: 'left', cursor: 'pointer', border: destAddr === d.address ? '1.5px solid var(--text-strong)' : undefined }}>
+                    style={{ ...surface({ pad: '12px 14px' }), display: 'flex', alignItems: 'center', gap: S[3], textAlign: 'left', cursor: 'pointer', boxShadow: destAddr === d.address ? '0 4px 16px rgba(90,160,210,.30)' : 'var(--box-shadow-soft)' }}>
                     <span style={{ ...surface({ radius: 8 }), width: 30, height: 30, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>SOL</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)' }}>{d.label}</div>

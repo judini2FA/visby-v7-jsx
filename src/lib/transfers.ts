@@ -180,33 +180,45 @@ export async function confirmTransfer(args: { id: string; from_wallet: string; t
   if (!row || row.from_wallet !== args.from_wallet) return { ok: false, status: 'pending' };
   if (row.status === 'sent') return { ok: true, status: 'sent' };
 
+  // Devnet routinely takes longer to surface a transaction via getTransaction than the client's own
+  // wait did — a single immediate lookup here was the other half of "devnet wasn't actually transferring
+  // money": the on-chain send genuinely succeeded, but this one-shot check missed it (tx not yet visible
+  // at 'confirmed' commitment) and left the row — and any payment_request waiting on it — 'pending'
+  // forever, since nothing ever re-checked. Retry a handful of times with a short backoff before giving
+  // up; a DEFINITIVE on-chain failure (meta.err set) breaks out immediately since retrying can't help.
   let verified = false;
-  try {
-    const conn = new Connection(rpcUrl(), 'confirmed');
-    const tx = await conn.getTransaction(args.tx_hash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-    const meta = tx?.meta;
-    if (tx && meta && !meta.err && meta.preBalances && meta.postBalances) {
-      const keys = tx.transaction.message.getAccountKeys().staticAccountKeys.map((k: PublicKey) => k.toBase58());
-      const fromIdx = keys.indexOf(row.from_wallet);
-      const toIdx = keys.indexOf(row.to_wallet);
-      if (fromIdx >= 0 && toIdx >= 0) {
-        if (row.token === 'SOL') {
-          const received = (meta.postBalances[toIdx] ?? 0) - (meta.preBalances[toIdx] ?? 0);
-          const fromDelta = (meta.postBalances[fromIdx] ?? 0) - (meta.preBalances[fromIdx] ?? 0);
-          const expected = Math.round(Number(row.amount) * LAMPORTS_PER_SOL);
-          // Recipient must have received at least the recorded amount, and the sender's balance must drop.
-          verified = expected > 0 && received >= expected && fromDelta < 0;
-        } else if (row.token === 'USDC') {
-          // Verify the recipient's USDC token-account balance rose by >= the recorded amount.
-          const expectedBase = Math.round(Number(row.amount) * 10 ** USDC_DECIMALS);
-          const find = (arr: any[] | null | undefined) => (arr ?? []).find((b: any) => b.owner === row.to_wallet && b.mint === USDC_MINT);
-          const pre = Number(find(meta.preTokenBalances)?.uiTokenAmount?.amount ?? 0);
-          const post = Number(find(meta.postTokenBalances)?.uiTokenAmount?.amount ?? 0);
-          verified = expectedBase > 0 && (post - pre) >= expectedBase;
+  const conn = new Connection(rpcUrl(), 'confirmed');
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const tx = await conn.getTransaction(args.tx_hash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+      const meta = tx?.meta;
+      if (tx && meta && !meta.err && meta.preBalances && meta.postBalances) {
+        const keys = tx.transaction.message.getAccountKeys().staticAccountKeys.map((k: PublicKey) => k.toBase58());
+        const fromIdx = keys.indexOf(row.from_wallet);
+        const toIdx = keys.indexOf(row.to_wallet);
+        if (fromIdx >= 0 && toIdx >= 0) {
+          if (row.token === 'SOL') {
+            const received = (meta.postBalances[toIdx] ?? 0) - (meta.preBalances[toIdx] ?? 0);
+            const fromDelta = (meta.postBalances[fromIdx] ?? 0) - (meta.preBalances[fromIdx] ?? 0);
+            const expected = Math.round(Number(row.amount) * LAMPORTS_PER_SOL);
+            // Recipient must have received at least the recorded amount, and the sender's balance must drop.
+            verified = expected > 0 && received >= expected && fromDelta < 0;
+          } else if (row.token === 'USDC') {
+            // Verify the recipient's USDC token-account balance rose by >= the recorded amount.
+            const expectedBase = Math.round(Number(row.amount) * 10 ** USDC_DECIMALS);
+            const find = (arr: any[] | null | undefined) => (arr ?? []).find((b: any) => b.owner === row.to_wallet && b.mint === USDC_MINT);
+            const pre = Number(find(meta.preTokenBalances)?.uiTokenAmount?.amount ?? 0);
+            const post = Number(find(meta.postTokenBalances)?.uiTokenAmount?.amount ?? 0);
+            verified = expectedBase > 0 && (post - pre) >= expectedBase;
+          }
         }
+        break; // tx found (verified either way) — no point retrying
       }
-    }
-  } catch { /* RPC hiccup — leave pending, the client can retry confirm */ }
+      if (tx && meta?.err) break; // definitive on-chain failure — retrying won't change that
+    } catch { /* transient RPC hiccup — fall through to retry */ }
+    if (attempt < MAX_ATTEMPTS - 1) await new Promise((r) => setTimeout(r, 1500));
+  }
 
   if (!verified) {
     await supabase.from('transfers').update({ tx_hash: args.tx_hash }).eq('id', args.id);

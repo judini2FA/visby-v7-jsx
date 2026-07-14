@@ -15,14 +15,43 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Motion off (by request): no transitions, no decorative keyframes anywhere. The ONLY exception is
-   the loading spinner — a frozen spinner is useless, so it's re-enabled below by its inline marker. */
+/* Motion off (by request): no transitions, no decorative keyframes anywhere. The ONLY exceptions are
+   the loading spinner — a frozen spinner is useless, so it's re-enabled below by its inline marker —
+   and the press-feedback rule further down (PERF1: tactile tap response is a functional affordance,
+   not decorative motion — Judah reported buttons "don't feel reactive"). */
 *, *::before, *::after {
   transition: none !important;
   animation: none !important;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 [style*="spin"] { animation: spin .8s linear infinite !important; }
+
+/* ── PERF1: instant press feedback on every interactive control ──────────────────────────
+   Higher specificity + !important than the blanket reset above, so it wins. Kills the mobile
+   300ms tap-delay (touch-action) and the blue tap flash (tap-highlight-color) everywhere, and
+   gives a real scale-down "press" so a click/tap registers visually the instant it happens
+   instead of waiting for the network round-trip to be the first sign anything happened. */
+button, a, [role="button"], .btn, input[type="button"], input[type="submit"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled):active,
+  a:active,
+  [role="button"]:not([aria-disabled="true"]):active,
+  .btn:active {
+    transform: scale(0.97) !important;
+    transition: transform 80ms ease !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active,
+  a:active,
+  [role="button"]:not([aria-disabled="true"]):active,
+  .btn:active {
+    opacity: 0.7 !important;
+  }
+}
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(14px); }

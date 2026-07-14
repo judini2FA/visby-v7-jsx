@@ -16,6 +16,8 @@ import { localShipEstimate } from '@/lib/shipping-estimate';
 import KycVerify from '@/components/kyc-verify';
 import { EmptyState } from '@/components/empty-state';
 import { CutoutEditor } from '@/components/cutout-editor';
+import type { KycStatus } from '@/lib/kyc';
+import { friendlyError } from '@/lib/friendly-error';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
@@ -140,7 +142,7 @@ function MintForm({ wallet }: { wallet: string }) {
       setResult({ txHash: data.tx_hash, mintAddress: data.mint_address, serial, itemId: data.item_id });
       setStatus('done');
     } catch (err: any) {
-      setError(err.message ?? 'Unknown error');
+      setError(friendlyError(err, 'Could not mint this item — try again.'));
       setStatus('error');
     }
   }
@@ -280,7 +282,7 @@ function MintForm({ wallet }: { wallet: string }) {
             <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Buyers can find and purchase this item immediately</div>
           </div>
           <button type="button" onClick={() => setListNow(p => !p)}
-            style={{ width: 44, height: 24, borderRadius: 12, background: listNow ? 'var(--text-strong)' : 'var(--glass-hairline)', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
+            style={{ width: 44, height: 24, borderRadius: 12, background: listNow ? 'var(--grad-brand)' : 'var(--glass-hairline)', backgroundClip: 'border-box', backgroundOrigin: 'border-box', backgroundSize: '100% 100%', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
             <div style={{ position: 'absolute', top: 2, left: listNow ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,.3)' }} />
           </button>
         </div>
@@ -503,7 +505,7 @@ const CSV_HINT = 'serial_number, name, category, condition, description, image_u
 function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
     <button type="button" onClick={onToggle} disabled={disabled}
-      style={{ width: 44, height: 26, borderRadius: 13, background: on ? 'var(--grad-brand)' : 'var(--surface-bg)', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, position: 'relative', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, transition: 'all .2s', flexShrink: 0, padding: 0 }}>
+      style={{ width: 44, height: 26, borderRadius: 13, background: on ? 'var(--grad-brand)' : 'var(--surface-bg)', backgroundClip: 'border-box', backgroundOrigin: 'border-box', backgroundSize: '100% 100%', border: `1.5px solid ${on ? 'transparent' : 'var(--glass-border)'}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,.28)', position: 'relative', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, transition: 'all .2s', flexShrink: 0, padding: 0 }}>
       <div style={{ width: 20, height: 20, borderRadius: '50%', background: on ? '#fff' : 'var(--text-muted)', position: 'absolute', top: 1, left: on ? 20 : 1, transition: 'left .2s, background .2s' }} />
     </button>
   );
@@ -550,7 +552,7 @@ function BulkLogPanel({ wallet }: { wallet: string }) {
       setRows(prev => prev.map(r => (r.id === id ? { ...r, ...j.row } : r)));
       return true;
     } catch (err: any) {
-      setRowError(prev => ({ ...prev, [id]: err.message ?? 'Unknown error' }));
+      setRowError(prev => ({ ...prev, [id]: friendlyError(err, 'Could not update — try again.') }));
       return false;
     } finally {
       setRowBusy(prev => ({ ...prev, [id]: false }));
@@ -581,7 +583,7 @@ function BulkLogPanel({ wallet }: { wallet: string }) {
       setCsv('');
       await loadRows();
     } catch (err: any) {
-      setError(err.message ?? 'Unknown error');
+      setError(friendlyError(err, 'Could not log serials — try again.'));
     } finally { setSubmitting(false); }
   }
 
@@ -741,18 +743,23 @@ export default function SellerDashboardPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('mint');
   const [isBusiness, setIsBusiness] = useState(false);
+  const [kycStatus, setKycStatus] = useState<KycStatus | null>(null); // null = still loading
+  const [kycGateRequired, setKycGateRequired] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const token = await getAccessToken();
-        if (!token) return;
+        if (!token) { if (!cancelled) setKycStatus('unverified'); return; }
         const res = await fetch('/api/kyc/status', { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) return;
+        if (!res.ok) { if (!cancelled) setKycStatus('unverified'); return; }
         const j = await res.json();
-        if (!cancelled) setIsBusiness(j.account_type === 'business');
-      } catch { /* best-effort — tab just stays hidden */ }
+        if (cancelled) return;
+        setIsBusiness(j.account_type === 'business');
+        setKycGateRequired(!!j.required);
+        setKycStatus((j.kyc_status ?? 'unverified') as KycStatus);
+      } catch { if (!cancelled) setKycStatus('unverified'); } // fail-closed — gate stays up on error
     })();
     return () => { cancelled = true; };
   }, [getAccessToken, authenticated]);
@@ -761,6 +768,9 @@ export default function SellerDashboardPage() {
     router.replace('/login');
     return null;
   }
+
+  const kycLoading = kycStatus === null;
+  const kycBlocked = kycGateRequired && kycStatus !== 'approved';
 
   return (
     <div style={{ background: C.navy, minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
@@ -776,26 +786,44 @@ export default function SellerDashboardPage() {
       <div className="visby-page" style={{ paddingTop: S[5], paddingBottom: 100 }}>
 
         <div style={{ marginBottom: S[5] }}>
-          <KycVerify />
+          <Link href="/settings" style={{ ...t('meta'), color: 'var(--text-muted)' }}>
+            Have a business? Verify it in Settings
+          </Link>
         </div>
 
-        {/* Toggle */}
-        <div style={tabSlider().wrap}>
-          {([
-            { id: 'mint'   as Mode, label: 'Mint New' },
-            { id: 'resell' as Mode, label: 'Relist'   },
-            ...(isBusiness ? [{ id: 'bulk' as Mode, label: 'Bulk log' }] : []),
-          ]).map(tab => (
-            <button key={tab.id} onClick={() => setMode(tab.id)}
-              style={{ ...tabSlider().item, ...(mode === tab.id ? tabSlider().itemActive : null) }}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {kycLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: S[8] }}>
+            <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid var(--text-muted)', borderTopColor: 'transparent', animation: 'spin .8s linear infinite' }} />
+          </div>
+        ) : kycBlocked ? (
+          <div style={{ paddingTop: S[3] }}>
+            <KycVerify />
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: S[5] }}>
+              <KycVerify />
+            </div>
 
-        {mode === 'mint'   && <MintForm     wallet={wallet} />}
-        {mode === 'resell' && <RelistPanel  wallet={wallet} onMintClick={() => setMode('mint')} />}
-        {mode === 'bulk' && isBusiness && <BulkLogPanel wallet={wallet} />}
+            {/* Toggle */}
+            <div style={tabSlider().wrap}>
+              {([
+                { id: 'mint'   as Mode, label: 'Mint New' },
+                { id: 'resell' as Mode, label: 'Relist'   },
+                ...(isBusiness ? [{ id: 'bulk' as Mode, label: 'Bulk log' }] : []),
+              ]).map(tab => (
+                <button key={tab.id} onClick={() => setMode(tab.id)}
+                  style={{ ...tabSlider().item, ...(mode === tab.id ? tabSlider().itemActive : null) }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {mode === 'mint'   && <MintForm     wallet={wallet} />}
+            {mode === 'resell' && <RelistPanel  wallet={wallet} onMintClick={() => setMode('mint')} />}
+            {mode === 'bulk' && isBusiness && <BulkLogPanel wallet={wallet} />}
+          </>
+        )}
       </div>
 
       <style>{`

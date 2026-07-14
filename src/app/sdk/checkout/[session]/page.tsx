@@ -273,7 +273,7 @@ function MethodPicker({ cards, chosenId, hasCrypto, onPickCard, onPickCrypto, on
     <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>{icon}</span>
   );
   const Row = ({ icon, label, sub, selected, onClick }: { icon: React.ReactNode; label: string; sub?: string; selected?: boolean; onClick: () => void }) => (
-    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: S[3], width: '100%', textAlign: 'left', padding: `${S[3]}px ${S[4]}px`, borderRadius: 'var(--r-lg)', border: `${selected ? '1.5px' : '1px'} solid ${selected ? 'var(--accent)' : 'var(--glass-border)'}`, background: 'var(--surface-bg)', cursor: 'pointer' }}>
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: S[3], width: '100%', textAlign: 'left', padding: `${S[3]}px ${S[4]}px`, borderRadius: 'var(--r-lg)', border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', boxShadow: selected ? '0 4px 16px rgba(42,138,237,.28)' : 'none', cursor: 'pointer' }}>
       {chip(icon)}
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>{label}</span>

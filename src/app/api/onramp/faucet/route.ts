@@ -4,6 +4,7 @@ import { sendSolFromAuthority, getSolBalance, sendUsdcFromAuthority, getUsdcBala
 import { getRpcUrl } from '@/lib/nft';
 import { callerOwnsWallet } from '@/lib/auth';
 import { rateLimit, clientIp, tooManyRequests } from '@/lib/rate-limit';
+import { friendlyError } from '@/lib/friendly-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -66,6 +67,6 @@ export async function POST(req: Request) {
       new_balance,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err, 'Could not send the test funds — try again.') }, { status: 500 });
   }
 }

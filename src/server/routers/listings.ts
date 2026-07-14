@@ -2,12 +2,13 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { createTRPCRouter, publicProcedure, protectedProcedure } from '@/server/trpc';
 import { createServiceClient } from '@/lib/supabase/service';
-import { expandSearchTerms, sanitizeIlikeTerm } from '@/server/lib/synonyms';
+import { expandSearchTermsTiered, sanitizeIlikeTerm } from '@/server/lib/synonyms';
 import { searchListings, semanticSearchListings } from '@/server/lib/search-engine';
 import { semanticEnabled } from '@/lib/embeddings';
 import { ownersForItems } from '@/lib/owners';
 import { requireKycForSaleAny } from '@/lib/kyc';
 import { isRestricted } from '@/lib/account-status';
+import { friendlyError } from '@/lib/friendly-error';
 
 // Hide listings owned by flagged sellers from public browse. Degrades to "hide nothing" if the
 // is_flagged column isn't migrated yet, so the marketplace never breaks on a missing column.
@@ -36,7 +37,7 @@ export const listingsRouter = createTRPCRouter({
         .eq('serial_number', input.serial)
         .order('created_at', { referencedTable: 'ownership_history', ascending: true })
         .single();
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load this item.'));
       return data;
     }),
 
@@ -73,7 +74,7 @@ export const listingsRouter = createTRPCRouter({
         .eq('current_owner_wallet', input.seller_wallet)
         .select()
         .single();
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not list this item — try again.'));
       return data;
     }),
 
@@ -89,7 +90,7 @@ export const listingsRouter = createTRPCRouter({
         .eq('current_owner_wallet', input.seller_wallet)
         .select()
         .single();
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not unlist this item — try again.'));
       return data;
     }),
 
@@ -143,18 +144,27 @@ export const listingsRouter = createTRPCRouter({
         }
       }
 
-      let searchOrs: string[] = [];
-      if (input.search) {
-        // Fallback: expand "navy" → navy/dark blue/midnight blue/… via SQL ilike.
-        const terms = await expandSearchTerms(input.search);
-        searchOrs = terms
+      // Last-resort SQL fallback (only reached if both the semantic engine, when configured, and the
+      // Orama index above threw). Same tiered, precision-first shape as those engines: literal query
+      // terms first; only widen to synonyms — and, capped, loose associations — when the literal match
+      // came up thin (<5 rows), so a starved fallback still doesn't drag in unrelated items.
+      const MIN_ROWS_BEFORE_WIDENING = 5;
+      const toIlikeOrs = (terms: string[]) =>
+        terms
           .map(sanitizeIlikeTerm)
           .filter(Boolean)
           .flatMap((t) => [`name.ilike.%${t}%`, `category.ilike.%${t}%`, `description.ilike.%${t}%`]);
+
+      let literalOrs: string[] = [];
+      if (input.search) {
+        const qLower = input.search.trim().toLowerCase();
+        const tokens = qLower.split(/\s+/).filter(Boolean);
+        literalOrs = toIlikeOrs(Array.from(new Set([qLower, ...tokens])));
       }
-      const buildFiltered = () => {
+
+      const buildFiltered = (ors: string[]) => {
         let q = supabase.from('items').select('*').eq('is_listed', true);
-        if (searchOrs.length) q = q.or(searchOrs.join(','));
+        if (ors.length) q = q.or(ors.join(','));
         if (input.category)  q = q.eq('category', input.category);
         if (input.condition) q = q.eq('condition', input.condition);
         if (input.minPrice != null) q = q.gte('price_usdc', input.minPrice);
@@ -162,20 +172,38 @@ export const listingsRouter = createTRPCRouter({
         return q;
       };
 
-      let q = buildFiltered();
-      if (input.sort === 'price_asc')  q = q.order('price_usdc', { ascending: true });
-      else if (input.sort === 'price_desc') q = q.order('price_usdc', { ascending: false });
-      else if (input.sort === 'popular') q = q.order('view_count', { ascending: false }).order('listed_at', { ascending: false });
-      else q = q.order('listed_at', { ascending: false });
-      q = q.limit(input.limit);
+      const runFiltered = async (ors: string[]) => {
+        let q = buildFiltered(ors);
+        if (input.sort === 'price_asc')  q = q.order('price_usdc', { ascending: true });
+        else if (input.sort === 'price_desc') q = q.order('price_usdc', { ascending: false });
+        else if (input.sort === 'popular') q = q.order('view_count', { ascending: false }).order('listed_at', { ascending: false });
+        else q = q.order('listed_at', { ascending: false });
+        q = q.limit(input.limit);
 
-      let { data, error } = await q;
-      // 'popular' orders by items.view_count, which doesn't exist until migration_analytics runs.
-      // Degrade to newest rather than 500 the whole marketplace.
-      if (error && input.sort === 'popular' && (error.code === '42703' || error.message?.includes('does not exist'))) {
-        ({ data, error } = await buildFiltered().order('listed_at', { ascending: false }).limit(input.limit));
+        let { data, error } = await q;
+        // 'popular' orders by items.view_count, which doesn't exist until migration_analytics runs.
+        // Degrade to newest rather than 500 the whole marketplace.
+        if (error && input.sort === 'popular' && (error.code === '42703' || error.message?.includes('does not exist'))) {
+          ({ data, error } = await buildFiltered(ors).order('listed_at', { ascending: false }).limit(input.limit));
+        }
+        return { data, error };
+      };
+
+      let { data, error } = await runFiltered(literalOrs);
+      if (error) throw new Error(friendlyError(error, 'Could not load listings — try again.'));
+
+      if (input.search && (data?.length ?? 0) < MIN_ROWS_BEFORE_WIDENING) {
+        const { tier2, tier3 } = await expandSearchTermsTiered(input.search);
+        if (tier2.length) {
+          const widened = await runFiltered([...literalOrs, ...toIlikeOrs(tier2)]);
+          if (!widened.error) ({ data, error } = widened);
+        }
+        if (!error && (data?.length ?? 0) < MIN_ROWS_BEFORE_WIDENING && tier3.length) {
+          const widened2 = await runFiltered([...literalOrs, ...toIlikeOrs(tier2), ...toIlikeOrs(tier3)]);
+          if (!widened2.error) ({ data, error } = widened2);
+        }
       }
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load listings — try again.'));
       return await withOwners(data ?? []);
     }),
 
@@ -198,7 +226,7 @@ export const listingsRouter = createTRPCRouter({
       if (input.wallet) q = q.eq('business_wallet', input.wallet);
 
       const { data, error } = await q;
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load listings — try again.'));
       let rows = data ?? [];
 
       // Reuse the same flagged-seller exclusion the minted-listings path uses — a suspended business's
@@ -232,7 +260,7 @@ export const listingsRouter = createTRPCRouter({
         .eq('current_owner_wallet', input.wallet)
         .order('created_at', { ascending: false })
         .limit(input.limit);
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load items — try again.'));
       const items = data ?? [];
       const owners = await ownersForItems(supabase, items);   // owners[0] = original seller, for the Tally card
       for (const it of items) (it as any).owners = owners[it.id] ?? [];
@@ -252,7 +280,7 @@ export const listingsRouter = createTRPCRouter({
         .in('current_owner_wallet', wallets)
         .order('created_at', { ascending: false })
         .limit(input.limit);
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load items — try again.'));
       const items = data ?? [];
       const owners = await ownersForItems(supabase, items);
       for (const it of items) (it as any).owners = owners[it.id] ?? [];
@@ -270,7 +298,7 @@ export const listingsRouter = createTRPCRouter({
         .eq('from_wallet', input.wallet)
         .eq('event_type', 'transfer')
         .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load sales — try again.'));
       return data ?? [];
     }),
 
@@ -285,7 +313,7 @@ export const listingsRouter = createTRPCRouter({
         .eq('owner_wallet', input.wallet)
         .eq('event_type', 'transfer')
         .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyError(error, 'Could not load purchases — try again.'));
       return data ?? [];
     }),
 });
