@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { useVisbWallet } from '@/lib/wallet';
 import { t, S, card, btn, T } from '@/lib/ui';
@@ -21,7 +22,8 @@ function short(w: string | null | undefined): string {
   return w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—';
 }
 
-export default function ChargebackBundlePage({ params }: { params: { orderId: string } }) {
+export default function ChargebackBundlePage() {
+  const params = useParams<{ orderId: string }>();
   const { getAccessToken } = usePrivy();
   const { address: wallet, ready } = useVisbWallet();
   const [bundle, setBundle] = useState<any | null>(null);

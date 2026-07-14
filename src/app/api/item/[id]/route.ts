@@ -7,14 +7,15 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('items')
       .select(`*, ownership_history (*)`)
-      .eq('id', params.id)
+      .eq('id', id)
       .order('created_at', { referencedTable: 'ownership_history', ascending: true })
       .single();
 

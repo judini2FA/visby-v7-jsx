@@ -9,9 +9,9 @@ function missingSchema(error: any): boolean {
   return typeof error?.message === 'string' && error.message.includes('does not exist');
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const id = params?.id;
+    const { id } = await params;
     if (!id) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const supabase = createServiceClient();

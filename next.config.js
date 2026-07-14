@@ -6,10 +6,8 @@ const nextConfig = {
     // Gzip/Brotli compression for all responses (PERF1). This is Next's own default, but the flag
     // was absent from this config — making it explicit so it can't silently regress.
     compress: true,
-    // Next 14 needs this flag for instrumentation.ts (Sentry server/edge init) to load.
-    experimental: {
-          instrumentationHook: true,
-    },
+    // instrumentation.ts is stable since Next 15 — the experimental.instrumentationHook flag was
+    // removed (passing it now warns as an unrecognized key).
     typescript: {
           ignoreBuildErrors: true,
     },
@@ -17,12 +15,13 @@ const nextConfig = {
           ignoreDuringBuilds: true,
     },
     images: {
-          domains: [
-                  'arweave.net',
-                  'nftstorage.link',
-                  'ipfs.io',
-                  'gateway.irys.xyz',
-                ],
+          // remotePatterns replaces the deprecated `domains` array (removed in Next 16).
+          remotePatterns: [
+                  { protocol: 'https', hostname: 'arweave.net' },
+                  { protocol: 'https', hostname: 'nftstorage.link' },
+                  { protocol: 'https', hostname: 'ipfs.io' },
+                  { protocol: 'https', hostname: 'gateway.irys.xyz' },
+          ],
     },
     webpack: (config, { isServer }) => {
           config.resolve.fallback = {
@@ -112,5 +111,4 @@ module.exports = withSentryConfig(nextConfig, {
     project: 'javascript-nextjs',
     silent: true,
     widenClientFileUpload: true,
-    disableLogger: true,
 });

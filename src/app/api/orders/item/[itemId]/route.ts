@@ -5,13 +5,14 @@ export const dynamic = 'force-dynamic';
 
 // Public, minimal order status for an item (no PII — no address, tracking number, or wallets).
 // Used by the item page to show a "sold / in transit / delivered" state.
-export async function GET(_req: Request, { params }: { params: { itemId: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ itemId: string }> }) {
   try {
+    const { itemId } = await params;
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('orders')
       .select('status, shipped_at, delivered_at')
-      .eq('item_id', params.itemId)
+      .eq('item_id', itemId)
       .neq('status', 'cancelled')
       .order('created_at', { ascending: false })
       .limit(1)

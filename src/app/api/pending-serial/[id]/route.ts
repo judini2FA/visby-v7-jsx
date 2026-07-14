@@ -11,14 +11,15 @@ export const dynamic = 'force-dynamic';
 // endpoint can never leak unpublished or sold-out inventory to an unauthenticated buyer.
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('pending_serials')
       .select('id, name, image_url, price_usdc, category, condition, description, brand, business_wallet, serial_number, status, available')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error || !data) {
