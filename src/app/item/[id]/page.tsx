@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useVisbWallet } from '@/lib/wallet';
 import CheckoutModal from '@/components/checkout-modal';
+import { AddToCartButton } from '@/components/add-to-cart-button';
 import { OffersPanel } from '@/components/offers-panel';
 import { S, t, price, card, surface, btn, badge, avatar, sectionLabel, input, sheet, T } from '@/lib/ui';
 import { CutoutEditor } from '@/components/cutout-editor';
