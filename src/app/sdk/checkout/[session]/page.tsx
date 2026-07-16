@@ -18,9 +18,6 @@ const GREEN = 'var(--ok)';
 const RED   = 'var(--danger)';
 const TREASURY = process.env.NEXT_PUBLIC_TREASURY_WALLET!;
 const RPC = process.env.NEXT_PUBLIC_HELIUS_RPC_URL ?? 'https://api.devnet.solana.com';
-// Estimated bank/FX conversion cost shown in the buyer's preferred currency. Not a Visby charge —
-// the card is charged the exact USD total; this previews real-world local cost and is labelled "est."
-const XFER_FEE = 0.025;
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 interface Session {
@@ -613,13 +610,43 @@ export default function SdkCheckoutPage() {
       tx.add(SystemProgram.transfer({ fromPubkey: new PublicKey(buyerWallet), toPubkey: new PublicKey(TREASURY), lamports }));
       const signed = await (solWallet as any).signTransaction(tx);
       const signature = await connection.sendRawTransaction(signed.serialize());
-      await connection.confirmTransaction(signature, 'confirmed');
-      const r = await fetch('/api/sdk/charge-wallet', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, buyer_wallet: buyerWallet, tx_signature: signature, quoted_sol_price: solPrice }),
-      });
-      const d = await r.json();
-      if (!r.ok || d.error || !d.ok) { setPayErr(d.error ?? 'Could not complete your purchase.'); return; }
+
+      // MONEY BOUNDARY: the SOL has left the buyer's wallet once sendRawTransaction returns. From here on
+      // we NEVER throw the payment away — web3.js's confirmTransaction gives up at 30s (devnet regularly
+      // exceeds it) and a real paid transfer was being dropped as "failed". Instead: patiently poll the
+      // signature ourselves, and ALWAYS attempt settlement — the server re-verifies on-chain either way.
+      let failedOnChain = false;
+      for (let i = 0; i < 45; i++) {
+        try {
+          const st = (await connection.getSignatureStatuses([signature])).value[0];
+          if (st?.err) { failedOnChain = true; break; }
+          if (st?.confirmationStatus === 'confirmed' || st?.confirmationStatus === 'finalized') break;
+        } catch { /* transient RPC read error — keep polling */ }
+        await new Promise(res => setTimeout(res, 2000));
+      }
+      if (failedOnChain) { setPayErr('The transfer failed on-chain — you were not charged. Try again.'); return; }
+
+      // Settle with retries: right after confirmation some RPC nodes lag on getTransaction, so
+      // "not found on-chain" from the server is retryable; any other error is final.
+      let d: any = null;
+      for (let i = 0; i < 5; i++) {
+        const r = await fetch('/api/sdk/charge-wallet', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, buyer_wallet: buyerWallet, tx_signature: signature, quoted_sol_price: solPrice }),
+        });
+        d = await r.json().catch(() => null);
+        if (r.ok && d?.ok) break;
+        if (!/not found on-chain/i.test(d?.error ?? '')) break;
+        await new Promise(res => setTimeout(res, 3000));
+      }
+      if (!d?.ok) {
+        setPayErr(
+          d?.error
+            ? String(d.error)
+            : 'Your payment was sent but we could not finish the order. Do NOT pay again — refresh this page in a minute and your Tally will be delivered.'
+        );
+        return;
+      }
       applyResult(d);
     } catch (e: any) {
       const m = String(e?.message ?? '');
@@ -700,18 +727,23 @@ export default function SdkCheckoutPage() {
                 <span style={{ ...t('meta'), color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{shortAddr(buyerWallet)}</span>
               </div>
             )}
+            {/* Judah's 3-currency spec: LEAD with the buyer's preferred currency (same straight
+                conversion the pay panel uses, so the two never disagree); USD charge amount and the
+                seller's receive-asset are the small secondary lines. No padded "est. fees" figure. */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Total{currency !== 'USD' ? ' (USD)' : ''}</span>
-              <span style={price('md')}>${session.price_usdc.toFixed(2)}</span>
+              <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Total</span>
+              <span style={price('md')}>{format(session.price_usdc)}</span>
             </div>
             {currency !== 'USD' && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: S[3] }}>
-                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>
-                  In {currency} · est. incl. transfer fees
-                </span>
-                <span style={{ ...t('heading'), color: 'var(--text-strong)', whiteSpace: 'nowrap' }}>
-                  ≈ {format(session.price_usdc * (1 + XFER_FEE))}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
+                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Charged as</span>
+                <span style={{ ...t('meta'), color: 'var(--text)', whiteSpace: 'nowrap' }}>${session.price_usdc.toFixed(2)} USD</span>
+              </div>
+            )}
+            {session.merchant_net_usd != null && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
+                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Seller receives</span>
+                <span style={{ ...t('meta'), color: 'var(--text)', whiteSpace: 'nowrap' }}>~${session.merchant_net_usd.toFixed(2)} USDC</span>
               </div>
             )}
           </div>
