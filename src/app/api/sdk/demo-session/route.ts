@@ -29,9 +29,10 @@ const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/i
 const DEMO_CATALOG = [
   // Sneaker = RAW photo (.jpg, white bg) → shows the Tally does NOT auto-cut a photo today.
   { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/items/1782340185687-uxedsifug2h.jpg` },
-  // Headphones + bag = Judah's uploaded photos, run through @imgly bg-removal → transparent .png cutouts.
-  { product_id: 'demo-headphones', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-cutout.png` },
-  { product_id: 'demo-bag', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-cutout.png` },
+  // Headphones + bag = Judah's uploaded photos, RAW (backgrounds intact). The MINT removes the background
+  // and attaches the cutout to the NFT — the store shows the original photo, the Tally shows the cutout.
+  { product_id: 'demo-headphones', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-raw.jpg` },
+  { product_id: 'demo-bag', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-raw.jpg` },
 ] as const;
 
 function randomAlphaNum(len: number): string {
