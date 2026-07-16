@@ -34,10 +34,28 @@ export function getAuthorityUmi() {
 // works for both, so this is the single correct call site.
 export async function transferFromAuthority(assetAddress: string, toWallet: string): Promise<string> {
   const { umi } = getAuthorityUmi();
-  const asset = await fetchAsset(umi, umiKey(assetAddress));
-  const { signature } = await transfer(umi, {
-    asset,
-    newOwner: umiKey(toWallet),
-  }).sendAndConfirm(umi);
-  return Buffer.from(signature).toString('base64');
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+  // READ-AFTER-WRITE: immediately after createV1, the RPC node serving this call often hasn't indexed the
+  // new asset account yet, so fetchAsset throws "account not found". In the SDK settle path the transfer
+  // runs microseconds after the mint, so this is the common case — a bare fetch would fail, the caller
+  // swallows it (transfer is non-fatal), and the buyer is left without their Tally while the order still
+  // reports 'minted'. Retry the fetch until the asset is visible.
+  let asset: Awaited<ReturnType<typeof fetchAsset>> | null = null;
+  let fetchErr: unknown;
+  for (let i = 0; i < 8; i++) {
+    try { asset = await fetchAsset(umi, umiKey(assetAddress)); break; }
+    catch (e) { fetchErr = e; await sleep(1500); }
+  }
+  if (!asset) throw fetchErr ?? new Error('asset not found for transfer');
+
+  // Retry the transfer itself on transient RPC/confirm errors.
+  let sendErr: unknown;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const { signature } = await transfer(umi, { asset, newOwner: umiKey(toWallet) }).sendAndConfirm(umi);
+      return Buffer.from(signature).toString('base64');
+    } catch (e) { sendErr = e; await sleep(1500); }
+  }
+  throw sendErr ?? new Error('transfer failed');
 }
