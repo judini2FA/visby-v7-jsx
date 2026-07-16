@@ -535,14 +535,12 @@ export default function SdkCheckoutPage() {
         }
       : { order_id: d.order_id ?? sessionId, nft_address: d.nft_address ?? d.nft_mint_address ?? '', minted: !!d.minted };
     setResult(res);
-    // Let an opener (the 4c "Pay with Visby" button popup) react. Non-sensitive fields only.
-    if (typeof window !== 'undefined' && window.opener) {
-      try {
-        window.opener.postMessage(
-          { source: 'visby', type: 'visby:complete', order_id: res.order_id, nft_address: res.nft_address, ...(d?.cart ? { cart: true, results: d.results } : {}) },
-          '*'
-        );
-      } catch { /* opener gone or cross-origin restricted */ }
+    // Notify the host — a popup opener (window.opener) OR an embedding iframe parent (window.parent).
+    // Non-sensitive fields only.
+    if (typeof window !== 'undefined') {
+      const msg = { source: 'visby', type: 'visby:complete', order_id: res.order_id, nft_address: res.nft_address, ...(d?.cart ? { cart: true, results: d.results } : {}) };
+      try { window.opener?.postMessage(msg, '*'); } catch { /* opener gone / cross-origin */ }
+      try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, '*'); } catch { /* cross-origin */ }
     }
   }, [sessionId]);
 
@@ -793,11 +791,14 @@ export default function SdkCheckoutPage() {
                   Return to {session.merchant_name}
                 </a>
               )}
-              {/* Always give the buyer a way back to the merchant. In the real embed the checkout is a
-                  popup opened by the merchant's <visby-button>, so closing it returns them to the store
-                  (and the merchant page already got the visby:complete event). window.close() only works
-                  for script-opened windows, so keep the success_url link as the primary path. */}
-              <button type="button" onClick={() => { try { window.close(); } catch {} }}
+              {/* Close/return: in an iframe modal, ask the parent to close; as a popup window, window.close();
+                  and the success_url link is the merchant's own return path. */}
+              <button type="button" onClick={() => {
+                try {
+                  if (window.parent && window.parent !== window) { window.parent.postMessage({ source: 'visby', type: 'visby:close' }, '*'); return; }
+                  window.close();
+                } catch {}
+              }}
                 style={{ ...btn(session.success_url ? 'secondary' : 'primary', { full: true }) }}>
                 {session.success_url ? 'Done' : `Back to ${session.merchant_name}`}
               </button>

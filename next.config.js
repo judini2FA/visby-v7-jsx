@@ -75,13 +75,16 @@ const nextConfig = {
                   "worker-src 'self' blob:",
                   "object-src 'none'",
                   "base-uri 'self'",
-                  // Modern superset of X-Frame-Options: the app must never be framed (clickjacking).
-                  "frame-ancestors 'none'",
+                  // Modern superset of X-Frame-Options. 'self' allows SAME-ORIGIN framing (the SDK demo
+                  // shop embeds /sdk/checkout in an in-page modal iframe) while still blocking any EXTERNAL
+                  // site from framing us (clickjacking). Same-origin framing adds no attack surface a
+                  // same-origin XSS wouldn't already have.
+                  "frame-ancestors 'self'",
           ].join('; ');
 
           const securityHeaders = [
                   { key: 'X-Content-Type-Options', value: 'nosniff' },
-                  { key: 'X-Frame-Options', value: 'DENY' },
+                  { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
                   { key: 'X-XSS-Protection', value: '1; mode=block' },
                   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
                   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
