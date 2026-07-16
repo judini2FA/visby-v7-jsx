@@ -10,7 +10,7 @@ import {
   publicKey as umiKey,
 } from '@metaplex-foundation/umi';
 import { createServiceClient } from '@/lib/supabase/service';
-import { transferFromAuthority, getRpcUrl, getMintAuthority } from '@/lib/nft';
+import { getRpcUrl, getMintAuthority } from '@/lib/nft';
 import { checkSerial } from '@/lib/serial-registry';
 
 type MintArgs = {
@@ -90,10 +90,11 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
       description,
       serial_number,
       category,
-      owner: merchant_wallet,
+      owner: buyer_wallet,
+      origin_merchant: merchant_wallet,
       minted_at: new Date().toISOString(),
       version: '1.0',
-      provenance: 'owner0 = merchant (authentic origin); transferred to buyer as owner1',
+      provenance: 'minted for the buyer by Visby on the merchant\'s behalf (origin_merchant)',
     };
     const metadataUri = `data:application/json;base64,${Buffer.from(JSON.stringify(metadata)).toString('base64')}`;
 
@@ -104,7 +105,10 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
         asset,
         name: `${product_name} | SN:${serial_number}`,
         uri: metadataUri,
-        owner: umiKey(merchant_wallet),
+        // Mint DIRECTLY to the buyer — no mint-to-merchant-then-transfer. The transfer step was silently
+        // failing on devnet (read-after-write on the just-minted asset), leaving Tallys stuck with the
+        // merchant. The buyer is the first Visby owner; the merchant is recorded as origin_merchant.
+        owner: umiKey(buyer_wallet),
         plugins: [
           pluginAuthorityPair({
             type: 'PermanentTransferDelegate',
@@ -131,7 +135,7 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
         // it made EVERY SDK mint fail the NOT-NULL constraint → buyer charged, no Tally delivered.
         condition: 'new',
         nft_mint_address: mintAddress,
-        current_owner_wallet: merchant_wallet,
+        current_owner_wallet: buyer_wallet,
         image_url,
         is_listed: false,
         arweave_metadata_url: metadataUri,
@@ -157,35 +161,15 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
       }
     } catch { /* registry unavailable — leave default 'unregistered' */ }
 
+    // The Tally is minted directly to the buyer, so the buyer is owner0 — one mint event, no transfer.
     await supabase.from('ownership_history').insert({
       item_id: item.id,
-      owner_wallet: merchant_wallet,
+      owner_wallet: buyer_wallet,
       tx_hash: mintTx,
       event_type: 'mint',
     });
 
-    // Payment already succeeded before we got here, so a transfer failure must NOT
-    // void the settle — the item exists owned by the merchant and the provenance
-    // transfer can be retried out-of-band. Report transfer_tx: null in that case.
-    let transferTx: string | null = null;
-    try {
-      transferTx = await transferFromAuthority(mintAddress, buyer_wallet);
-      await supabase
-        .from('items')
-        .update({ current_owner_wallet: buyer_wallet })
-        .eq('id', item.id);
-      await supabase.from('ownership_history').insert({
-        item_id: item.id,
-        owner_wallet: buyer_wallet,
-        from_wallet: merchant_wallet,
-        tx_hash: transferTx,
-        event_type: 'transfer',
-      });
-    } catch {
-      transferTx = null;
-    }
-
-    return { ok: true, mint_address: mintAddress, item_id: item.id, mint_tx: mintTx, transfer_tx: transferTx };
+    return { ok: true, mint_address: mintAddress, item_id: item.id, mint_tx: mintTx, transfer_tx: null };
   } catch (err: any) {
     return { ok: false, error: err?.message || 'Internal mint error' };
   }
