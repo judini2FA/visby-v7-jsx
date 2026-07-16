@@ -23,11 +23,11 @@ type DemoProduct = { product_id: string; name: string; price: number; image?: st
 
 // Mirrors the fixed catalog in src/app/api/sdk/demo-session/route.ts (DEMO_CATALOG) — this copy is
 // display-only; the server never trusts a client-supplied price.
-const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images/items';
+const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images';
 const PRODUCTS: DemoProduct[] = [
-  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/1782340185687-uxedsifug2h.jpg` },
-  { product_id: 'demo-watch', name: 'Demo Chrono Watch', price: 2.49, image: `${IMG}/1783465001742-c2kdswzm91.png` },
-  { product_id: 'demo-bag', name: 'Demo Leather Tote', price: 4.99, image: `${IMG}/1783617649961-1mohtcehgvq.png` },
+  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/items/1782340185687-uxedsifug2h.jpg` },
+  { product_id: 'demo-headphones', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-cutout.png` },
+  { product_id: 'demo-bag', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-cutout.png` },
 ];
 
 type LogEntry = {

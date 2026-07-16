@@ -25,11 +25,13 @@ function missingSchema(error: { code?: string; message?: string } | null | undef
 // items.image_url. A .png is treated as a transparent cutout by isCutout() (rendered contained, no bg);
 // a .jpg renders as a photo WITH its background. Sneaker uses a white-bg photo on purpose so the contrast
 // with the two cutout .pngs is visible on the minted Tally.
-const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images/items';
+const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images';
 const DEMO_CATALOG = [
-  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/1782340185687-uxedsifug2h.jpg` },
-  { product_id: 'demo-watch', name: 'Demo Chrono Watch', price: 2.49, image: `${IMG}/1783465001742-c2kdswzm91.png` },
-  { product_id: 'demo-bag', name: 'Demo Leather Tote', price: 4.99, image: `${IMG}/1783617649961-1mohtcehgvq.png` },
+  // Sneaker = RAW photo (.jpg, white bg) → shows the Tally does NOT auto-cut a photo today.
+  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/items/1782340185687-uxedsifug2h.jpg` },
+  // Headphones + bag = Judah's uploaded photos, run through @imgly bg-removal → transparent .png cutouts.
+  { product_id: 'demo-headphones', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-cutout.png` },
+  { product_id: 'demo-bag', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-cutout.png` },
 ] as const;
 
 function randomAlphaNum(len: number): string {
