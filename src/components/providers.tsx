@@ -2,6 +2,7 @@
 
 import { PrivyProvider, usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { usePathname } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { trpc, trpcClient } from '@/lib/trpc/client';
 import { registerTrpcToken } from '@/lib/trpc/token-bridge';
@@ -79,6 +80,23 @@ function EnsureSolanaWallet({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// The SDK hosted checkout (/sdk/checkout/*) is a self-contained, PayPal-style merchant surface — a buyer
+// signs in and pays, nothing more. It must NOT be wrapped by the app's onboarding wizard or Face-ID
+// app-lock: those belong to the main Visby app, and running them inside a merchant's popup hijacks the
+// checkout (it forces the full signup wizard on EXISTING buyers, then step-payment redirects to /profile,
+// stranding them away from the purchase). The checkout page owns its own auth (Privy sign-in + wallet).
+function AppGates({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname?.startsWith('/sdk/checkout')) return <>{children}</>;
+  return (
+    <AppLock>
+      <AccountGate>
+        <OnboardingGate>{children}</OnboardingGate>
+      </AccountGate>
+    </AppLock>
+  );
+}
+
 function PrivyWithTheme({ children }: { children: React.ReactNode }) {
   const { mode } = useTheme();
   const [queryClient] = useState(
@@ -121,11 +139,7 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
             <CurrencySync />
-            <AppLock>
-              <AccountGate>
-                <OnboardingGate>{children}</OnboardingGate>
-              </AccountGate>
-            </AppLock>
+            <AppGates>{children}</AppGates>
           </QueryClientProvider>
         </trpc.Provider>
       </EnsureSolanaWallet>

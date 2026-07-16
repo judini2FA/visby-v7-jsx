@@ -94,10 +94,10 @@ function SignedOutFlow({ login }: { login: () => void }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: S[4] }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ ...t('heading'), color: 'var(--text-strong)', marginBottom: S[1] }}>Check out with Visby</div>
-          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>New here? See how it works — or log in to pay.</div>
+          <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Sign in to pay in one tap — or create an account in seconds.</div>
         </div>
-        <button onClick={() => setStep(1)} style={{ ...btn('primary', { full: true }) }}>Create a Visby account</button>
-        <button onClick={login} style={{ ...btn('secondary', { full: true }) }}>Log in</button>
+        <button onClick={login} style={{ ...btn('primary', { full: true }) }}>Sign in</button>
+        <button onClick={() => setStep(1)} style={{ ...btn('secondary', { full: true }) }}>Create a Visby account</button>
       </div>
     );
   }
@@ -723,11 +723,13 @@ export default function SdkCheckoutPage() {
             )}
           </div>
           {/* Signed in → the pay panel is the single source of price/currency/address info (Judah's
-              call: no duplicate totals box). Signed out → show just the Total so the page has a price. */}
+              call: no duplicate totals box). Signed OUT → we don't know the buyer, so we CANNOT show a
+              real preferred currency — show the canonical USD charge only. The preferred-currency view
+              appears after sign-in, once currency-sync has the buyer's actual account preference. */}
           {!authenticated && (
             <div style={{ ...surface({ pad: `${S[4]}px ${S[4]}px` }), display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Total</span>
-              <span style={price('md')}>{format(session.price_usdc)}</span>
+              <span style={price('md')}>${session.price_usdc.toFixed(2)} <span style={{ ...t('meta'), color: 'var(--text-muted)', fontWeight: 500 }}>USD</span></span>
             </div>
           )}
         </div>
