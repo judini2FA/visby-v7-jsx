@@ -760,6 +760,14 @@ export default function SdkCheckoutPage() {
                   Return to {session.merchant_name}
                 </a>
               )}
+              {/* Always give the buyer a way back to the merchant. In the real embed the checkout is a
+                  popup opened by the merchant's <visby-button>, so closing it returns them to the store
+                  (and the merchant page already got the visby:complete event). window.close() only works
+                  for script-opened windows, so keep the success_url link as the primary path. */}
+              <button type="button" onClick={() => { try { window.close(); } catch {} }}
+                style={{ ...btn(session.success_url ? 'secondary' : 'primary', { full: true }) }}>
+                {session.success_url ? 'Done' : `Back to ${session.merchant_name}`}
+              </button>
             </div>
           </div>
         ) : isSettled ? (
