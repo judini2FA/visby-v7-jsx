@@ -35,6 +35,10 @@ const DEMO_CATALOG = [
   { product_id: 'demo-bag', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-raw.jpg` },
 ] as const;
 
+// Real Solana address for the demo merchant (NFT owner0 at mint). The mint authority address per env,
+// with a devnet fallback so a missing env never reintroduces an invalid 'demo-shop' wallet.
+const DEMO_MERCHANT_WALLET = process.env.MINT_AUTHORITY_ADDRESS || '2t6xZyjDsXyeDCRWJogLdSgN4YRUNtxEC9Bqf1ZV9YFW';
+
 function randomAlphaNum(len: number): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let out = '';
@@ -69,7 +73,9 @@ async function getOrCreateDemoMerchant(
       owner_wallet: 'demo-shop',
       name: 'Visby Demo Shop',
       slug: 'visby-demo-shop',
-      merchant_wallet: 'demo-shop',
+      // MUST be a real Solana address — it's the NFT's owner0 at mint. A placeholder ('demo-shop')
+      // makes every demo mint fail at createV1. Use the mint authority address (valid, Visby-controlled).
+      merchant_wallet: DEMO_MERCHANT_WALLET,
       publishable_key: keys.publishable_key,
       secret_key_hash: hashSecret(keys.secret_key),
       secret_key_last4: lastFour(keys.secret_key),
@@ -137,6 +143,8 @@ export async function POST(req: Request) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${merchantResult.secret}` },
         body: JSON.stringify({
           product_name: product.name, serial_number, price: product.price, currency: 'USD', image_url: product.image,
+          // Link back to the demo storefront from the checkout success screen.
+          success_url: `${origin}/sdk/demo`,
         }),
       });
       const json = await res.json().catch(() => ({}));

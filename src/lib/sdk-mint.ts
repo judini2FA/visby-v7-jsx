@@ -43,6 +43,11 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
     if (merchant_wallet.startsWith('0x') || buyer_wallet.startsWith('0x')) {
       return { ok: false, error: 'A Solana wallet is required (got an Ethereum address)' };
     }
+    // Fail LOUDLY on a non-address (e.g. a placeholder like 'demo-shop') instead of throwing deep in
+    // createV1 with a Sentry-only error — the settle marks 'failed' either way, but this names the cause.
+    const isSolAddress = (a: string) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
+    if (!isSolAddress(merchant_wallet)) return { ok: false, error: `merchant_wallet is not a valid Solana address: ${merchant_wallet}` };
+    if (!isSolAddress(buyer_wallet)) return { ok: false, error: `buyer_wallet is not a valid Solana address: ${buyer_wallet}` };
 
     const rpcUrl = getRpcUrl();
 
