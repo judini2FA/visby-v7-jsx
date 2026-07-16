@@ -495,11 +495,16 @@ export default function ItemPage() {
     try { setPrivateMode(localStorage.getItem('visby-private-mode') === '1'); } catch {}
   }, []);
 
+  // navigator.clipboard.writeText throws/rejects "SecurityError: The operation is insecure" when the
+  // Clipboard API is denied — insecure context, an embedding iframe without clipboard-write permission,
+  // or a browser privacy policy. Guarded so a denial degrades to a no-op instead of an uncaught error.
   const copyTx = useCallback((tx: string) => {
-    navigator.clipboard.writeText(tx).then(() => {
-      setCopiedTx(tx);
-      setTimeout(() => setCopiedTx(null), 1500);
-    });
+    try {
+      navigator.clipboard?.writeText(tx).then(() => {
+        setCopiedTx(tx);
+        setTimeout(() => setCopiedTx(null), 1500);
+      }).catch(() => {});
+    } catch {}
   }, []);
 
   const isOwner = !!(walletAddress && item?.current_owner_wallet === walletAddress);

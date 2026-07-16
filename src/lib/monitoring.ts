@@ -13,10 +13,28 @@ export function monitoringConfigured(): boolean {
   return !!(SENTRY_DSN || ALERT_WEBHOOK_URL);
 }
 
+// Extracts a real message from anything callers pass — an Error, a Supabase PostgrestError (plain
+// object with .message/.code/.details, NOT instanceof Error), or a stray string/primitive. Without this,
+// `String(plainObject)` silently produces the literal text "[object Object]", turning every DB-error
+// alert (mint insert failures, payout errors, order creation, etc.) into a useless, undiagnosable title.
+function describeError(err: unknown): { message: string; extra?: Ctx } {
+  if (err instanceof Error) return { message: err.message };
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    const message = typeof e.message === 'string' && e.message ? e.message : JSON.stringify(err);
+    const extra: Ctx = {};
+    if (typeof e.code === 'string') extra.error_code = e.code;
+    if (typeof e.details === 'string') extra.error_details = e.details;
+    if (typeof e.hint === 'string') extra.error_hint = e.hint;
+    return { message, extra: Object.keys(extra).length ? extra : undefined };
+  }
+  return { message: String(err) };
+}
+
 export function captureError(err: unknown, ctx?: Ctx): void {
-  const message = err instanceof Error ? err.message : String(err);
+  const { message, extra } = describeError(err);
   console.error('[capture]', message, ctx ?? {});
-  void forward('error', message, { ...ctx, stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined });
+  void forward('error', message, { ...ctx, ...extra, stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined });
 }
 
 export function captureMessage(level: Level, msg: string, ctx?: Ctx): void {
