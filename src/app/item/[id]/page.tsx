@@ -23,6 +23,7 @@ import { useCurrency, formatCurrency, CURRENCIES, type Currency } from '@/lib/cu
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { TallyExplainerCard } from '@/components/tally-explainer';
 import { friendlyError } from '@/lib/friendly-error';
+import { AddToCartButton } from '@/components/add-to-cart-button';
 
 const C = {
   navy: 'transparent', teal: '#22C6B7', cyan: '#25CDB8',
