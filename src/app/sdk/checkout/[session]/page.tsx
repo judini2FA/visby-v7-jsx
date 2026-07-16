@@ -246,9 +246,9 @@ function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
 
 // Crypto-balance one-tap: pay from the buyer's Visby (SOL) balance. Shows the real SOL balance (not a
 // dollar figure) and charges the USD total converted to SOL at the current rate.
-function CryptoPayPanel({ priceUsdc, solBalance, solAmount, format, merchantNet, onPay, onBack }: {
+function CryptoPayPanel({ priceUsdc, solBalance, solAmount, format, merchantNet, walletAddr, onPay, onBack }: {
   priceUsdc: number; solBalance: number | null; solAmount: number | null; format: (n: number) => string;
-  merchantNet?: number; onPay: () => void; onBack: () => void;
+  merchantNet?: number; walletAddr?: string; onPay: () => void; onBack: () => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
@@ -263,9 +263,14 @@ function CryptoPayPanel({ priceUsdc, solBalance, solAmount, format, merchantNet,
         )}
       </div>
       <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: S[3], ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: S[3] }}>
           <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}><WalletGlyph size={18} /></span>
-          Visby crypto balance
+          <span style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>Visby crypto balance</span>
+            {walletAddr && (
+              <span style={{ ...t('meta'), color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortAddr(walletAddr)}</span>
+            )}
+          </span>
         </span>
         <span style={{ ...t('body'), color: 'var(--text-strong)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
           {solBalance != null ? `${solBalance.toFixed(3)} SOL` : '—'}
@@ -717,36 +722,14 @@ export default function SdkCheckoutPage() {
               <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>S/N {session.serial_number}</div>
             )}
           </div>
-          <div style={{ ...surface({ pad: `${S[4]}px ${S[4]}px` }), display: 'flex', flexDirection: 'column', gap: S[3] }}>
-            {authenticated && buyerWallet && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
-                <span style={{ ...t('meta'), color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: S[2] }}>
-                  <span style={{ display: 'inline-flex', color: 'var(--text-muted)' }}><WalletGlyph size={14} /></span>
-                  NFT delivers to
-                </span>
-                <span style={{ ...t('meta'), color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{shortAddr(buyerWallet)}</span>
-              </div>
-            )}
-            {/* Judah's 3-currency spec: LEAD with the buyer's preferred currency (same straight
-                conversion the pay panel uses, so the two never disagree); USD charge amount and the
-                seller's receive-asset are the small secondary lines. No padded "est. fees" figure. */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Signed in → the pay panel is the single source of price/currency/address info (Judah's
+              call: no duplicate totals box). Signed out → show just the Total so the page has a price. */}
+          {!authenticated && (
+            <div style={{ ...surface({ pad: `${S[4]}px ${S[4]}px` }), display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Total</span>
               <span style={price('md')}>{format(session.price_usdc)}</span>
             </div>
-            {currency !== 'USD' && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
-                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Charged as</span>
-                <span style={{ ...t('meta'), color: 'var(--text)', whiteSpace: 'nowrap' }}>${session.price_usdc.toFixed(2)} USD</span>
-              </div>
-            )}
-            {session.merchant_net_usd != null && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
-                <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Seller receives</span>
-                <span style={{ ...t('meta'), color: 'var(--text)', whiteSpace: 'nowrap' }}>~${session.merchant_net_usd.toFixed(2)} USDC</span>
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {/* ── SUCCESS ─────────────────────────────────────── */}
@@ -862,6 +845,7 @@ export default function SdkCheckoutPage() {
                 solAmount={solPriceUsd ? session.price_usdc / solPriceUsd : null}
                 format={format}
                 merchantNet={session.merchant_net_usd}
+                walletAddr={buyerWallet}
                 onPay={payWithWallet}
                 onBack={() => setCryptoMode(false)}
               />
