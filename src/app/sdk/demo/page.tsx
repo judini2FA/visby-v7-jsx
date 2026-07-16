@@ -19,14 +19,15 @@ declare global {
   }
 }
 
-type DemoProduct = { product_id: string; name: string; price: number };
+type DemoProduct = { product_id: string; name: string; price: number; image?: string };
 
 // Mirrors the fixed catalog in src/app/api/sdk/demo-session/route.ts (DEMO_CATALOG) — this copy is
 // display-only; the server never trusts a client-supplied price.
+const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images/items';
 const PRODUCTS: DemoProduct[] = [
-  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99 },
-  { product_id: 'demo-watch', name: 'Demo Chrono Watch', price: 2.49 },
-  { product_id: 'demo-bag', name: 'Demo Leather Tote', price: 4.99 },
+  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/1782340185687-uxedsifug2h.jpg` },
+  { product_id: 'demo-watch', name: 'Demo Chrono Watch', price: 2.49, image: `${IMG}/1783465001742-c2kdswzm91.png` },
+  { product_id: 'demo-bag', name: 'Demo Leather Tote', price: 4.99, image: `${IMG}/1783617649961-1mohtcehgvq.png` },
 ];
 
 type LogEntry = {
@@ -45,8 +46,18 @@ const ART_COLOR: Record<string, string> = {
   'demo-bag': '#9c36b5',
 };
 
-function ProductArt({ productId }: { productId: string }) {
+// .png = transparent cutout (contain, no bg); .jpg = photo (cover, keeps its background) — mirrors isCutout().
+const isCut = (u?: string) => !!u && /\.png(\?|$)/i.test(u);
+
+function ProductArt({ productId, image, name }: { productId: string; image?: string; name: string }) {
   const color = ART_COLOR[productId] || '#666';
+  if (image) {
+    return (
+      <div style={{ width: '100%', height: 120, borderRadius: 8, background: isCut(image) ? 'transparent' : '#f4f4f4', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <img src={image} alt={name} style={{ width: '100%', height: '100%', objectFit: isCut(image) ? 'contain' : 'cover' }} />
+      </div>
+    );
+  }
   return (
     <svg viewBox="0 0 120 90" width="100%" height="90" role="img" aria-hidden="true">
       <rect width="120" height="90" rx="8" fill={color} opacity="0.12" />
@@ -109,7 +120,7 @@ function ProductCard({
 
   return (
     <div style={styles.card}>
-      <ProductArt productId={product.product_id} />
+      <ProductArt productId={product.product_id} image={product.image} name={product.name} />
       <div style={styles.cardName}>{product.name}</div>
       <div style={styles.cardPrice}>${product.price.toFixed(2)}</div>
 

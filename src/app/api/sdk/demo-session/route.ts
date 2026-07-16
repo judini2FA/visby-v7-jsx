@@ -21,10 +21,15 @@ function missingSchema(error: { code?: string; message?: string } | null | undef
 
 // Fixed server-side catalog — the client only ever sends product_id. Never trust a client-supplied
 // price for a checkout session.
+// image flows: demo-session → /api/sdk/checkout (image_url) → sdk_orders → mintProvenanceForSdk →
+// items.image_url. A .png is treated as a transparent cutout by isCutout() (rendered contained, no bg);
+// a .jpg renders as a photo WITH its background. Sneaker uses a white-bg photo on purpose so the contrast
+// with the two cutout .pngs is visible on the minted Tally.
+const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images/items';
 const DEMO_CATALOG = [
-  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99 },
-  { product_id: 'demo-watch', name: 'Demo Chrono Watch', price: 2.49 },
-  { product_id: 'demo-bag', name: 'Demo Leather Tote', price: 4.99 },
+  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/1782340185687-uxedsifug2h.jpg` },
+  { product_id: 'demo-watch', name: 'Demo Chrono Watch', price: 2.49, image: `${IMG}/1783465001742-c2kdswzm91.png` },
+  { product_id: 'demo-bag', name: 'Demo Leather Tote', price: 4.99, image: `${IMG}/1783617649961-1mohtcehgvq.png` },
 ] as const;
 
 function randomAlphaNum(len: number): string {
@@ -129,6 +134,7 @@ export async function POST(req: Request) {
         serial_number,
         price: product.price,
         currency: 'USD',
+        image_url: product.image,
       }),
     });
     const checkoutJson = await checkoutRes.json().catch(() => ({}));
