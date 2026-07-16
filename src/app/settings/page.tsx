@@ -1,6 +1,7 @@
 'use client';
 
 import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
+import { useVisbWallet } from '@/lib/wallet';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -47,6 +48,11 @@ function Row({ icon, label, sublabel, right, onClick, border = true }: { icon: R
 export default function SettingsPage() {
   const { ready, authenticated, logout, exportWallet } = usePrivy();
   const { wallets: solanaWallets, createWallet } = useSolanaWallets();
+  // Gate wallet-keyed sections on the RESILIENT address (live connector list with a persisted-user
+  // fallback — see useVisbWallet). Privy's raw useSolanaWallets() is transiently/sometimes-persistently
+  // EMPTY even for accounts that own an embedded wallet, which silently hid the Business + Address Book
+  // sections and showed "No wallet linked yet" — Judah's recurring "no business toggle in settings."
+  const { address: walletAddress } = useVisbWallet();
   const { mode } = useTheme();
   const { currency, setCurrency } = useCurrency();
   const { isAdmin } = useAdminRole();
@@ -126,24 +132,33 @@ export default function SettingsPage() {
         </Section>
 
         {/* Address book */}
-        {solanaWallets[0]?.address && (
+        {walletAddress && (
           <Section title="Address Book">
             <div style={{ padding: '14px 16px' }}>
-              <AddressBook wallet={solanaWallets[0].address} />
+              <AddressBook wallet={walletAddress} />
             </div>
           </Section>
         )}
 
         {/* Business account */}
-        {solanaWallets[0]?.address && (
+        {walletAddress && (
           <Section title="Business">
-            <BusinessSettings wallet={solanaWallets[0].address} />
+            <BusinessSettings wallet={walletAddress} />
           </Section>
         )}
 
         {/* Wallets */}
         <Section title="Visby native wallets">
-          {solanaWallets.length === 0 ? (
+          {solanaWallets.length === 0 && walletAddress ? (
+            // The live connector list hasn't surfaced the embedded wallet, but the account HAS one
+            // (persisted address) — show it rather than a misleading "Create" that would fail.
+            <Row
+              border={false}
+              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--text-muted)" stroke="none"><circle cx="12" cy="12" r="10"/></svg>}
+              label={`${walletAddress.slice(0, 6)}…${walletAddress.slice(-4)}`}
+              sublabel="Solana wallet"
+            />
+          ) : solanaWallets.length === 0 ? (
             <Row
               border={false}
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>}

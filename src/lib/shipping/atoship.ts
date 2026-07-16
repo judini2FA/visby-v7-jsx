@@ -39,14 +39,17 @@ async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?
 }
 
 function toAddress(a: Addr) {
+  // USPS's validator (behind AtoShip) hard-rejects lowercase state/country codes with a regex error,
+  // which surfaces as "no rates" — user-entered addresses are stored as typed, so normalize here, the
+  // single choke point every rates/label call flows through.
   return {
     name: a.name ?? undefined,
-    street1: a.street1,
-    street2: a.street2 ?? undefined,
-    city: a.city,
-    state: a.state,
-    zip: a.zip,
-    country: a.country ?? 'US',
+    street1: a.street1?.trim(),
+    street2: a.street2?.trim() || undefined,
+    city: a.city?.trim(),
+    state: a.state?.trim().toUpperCase(),
+    zip: a.zip?.trim(),
+    country: (a.country ?? 'US').trim().toUpperCase(),
     phone: a.phone ?? undefined,
   };
 }

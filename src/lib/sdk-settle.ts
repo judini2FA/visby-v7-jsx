@@ -8,6 +8,10 @@ import { emailWallet } from '@/lib/email';
 import { sdkOrderCompletedBuyer } from '@/lib/email-templates';
 import { captureError, captureMessage } from '@/lib/monitoring';
 import { solUsd } from '@/lib/price-oracle';
+import { findCardPaymentMethod, findWalletPaymentMethod, createMoovTransfer } from '@/lib/moov';
+import { toCents } from '@/lib/fees';
+
+const MOOV_PLATFORM_ACCOUNT_ID = process.env.MOOV_PLATFORM_ACCOUNT_ID;
 
 // Shared SDK-order settlement: verify the cleared payment, atomically claim the order (exactly-once), mint
 // the provenance NFT, and fire the merchant webhook. Used by the manual card flow (/api/sdk/settle), the
@@ -209,6 +213,68 @@ export async function settleSdkOrderCrypto(
     return { ok: false, status: 503, error: 'Checkout unavailable' };
   }
   if (!claimed) return { ok: false, status: 409, error: 'Already settled' };
+
+  return mintAndDeliver(supabase, claimed, merchant, now);
+}
+
+// ── Moov card settlement: charge the buyer's Moov card into the platform wallet, then mint. ──
+// Cards must run on Moov (never Stripe). Mirrors settleSdkOrderCrypto: verify the payment its own way,
+// CAS pending→paid, then the shared mint tail. Server-priced from the stored order — never a client amount.
+export async function settleSdkOrderMoov(
+  { session_id, buyer_wallet, account_id, card_id }:
+  { session_id: string; buyer_wallet: string; account_id: string; card_id?: string }
+): Promise<FinalizeResult> {
+  const supabase = createServiceClient();
+  const loaded = await loadOrderAndMerchant(supabase, session_id);
+  if (!loaded.ok) return loaded.result;
+  const { order, merchant } = loaded;
+  if (order.status !== 'pending') return { ok: false, status: 409, error: 'Already settled' };
+  if (!MOOV_PLATFORM_ACCOUNT_ID) return { ok: false, status: 503, error: 'Card payments unavailable' };
+
+  const sourcePM = await findCardPaymentMethod(account_id, card_id);
+  if (!sourcePM) return { ok: false, status: 400, error: 'Card payment method not found' };
+  const destPM = await findWalletPaymentMethod(MOOV_PLATFORM_ACCOUNT_ID);
+  if (!destPM) return { ok: false, status: 500, error: 'Platform wallet not found' };
+
+  // Idempotency key bound to the ORDER → concurrent retries collapse to a single Moov charge.
+  // waitForRailResponse blocks for a terminal status (there is no read-back API to poll otherwise).
+  let transfer: { transferID: string; status: string };
+  try {
+    transfer = await createMoovTransfer({
+      sourcePaymentMethodID: sourcePM,
+      destinationPaymentMethodID: destPM,
+      amountCents: toCents(order.price_usdc),
+      description: `Visby SDK order ${order.id}`,
+      idempotencyKey: `sdk-moov:${order.id}`,
+      metadata: { sdk_order_id: order.id, buyer_wallet },
+      waitForRailResponse: true,
+    });
+  } catch (e: any) {
+    captureError(e, { stage: 'sdk moov charge', order_id: order.id });
+    return { ok: false, status: 402, error: 'Card charge failed — please try again' };
+  }
+  if (['failed', 'canceled', 'reversed'].includes(transfer.status)) {
+    return { ok: false, status: 402, error: 'Card was declined' };
+  }
+  if (transfer.status !== 'completed') {
+    return { ok: false, status: 402, error: 'Payment still processing — please try again' };
+  }
+
+  // Atomic claim — exactly-once. CAS pending→'paid'. The Moov idempotency key already prevents a double
+  // charge, so a lost CAS race (409) can't have double-charged the buyer.
+  const now = new Date().toISOString();
+  const { data: claimed, error: claimError } = await supabase
+    .from('sdk_orders')
+    .update({ status: 'paid', buyer_wallet, paid_at: now, pay_method: 'card' })
+    .eq('id', session_id).eq('status', 'pending').select().maybeSingle();
+  if (claimError) return { ok: false, status: 503, error: 'Checkout unavailable' };
+  if (!claimed) return { ok: false, status: 409, error: 'Already settled' };
+
+  // Best-effort audit ref; tolerant of a pre-migration schema (42703/PGRST204 = column absent).
+  const { error: refErr } = await supabase.from('sdk_orders').update({ moov_transfer_id: transfer.transferID }).eq('id', session_id);
+  if (refErr && refErr.code !== '42703' && refErr.code !== 'PGRST204') {
+    console.error(`[sdk-moov] could not record transfer id for ${session_id}: ${refErr.message}`);
+  }
 
   return mintAndDeliver(supabase, claimed, merchant, now);
 }

@@ -817,8 +817,11 @@ export default function ItemPage() {
                 ) : walletAddress ? (
                   <>
                     <button onClick={() => setShowCheckout(true)} style={btn('primary', { full: true })}>
-                      Buy Now · ${item.price_usdc.toFixed(2)}
+                      Buy Now · {fmtPrice(item.price_usdc)}
                     </button>
+                    <div style={{ marginTop: S[3] }}>
+                      <AddToCartButton itemId={item.id} sellerWallet={item.current_owner_wallet} />
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: S[2], marginTop: S[3] }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                       <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>Seller is paid only after you confirm delivery.</span>

@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { data, error } = await supabase
       .from('sdk_orders')
       .select(
-        'id,product_name,serial_number,price_usdc,currency,status,success_url,cancel_url,image_url,merchant_id, merchants(name)'
+        'id,product_name,serial_number,price_usdc,currency,status,success_url,cancel_url,image_url,merchant_id,merchant_net_usd, merchants(name)'
       )
       .eq('id', id)
       .maybeSingle();
@@ -42,6 +42,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         serial_number: data.serial_number,
         price_usdc: data.price_usdc,
         currency: data.currency,
+        merchant_net_usd: data.merchant_net_usd,
         status: data.status,
         image_url: data.image_url,
         merchant_name,

@@ -12,6 +12,7 @@ import ShippingEstimator, { SHIP_DEFAULTS, type ShipValues } from '@/components/
 import { HeaderMenu } from '@/components/layout/header-menu';
 import { isCutout } from '@/components/listing-card';
 import { feeBreakdown } from '@/lib/fees';
+import { useCurrency } from '@/lib/currency';
 import { localShipEstimate } from '@/lib/shipping-estimate';
 import KycVerify from '@/components/kyc-verify';
 import { EmptyState } from '@/components/empty-state';
@@ -56,6 +57,11 @@ function MintForm({ wallet }: { wallet: string }) {
   const [description, setDescription] = useState('');
   const [price, setPrice]         = useState('');
   const [listNow, setListNow]     = useState(true);
+  // Sellers set the price in THEIR preferred display currency (A8); it settles/stores as USDC, so
+  // convert once here and feed the converted USD everywhere (mutation, fee math, shipping estimator)
+  // so the number the seller typed and the number we charge can never diverge.
+  const { currency: prefCur, symbol: prefSym, toUsdc: prefToUsdc } = useCurrency();
+  const priceUsdc = price ? Math.round(prefToUsdc(parseFloat(price)) * 100) / 100 : null;
   const [ship, setShip]           = useState<ShipValues>(SHIP_DEFAULTS);
   const [status, setStatus]       = useState<MintStatus>('idle');
   const [result, setResult]       = useState<{ txHash: string; mintAddress: string; serial: string; itemId: string } | null>(null);
@@ -127,7 +133,7 @@ function MintForm({ wallet }: { wallet: string }) {
         body: JSON.stringify({
           name, serial_number: serial, condition, category, description, owner_wallet: wallet, image_url: imageUrl,
           destination_wallet: (() => { try { return localStorage.getItem('visby-tally-wallet') || undefined; } catch { return undefined; } })(),
-          price_usdc: listNow && price ? parseFloat(price) : null, is_listed: listNow && !!price,
+          price_usdc: listNow && priceUsdc ? priceUsdc : null, is_listed: listNow && !!priceUsdc,
           weight_oz: parseFloat(ship.weight_oz) || null,
           length_in: parseFloat(ship.length_in) || null,
           width_in:  parseFloat(ship.width_in)  || null,
@@ -289,12 +295,15 @@ function MintForm({ wallet }: { wallet: string }) {
         {listNow && (
           <>
             <div style={{ position: 'relative' }}>
-              <div style={{ position: 'absolute', left: S[4], top: '50%', transform: 'translateY(-50%)', ...t('heading'), color: 'var(--text-muted)' }}>$</div>
+              <div style={{ position: 'absolute', left: S[4], top: '50%', transform: 'translateY(-50%)', ...t('heading'), color: 'var(--text-muted)' }}>{prefSym}</div>
               <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" min="0.01" step="0.01"
                 style={{ ...input(), paddingLeft: S[6] }} />
-              <div style={{ position: 'absolute', right: S[4], top: '50%', transform: 'translateY(-50%)', ...t('meta'), color: 'var(--text-muted)' }}>USDC</div>
+              <div style={{ position: 'absolute', right: S[4], top: '50%', transform: 'translateY(-50%)', ...t('meta'), color: 'var(--text-muted)' }}>{prefCur}</div>
             </div>
-            <ShippingEstimator priceUsd={parseFloat(price) || undefined} value={ship} onChange={setShip} />
+            {prefCur !== 'USD' && priceUsdc != null && (
+              <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Settles as ${priceUsdc.toFixed(2)} USDC</div>
+            )}
+            <ShippingEstimator priceUsd={priceUsdc ?? undefined} value={ship} onChange={setShip} />
           </>
         )}
       </div>
@@ -316,7 +325,7 @@ function MintForm({ wallet }: { wallet: string }) {
         {busy ? (
           <><div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', animation: 'spin .8s linear infinite' }} />
           {status === 'uploading' ? 'Uploading photo…' : 'Minting…'}</>
-        ) : `Mint Item${listNow && price ? ` · $${price} USDC` : ''}`}
+        ) : `Mint Item${listNow && price ? ` · ${prefSym}${price} ${prefCur}` : ''}`}
       </button>
 
       {editId && (() => {
@@ -342,6 +351,10 @@ function RelistPanel({ wallet, onMintClick }: { wallet: string; onMintClick: () 
   const [editSerial, setEditSerial] = useState<string | null>(null);
   const [editPrice,  setEditPrice]  = useState('');
   const [unlisting,  setUnlisting]  = useState<string | null>(null);
+  // Same preferred-currency entry as the mint form: seller types in their display currency,
+  // the listing stores/settles USDC.
+  const { currency: prefCur, symbol: prefSym, toUsdc: prefToUsdc, format: prefFormat } = useCurrency();
+  const editPriceUsdc = editPrice ? Math.round(prefToUsdc(parseFloat(editPrice)) * 100) / 100 : null;
 
   const { data: ownedItems = [], isLoading, refetch } = trpc.listings.getByOwner.useQuery({ wallet }, { enabled: !!wallet });
   const listMut   = trpc.listings.listForSale.useMutation({ onSuccess: () => { refetch(); setEditSerial(null); } });
@@ -397,7 +410,7 @@ function RelistPanel({ wallet, onMintClick }: { wallet: string; onMintClick: () 
           <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: S[1] }}>
             {isListed ? (
               <>
-                <div style={price('sm')}>${item.price_usdc}</div>
+                <div style={price('sm')}>{prefFormat(item.price_usdc)}</div>
                 <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>LISTED</div>
               </>
             ) : (
@@ -410,22 +423,22 @@ function RelistPanel({ wallet, onMintClick }: { wallet: string; onMintClick: () 
           <>
           <div style={{ display: 'flex', gap: S[2], alignItems: 'center', marginTop: S[3] }}>
             <div style={{ flex: 1, position: 'relative' }}>
-              <span style={{ position: 'absolute', left: S[3], top: '50%', transform: 'translateY(-50%)', ...t('body'), color: 'var(--text-muted)' }}>$</span>
+              <span style={{ position: 'absolute', left: S[3], top: '50%', transform: 'translateY(-50%)', ...t('body'), color: 'var(--text-muted)' }}>{prefSym}</span>
               <input autoFocus type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)}
                 placeholder={isListed ? String(item.price_usdc) : '0.00'} min="0.01" step="0.01"
                 style={{ ...input(), padding: '10px 44px 10px 28px' }} />
-              <span style={{ position: 'absolute', right: S[3], top: '50%', transform: 'translateY(-50%)', ...t('meta'), color: 'var(--text-muted)' }}>USDC</span>
+              <span style={{ position: 'absolute', right: S[3], top: '50%', transform: 'translateY(-50%)', ...t('meta'), color: 'var(--text-muted)' }}>{prefCur}</span>
             </div>
-            <button onClick={() => { if (editPrice) listMut.mutate({ serial: item.serial_number, price_usdc: parseFloat(editPrice), seller_wallet: wallet }); }}
+            <button onClick={() => { if (editPriceUsdc) listMut.mutate({ serial: item.serial_number, price_usdc: editPriceUsdc, seller_wallet: wallet }); }}
               disabled={!editPrice || listMut.isPending}
               style={btn('primary', { pill: false })}>
               {listMut.isPending ? '…' : 'List'}
             </button>
             <button onClick={() => setEditSerial(null)} style={{ ...btn('text', { pill: false }), fontSize: 20 }}>×</button>
           </div>
-          {editPrice && parseFloat(editPrice) > 0 && (() => {
+          {editPriceUsdc != null && editPriceUsdc > 0 && (() => {
             const ship = localShipEstimate(item.weight_oz, item.ship_service_pref);
-            const bd = feeBreakdown(parseFloat(editPrice), ship);
+            const bd = feeBreakdown(editPriceUsdc, ship);
             return (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: S[2], gap: S[2], flexWrap: 'wrap' }}>
                 <span style={{ ...t('micro'), color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>

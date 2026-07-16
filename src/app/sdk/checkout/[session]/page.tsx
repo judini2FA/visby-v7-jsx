@@ -11,6 +11,7 @@ import { useVisbWallet } from '@/lib/wallet';
 import { useTheme } from '@/lib/theme';
 import { useCurrency } from '@/lib/currency';
 import { type PayMethod } from '@/lib/payment-pref';
+import { MoovCardForm, MOOV_ENABLED } from '@/components/moov-card-form';
 import { t, S, card, surface, btn, badge, sectionLabel, price } from '@/lib/ui';
 
 const GREEN = 'var(--ok)';
@@ -30,6 +31,7 @@ interface Session {
   serial_number: string | null;
   price_usdc: number;
   currency: string;
+  merchant_net_usd?: number;
   success_url: string | null;
   cancel_url: string | null;
 }
@@ -142,28 +144,39 @@ function CardGlyph({ size = 18 }: { size?: number }) {
 // The one-tap pay panel for a signed-in buyer. Mirrors the default payment method they set in the Visby
 // app: 'wallet' shows their Visby balance, 'card' shows their saved card as •••• last4. Always surfaces
 // the final price after transfer fees.
-function DefaultPayPanel({ method, priceUsdc, currency, format, last4, balance, onPay, onUseAnother }: {
+function DefaultPayPanel({ method, priceUsdc, format, last4, balance, merchantNet, onPay, onUseAnother }: {
   method: PayMethod;
   priceUsdc: number;
-  currency: string;
   format: (n: number) => string;
   last4?: string;
   balance?: string;
+  merchantNet?: number;
   onPay: () => void;
   onUseAnother: () => void;
 }) {
   const finalUsd = `$${priceUsdc.toFixed(2)}`;
-  const finalNote = currency !== 'USD'
-    ? `≈ ${format(priceUsdc * (1 + XFER_FEE))} ${currency} · final, incl. transfer fees`
-    : 'final price, incl. transfer fees';
 
   const chip = (icon: React.ReactNode) => (
     <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>{icon}</span>
   );
 
+  // Apple-Pay-style confirm sheet: the buyer's preferred-currency headline, then what actually leaves
+  // the chosen method, then the merchant's net — up to three compact lines, never more.
+  const summary = (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>You pay</div>
+      <div style={{ ...price('lg'), margin: `${S[1]}px auto 0` }}>{format(priceUsdc)}</div>
+      <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>Using {finalUsd}</div>
+      {merchantNet != null && (
+        <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: 2 }}>Seller receives ~${merchantNet.toFixed(2)} USDC</div>
+      )}
+    </div>
+  );
+
   if (method === 'wallet') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+        {summary}
         <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: S[3], ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>
             {chip(<WalletGlyph size={18} />)} Visby balance
@@ -173,7 +186,6 @@ function DefaultPayPanel({ method, priceUsdc, currency, format, last4, balance, 
           </span>
         </div>
         <button onClick={onPay} style={{ ...btn('primary', { full: true }) }}>Pay {finalUsd} from balance</button>
-        <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>{finalNote}</div>
         <button onClick={onUseAnother} style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>Use a card instead</button>
       </div>
     );
@@ -181,6 +193,7 @@ function DefaultPayPanel({ method, priceUsdc, currency, format, last4, balance, 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+      {summary}
       <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: S[3], ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>
           {chip(<CardGlyph size={18} />)} Visby ···· {last4 || '····'}
@@ -188,7 +201,6 @@ function DefaultPayPanel({ method, priceUsdc, currency, format, last4, balance, 
         <span style={{ ...t('micro'), color: 'var(--text-muted)' }}>Default</span>
       </div>
       <button onClick={onPay} style={{ ...btn('primary', { full: true }) }}>Pay {finalUsd}</button>
-      <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>{finalNote}</div>
       <button onClick={onUseAnother} style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>Pay another way</button>
     </div>
   );
@@ -237,11 +249,22 @@ function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
 
 // Crypto-balance one-tap: pay from the buyer's Visby (SOL) balance. Shows the real SOL balance (not a
 // dollar figure) and charges the USD total converted to SOL at the current rate.
-function CryptoPayPanel({ priceUsdc, solBalance, onPay, onBack }: {
-  priceUsdc: number; solBalance: number | null; onPay: () => void; onBack: () => void;
+function CryptoPayPanel({ priceUsdc, solBalance, solAmount, format, merchantNet, onPay, onBack }: {
+  priceUsdc: number; solBalance: number | null; solAmount: number | null; format: (n: number) => string;
+  merchantNet?: number; onPay: () => void; onBack: () => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>You pay</div>
+        <div style={{ ...price('lg'), margin: `${S[1]}px auto 0` }}>{format(priceUsdc)}</div>
+        {solAmount != null && (
+          <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: S[1] }}>Using {solAmount.toFixed(3)} SOL</div>
+        )}
+        {merchantNet != null && (
+          <div style={{ ...t('meta'), color: 'var(--text-muted)', marginTop: 2 }}>Seller receives ~${merchantNet.toFixed(2)} USDC</div>
+        )}
+      </div>
       <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: S[3], ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>
           <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}><WalletGlyph size={18} /></span>
@@ -252,7 +275,7 @@ function CryptoPayPanel({ priceUsdc, solBalance, onPay, onBack }: {
         </span>
       </div>
       <button onClick={onPay} style={{ ...btn('primary', { full: true }) }}>Pay ${priceUsdc.toFixed(2)} with crypto</button>
-      <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>Paid in SOL at the current rate · Solana network fee applies</div>
+      <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>Solana network fee applies</div>
       <button onClick={onBack} style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>Pay with a card instead</button>
     </div>
   );
@@ -363,16 +386,26 @@ export default function SdkCheckoutPage() {
 
   // The buyer's saved cards, ordered by their persisted favorites (index 0 = default). One-tap charges the
   // chosen card; the picker lets them switch card / crypto / a new card. No cards → manual entry.
-  const [cards, setCards]               = useState<{ id: string; brand: string; last4: string }[]>([]);
+  // account_id/card_id are only populated when MOOV_ENABLED (Moov identifies a card by that pair, not a
+  // single id) — `id` is always set (Stripe payment_method id, or the Moov card_id) for ordering/selection.
+  const [cards, setCards]               = useState<{ id: string; brand: string; last4: string; account_id?: string; card_id?: string }[]>([]);
   const [cardsLoaded, setCardsLoaded]   = useState(false);
   const [chosenCardId, setChosenCardId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen]     = useState(false);
   const chosenCard = cards.find(c => c.id === chosenCardId) ?? cards[0] ?? null;
   const wantManual = showManualCard || (cardsLoaded && cards.length === 0);
 
+  // The buyer's real primary payment method (index 0 of their persisted payment-methods order): 'wallet'
+  // means their Visby balance/crypto, 'card' means a saved card. Drives which one-tap panel shows first.
+  const [defaultMethod, setDefaultMethod] = useState<'card' | 'wallet'>('card');
+  const appliedDefaultMethodRef = useRef(false);
+
   // Crypto-balance pay (SOL from the buyer's Visby wallet) as an alternative to card.
   const [cryptoMode, setCryptoMode] = useState(false);
   const [solBalance, setSolBalance] = useState<number | null>(null);
+  // Live SOL price for the crypto one-tap panel's "Using X SOL" display line only — payWithWallet below
+  // independently re-quotes CoinGecko at settlement time, so this never affects what's actually charged.
+  const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null);
 
   const loadSession = useCallback(async () => {
     setLoading(true); setLoadErr('');
@@ -391,7 +424,8 @@ export default function SdkCheckoutPage() {
 
   useEffect(() => { if (sessionId) loadSession(); }, [sessionId, loadSession]);
 
-  // Load the buyer's saved cards, ordered by their persisted favorites (default first), and select the default.
+  // Load the buyer's saved cards, ordered by their persisted favorites (default first), and select the
+  // default. Under Moov, cards come from /api/moov/cards (account_id/card_id pairs) instead of Stripe.
   useEffect(() => {
     if (!authenticated || !buyerWallet) { setCardsLoaded(false); setCards([]); setChosenCardId(null); return; }
     let cancelled = false;
@@ -399,23 +433,50 @@ export default function SdkCheckoutPage() {
       try {
         const token = await getAccessToken();
         const [pmR, ordR] = await Promise.all([
-          fetch(`/api/stripe/payment-methods?wallet=${buyerWallet}`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(MOOV_ENABLED ? `/api/moov/cards?wallet=${buyerWallet}` : `/api/stripe/payment-methods?wallet=${buyerWallet}`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`/api/payment-methods/order?wallet=${buyerWallet}`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
         const pm = await pmR.json(); const ord = await ordR.json();
-        const list: { id: string; brand: string; last4: string }[] = pmR.ok && Array.isArray(pm.methods) ? pm.methods : [];
+        const list: { id: string; brand: string; last4: string; account_id?: string; card_id?: string }[] = MOOV_ENABLED
+          ? (pmR.ok && Array.isArray(pm.cards) ? pm.cards.map((c: any) => ({ id: c.card_id, brand: c.brand ?? '', last4: c.last4 ?? '', account_id: c.account_id, card_id: c.card_id })) : [])
+          : (pmR.ok && Array.isArray(pm.methods) ? pm.methods : []);
         const order: string[] = ordR.ok && Array.isArray(ord.order) ? ord.order : [];
         const ordered = [
           ...(order.map(id => list.find(c => c.id === id)).filter(Boolean) as typeof list),
           ...list.filter(c => !order.includes(c.id)),
         ];
-        if (!cancelled) { setCards(ordered); setChosenCardId(ordered[0]?.id ?? null); setCardsLoaded(true); }
+        if (!cancelled) {
+          setCards(ordered); setChosenCardId(ordered[0]?.id ?? null); setCardsLoaded(true);
+          setDefaultMethod(
+            order[0] === 'wallet' ? 'wallet'
+            : (order[0] && list.some(c => c.id === order[0])) ? 'card'
+            : (ordered.length > 0 ? 'card' : 'wallet')
+          );
+        }
       } catch {
         if (!cancelled) { setCards([]); setCardsLoaded(true); }
       }
     })();
     return () => { cancelled = true; };
   }, [authenticated, buyerWallet, getAccessToken]);
+
+  // Apply the buyer's primary method exactly once (per session/load), by defaulting into the crypto
+  // one-tap panel when it's 'wallet' — never re-applied after that, so it can't clobber a manual switch.
+  useEffect(() => {
+    if (!cardsLoaded || appliedDefaultMethodRef.current) return;
+    appliedDefaultMethodRef.current = true;
+    if (defaultMethod === 'wallet' && solWallet) setCryptoMode(true);
+  }, [cardsLoaded, defaultMethod, solWallet]);
+
+  // Live SOL price for the crypto one-tap "Using X SOL" line — display only (see solPriceUsd above).
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/price/rates')
+      .then(r => r.json())
+      .then((d: { usd?: Record<string, number> }) => { if (!cancelled && d.usd?.SOL) setSolPriceUsd(d.usd.SOL); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Buyer's SOL balance, for the crypto-pay panel.
   useEffect(() => {
@@ -429,8 +490,10 @@ export default function SdkCheckoutPage() {
   }, [authenticated, buyerWallet]);
 
   // Create a PaymentIntent only when the buyer chooses to enter a card manually — the one-tap default
-  // methods don't need a client-confirmed PaymentIntent.
+  // methods don't need a client-confirmed PaymentIntent. Skipped entirely under Moov (CARD renders
+  // MoovCardForm/saved-card UI exclusively there), same as checkout-modal.tsx's equivalent effect.
   useEffect(() => {
+    if (MOOV_ENABLED) return;
     if (!session || session.status !== 'pending' || result) return;
     if (!authenticated || !walletReady || !buyerWallet || piSecret) return;
     if (!wantManual) return;
@@ -485,16 +548,22 @@ export default function SdkCheckoutPage() {
   }, [buyerWallet, sessionId, applyResult]);
 
   // One-tap: charge the buyer's saved card off-session and settle in a single call — no card entry,
-  // no client confirm. Authed (charging a stored card requires proving wallet ownership).
+  // no client confirm. Authed (charging a stored card requires proving wallet ownership). Under Moov,
+  // routes to /api/sdk/moov-charge with the card's (account_id, card_id) pair instead of Stripe.
   const oneTapPay = useCallback(async () => {
     if (!buyerWallet || !chosenCard) return;
     setSettling(true); setPayErr('');
     try {
       const token = await getAccessToken();
-      const r = await fetch('/api/sdk/charge-saved', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ session_id: sessionId, buyer_wallet: buyerWallet, payment_method_id: chosenCard.id }),
-      });
+      const r = MOOV_ENABLED
+        ? await fetch('/api/sdk/moov-charge', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ session_id: sessionId, buyer_wallet: buyerWallet, account_id: chosenCard.account_id, card_id: chosenCard.card_id }),
+          })
+        : await fetch('/api/sdk/charge-saved', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ session_id: sessionId, buyer_wallet: buyerWallet, payment_method_id: chosenCard.id }),
+          });
       const d = await r.json();
       if (!r.ok || d.error || !d.ok) { setPayErr(d.error ?? 'Could not complete your purchase.'); return; }
       applyResult(d);
@@ -504,6 +573,27 @@ export default function SdkCheckoutPage() {
       setSettling(false);
     }
   }, [buyerWallet, chosenCard, sessionId, getAccessToken, applyResult]);
+
+  // New-card Moov rail (gated) — called with the freshly-linked (accountID, cardID) from MoovCardForm's
+  // Card Link Drop. Mirrors checkout-modal.tsx's payWithMoov.
+  const payWithMoov = useCallback(async (accountID: string, cardID: string) => {
+    if (!buyerWallet) return;
+    setSettling(true); setPayErr('');
+    try {
+      const token = await getAccessToken();
+      const r = await fetch('/api/sdk/moov-charge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ session_id: sessionId, buyer_wallet: buyerWallet, account_id: accountID, card_id: cardID }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error || !d.ok) { setPayErr(d.error ?? 'Could not complete your purchase.'); return; }
+      applyResult(d);
+    } catch {
+      setPayErr('Network error completing your purchase.');
+    } finally {
+      setSettling(false);
+    }
+  }, [buyerWallet, sessionId, getAccessToken, applyResult]);
 
   // Crypto one-tap: convert the USD total to SOL at the live rate, sign + send a transfer to the treasury
   // from the buyer's Visby wallet, then verify on-chain and settle.
@@ -688,10 +778,10 @@ export default function SdkCheckoutPage() {
               <DefaultPayPanel
                 method={previewPay}
                 priceUsdc={session.price_usdc}
-                currency={currency}
                 format={format}
                 last4={demoPay.last4}
                 balance={demoPay.balance}
+                merchantNet={session.merchant_net_usd}
                 onPay={() => {}}
                 onUseAnother={() => {}}
               />
@@ -734,7 +824,15 @@ export default function SdkCheckoutPage() {
                 <span style={{ ...t('body') }}>Minting your provenance NFT…</span>
               </div>
             ) : cryptoMode ? (
-              <CryptoPayPanel priceUsdc={session.price_usdc} solBalance={solBalance} onPay={payWithWallet} onBack={() => setCryptoMode(false)} />
+              <CryptoPayPanel
+                priceUsdc={session.price_usdc}
+                solBalance={solBalance}
+                solAmount={solPriceUsd ? session.price_usdc / solPriceUsd : null}
+                format={format}
+                merchantNet={session.merchant_net_usd}
+                onPay={payWithWallet}
+                onBack={() => setCryptoMode(false)}
+              />
             ) : pickerOpen ? (
               <MethodPicker
                 cards={cards}
@@ -749,12 +847,19 @@ export default function SdkCheckoutPage() {
               <DefaultPayPanel
                 method="card"
                 priceUsdc={session.price_usdc}
-                currency={currency}
                 format={format}
                 last4={chosenCard.last4}
+                merchantNet={session.merchant_net_usd}
                 onPay={oneTapPay}
                 onUseAnother={() => setPickerOpen(true)}
               />
+            ) : MOOV_ENABLED && cardsLoaded ? (
+              <>
+                <MoovCardForm buyerWallet={buyerWallet} onCardID={(accountID, cardID) => payWithMoov(accountID, cardID)} onError={msg => setPayErr(msg)} />
+                {solWallet && (
+                  <button onClick={() => setCryptoMode(true)} style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center', background: 'none', border: 0, cursor: 'pointer', padding: 0, marginTop: S[3] }}>Pay with crypto balance</button>
+                )}
+              </>
             ) : piErr ? (
               <>
                 <div style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger-soft)', borderRadius: 'var(--r)', padding: `${S[3]}px ${S[4]}px`, ...t('body'), color: RED }}>

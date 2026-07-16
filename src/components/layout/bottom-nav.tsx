@@ -51,7 +51,9 @@ export function BottomNav() {
   const msgUnread = conversations?.reduce((sum, c) => sum + (c.unread ?? 0), 0) ?? 0;
   const unreadTotal = msgUnread + (notifUnread ?? 0);
 
-  if (['/mint', '/login'].some(p => pathname.startsWith(p)) || pathname.startsWith('/item/')) {
+  // /sdk = the merchant-embedded hosted checkout (and demo). It runs on a merchant's behalf in a popup —
+  // Visby's internal marketplace nav must never bleed into it.
+  if (['/mint', '/login', '/sdk'].some(p => pathname.startsWith(p)) || pathname.startsWith('/item/')) {
     return null;
   }
 

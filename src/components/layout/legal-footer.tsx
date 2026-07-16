@@ -1,8 +1,15 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { S, t } from '@/lib/ui';
 
 // Global footer with the legal links. Bottom padding clears the fixed BottomNav.
 export function LegalFooter() {
+  const pathname = usePathname();
+  // The /sdk hosted checkout renders its own compact "Secured by Visby" footer — keep the app's global
+  // legal footer out of the merchant-embedded popup.
+  if (pathname?.startsWith('/sdk')) return null;
   return (
     <footer
       className="visby-inner"
