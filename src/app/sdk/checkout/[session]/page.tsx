@@ -29,6 +29,8 @@ interface Session {
   price_usdc: number;
   currency: string;
   merchant_net_usd?: number;
+  cart?: boolean;
+  items?: Array<{ id: string; product_name: string; serial_number: string | null; price_usdc: number; image_url: string | null }>;
   success_url: string | null;
   cancel_url: string | null;
 }
@@ -248,7 +250,7 @@ function CardPayForm({ priceUsdc, clientSecret, onSuccess, onError }: {
 // dollar figure) and charges the USD total converted to SOL at the current rate.
 function CryptoPayPanel({ priceUsdc, solBalance, solAmount, format, merchantNet, walletAddr, onPay, onBack }: {
   priceUsdc: number; solBalance: number | null; solAmount: number | null; format: (n: number) => string;
-  merchantNet?: number; walletAddr?: string; onPay: () => void; onBack: () => void;
+  merchantNet?: number; walletAddr?: string; onPay: () => void; onBack?: () => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: S[3] }}>
@@ -278,7 +280,9 @@ function CryptoPayPanel({ priceUsdc, solBalance, solAmount, format, merchantNet,
       </div>
       <button onClick={onPay} style={{ ...btn('primary', { full: true }) }}>Pay ${priceUsdc.toFixed(2)} with crypto</button>
       <div style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center' }}>Solana network fee applies</div>
-      <button onClick={onBack} style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>Pay with a card instead</button>
+      {onBack && (
+        <button onClick={onBack} style={{ ...t('meta'), color: 'var(--text-muted)', textAlign: 'center', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>Pay with a card instead</button>
+      )}
     </div>
   );
 }
@@ -384,7 +388,7 @@ export default function SdkCheckoutPage() {
 
   const [settling, setSettling]   = useState(false);
   const [payErr, setPayErr]       = useState('');
-  const [result, setResult]       = useState<{ order_id: string; nft_address: string; minted: boolean } | null>(null);
+  const [result, setResult]       = useState<{ order_id: string; nft_address: string; minted: boolean; count?: number; mintedCount?: number } | null>(null);
 
   // The buyer's saved cards, ordered by their persisted favorites (index 0 = default). One-tap charges the
   // chosen card; the picker lets them switch card / crypto / a new card. No cards → manual entry.
@@ -464,11 +468,13 @@ export default function SdkCheckoutPage() {
 
   // Apply the buyer's primary method exactly once (per session/load), by defaulting into the crypto
   // one-tap panel when it's 'wallet' — never re-applied after that, so it can't clobber a manual switch.
+  // CART: only the crypto rail can settle a multi-item cart (one SOL transfer → mint N), so force it.
   useEffect(() => {
     if (!cardsLoaded || appliedDefaultMethodRef.current) return;
     appliedDefaultMethodRef.current = true;
+    if (session?.cart && solWallet) { setCryptoMode(true); return; }
     if (defaultMethod === 'wallet' && solWallet) setCryptoMode(true);
-  }, [cardsLoaded, defaultMethod, solWallet]);
+  }, [cardsLoaded, defaultMethod, solWallet, session]);
 
   // Live SOL price for the crypto one-tap "Using X SOL" line — display only (see solPriceUsd above).
   useEffect(() => {
@@ -517,14 +523,23 @@ export default function SdkCheckoutPage() {
     return () => { cancelled = true; };
   }, [session, authenticated, walletReady, buyerWallet, piSecret, result, sessionId, wantManual]);
 
-  const applyResult = useCallback((d: { order_id?: string; nft_address?: string; nft_mint_address?: string; minted?: boolean }) => {
-    const res = { order_id: d.order_id ?? sessionId, nft_address: d.nft_address ?? d.nft_mint_address ?? '', minted: !!d.minted };
+  const applyResult = useCallback((d: any) => {
+    // Cart response: { cart, results:[{order_id,minted,nft_address}], minted_count, item_count }.
+    const res = d?.cart
+      ? {
+          order_id: sessionId,
+          nft_address: (d.results ?? []).find((r: any) => r.nft_address)?.nft_address ?? '',
+          minted: (d.minted_count ?? 0) > 0,
+          count: d.item_count ?? (d.results?.length ?? 0),
+          mintedCount: d.minted_count ?? 0,
+        }
+      : { order_id: d.order_id ?? sessionId, nft_address: d.nft_address ?? d.nft_mint_address ?? '', minted: !!d.minted };
     setResult(res);
     // Let an opener (the 4c "Pay with Visby" button popup) react. Non-sensitive fields only.
     if (typeof window !== 'undefined' && window.opener) {
       try {
         window.opener.postMessage(
-          { source: 'visby', type: 'visby:complete', order_id: res.order_id, nft_address: res.nft_address },
+          { source: 'visby', type: 'visby:complete', order_id: res.order_id, nft_address: res.nft_address, ...(d?.cart ? { cart: true, results: d.results } : {}) },
           '*'
         );
       } catch { /* opener gone or cross-origin restricted */ }
@@ -717,9 +732,23 @@ export default function SdkCheckoutPage() {
           </div>
           <div style={{ height: 1, background: 'var(--divider)' }} />
           <div>
+            {session.cart && session.items ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
+                <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[1] }}>Your cart · {session.items.length} items</div>
+                {session.items.map(it => (
+                  <div key={it.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[3] }}>
+                    <span style={{ ...t('meta'), color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.product_name}</span>
+                    <span style={{ ...t('meta'), color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>${it.price_usdc.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
             <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[1] }}>{session.product_name}</div>
             {session.serial_number && (
               <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>S/N {session.serial_number}</div>
+            )}
+              </>
             )}
           </div>
           {/* Signed in → the pay panel is the single source of price/currency/address info (Judah's
@@ -741,14 +770,18 @@ export default function SdkCheckoutPage() {
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
             </div>
             <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[2] }}>
-              {result.minted ? 'Provenance NFT minted' : 'Payment received'}
+              {result.count && result.count > 1
+                ? (result.mintedCount ? `${result.mintedCount} of ${result.count} Tallys minted` : 'Payment received')
+                : (result.minted ? 'Provenance NFT minted' : 'Payment received')}
             </div>
             <div style={{ ...t('body'), color: 'var(--text-muted)', marginBottom: S[5] }}>
-              {result.minted
-                ? 'You now own the verified chain of custody for this item. You can close this window.'
-                : 'Your payment went through. Your provenance NFT is being finalized and will land in your wallet shortly.'}
+              {result.count && result.count > 1
+                ? `Your ${result.count} items are paid. Each provenance Tally is minting to your wallet.`
+                : result.minted
+                  ? 'You now own the verified chain of custody for this item. You can close this window.'
+                  : 'Your payment went through. Your provenance NFT is being finalized and will land in your wallet shortly.'}
             </div>
-            {result.minted && result.nft_address && (
+            {!result.count && result.minted && result.nft_address && (
               <div style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }), display: 'inline-flex', alignItems: 'center', gap: S[2], marginBottom: S[5] }}>
                 <span style={{ ...t('meta'), color: 'var(--text-muted)' }}>NFT</span>
                 <span style={{ ...t('meta'), color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{shortAddr(result.nft_address)}</span>
@@ -857,7 +890,7 @@ export default function SdkCheckoutPage() {
                 merchantNet={session.merchant_net_usd}
                 walletAddr={buyerWallet}
                 onPay={payWithWallet}
-                onBack={() => setCryptoMode(false)}
+                onBack={session.cart ? undefined : () => setCryptoMode(false)}
               />
             ) : pickerOpen ? (
               <MethodPicker

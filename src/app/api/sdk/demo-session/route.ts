@@ -106,9 +106,15 @@ export async function POST(req: Request) {
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
     const body = await req.json().catch(() => ({}));
-    const productId = typeof body?.product_id === 'string' ? body.product_id : '';
-    const product = DEMO_CATALOG.find(p => p.product_id === productId);
-    if (!product) {
+    // Single "Buy now" → product_id. Cart "Checkout with VisbyPay" → product_ids[] (one order per item).
+    const rawIds: string[] = Array.isArray(body?.product_ids)
+      ? body.product_ids.filter((x: unknown) => typeof x === 'string')
+      : (typeof body?.product_id === 'string' ? [body.product_id] : []);
+    if (!rawIds.length || rawIds.length > 20) {
+      return NextResponse.json({ error: 'Provide product_id or product_ids[]' }, { status: 400 });
+    }
+    const products = rawIds.map(id => DEMO_CATALOG.find(p => p.product_id === id));
+    if (products.some(p => !p)) {
       return NextResponse.json({ error: 'Unknown product_id' }, { status: 400 });
     }
 
@@ -121,40 +127,32 @@ export async function POST(req: Request) {
       );
     }
 
-    const serial_number = 'SDKDEMO-' + randomAlphaNum(6);
-
-    // Absolute origin of THIS app, derived from the incoming request — hits the real merchant API,
-    // auth and all, exactly like an external merchant's server would.
+    // Absolute origin of THIS app — hits the real merchant API, auth and all, like an external merchant.
     const origin = new URL(req.url).origin;
-    const checkoutRes = await fetch(`${origin}/api/sdk/checkout`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${merchantResult.secret}`,
-      },
-      body: JSON.stringify({
-        product_name: product.name,
-        serial_number,
-        price: product.price,
-        currency: 'USD',
-        image_url: product.image,
-      }),
-    });
-    const checkoutJson = await checkoutRes.json().catch(() => ({}));
-
-    if (!checkoutRes.ok || typeof checkoutJson?.checkout_url !== 'string') {
-      console.error('[sdk/demo-session] checkout call failed:', checkoutRes.status, checkoutJson);
-      return NextResponse.json(
-        { error: checkoutJson?.error || 'Could not create demo checkout session' },
-        { status: 502 }
-      );
+    const orderIds: string[] = [];
+    for (const product of products as typeof DEMO_CATALOG[number][]) {
+      const serial_number = 'SDKDEMO-' + randomAlphaNum(6);
+      const res = await fetch(`${origin}/api/sdk/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${merchantResult.secret}` },
+        body: JSON.stringify({
+          product_name: product.name, serial_number, price: product.price, currency: 'USD', image_url: product.image,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || typeof json?.session_id !== 'string') {
+        console.error('[sdk/demo-session] checkout call failed:', res.status, json);
+        return NextResponse.json({ error: json?.error || 'Could not create demo checkout session' }, { status: 502 });
+      }
+      orderIds.push(json.session_id);
     }
 
-    return NextResponse.json({
-      checkout_url: checkoutJson.checkout_url as string,
-      serial_number,
-      product,
-    });
+    // Single order → its own checkout URL. Multiple → a cart URL bundling the order ids.
+    const checkout_url = orderIds.length === 1
+      ? `${origin}/sdk/checkout/${orderIds[0]}`
+      : `${origin}/sdk/checkout/cart_${orderIds.join('.')}`;
+
+    return NextResponse.json({ checkout_url, order_ids: orderIds, cart: orderIds.length > 1 });
   } catch (err) {
     console.error('[sdk/demo-session] POST error:', err);
     return NextResponse.json({ error: 'Could not create demo checkout session' }, { status: 500 });

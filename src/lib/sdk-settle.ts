@@ -217,6 +217,92 @@ export async function settleSdkOrderCrypto(
   return mintAndDeliver(supabase, claimed, merchant, now);
 }
 
+export type CartResult =
+  | { ok: true; results: Array<{ order_id: string; minted: boolean; nft_address: string | null }>; success_url: string | null }
+  | { ok: false; status: number; error: string };
+
+// ── Cart crypto settlement: ONE on-chain SOL transfer pays for N linked orders; mint each. ──
+// The cart carries no schema of its own — it's the list of order ids in the checkout URL. Guards:
+//  • total check: the single transfer must cover the SUM of the orders' prices (within slippage);
+//  • double-spend: the RAW tx signature is written to the FIRST order's sol_signature (unique index) —
+//    reusing the same transfer (replay, or a second cart) collides (23505); the status='pending' CAS
+//    blocks re-settling the same cart. Remaining orders store `${tx}:${id}` (unique, traceable).
+export async function settleSdkCartCrypto(
+  { order_ids, buyer_wallet, tx_signature, quoted_sol_price }:
+  { order_ids: string[]; buyer_wallet: string; tx_signature: string; quoted_sol_price?: number }
+): Promise<CartResult> {
+  const supabase = createServiceClient();
+  const ids = Array.from(new Set(order_ids));
+  if (ids.length < 1 || ids.length > 20) return { ok: false, status: 400, error: 'Invalid cart' };
+
+  const { data: orders, error: ordErr } = await supabase.from('sdk_orders').select('*').in('id', ids);
+  if (ordErr) return { ok: false, status: 503, error: 'Checkout unavailable' };
+  if (!orders || orders.length !== ids.length) return { ok: false, status: 404, error: 'Cart not found' };
+  if (orders.some(o => o.status !== 'pending')) return { ok: false, status: 409, error: 'Cart already settled' };
+  const merchantId = orders[0].merchant_id;
+  if (orders.some(o => o.merchant_id !== merchantId)) return { ok: false, status: 400, error: 'Cart spans multiple merchants' };
+
+  const { data: merchant, error: mErr } = await supabase
+    .from('merchants').select('merchant_wallet, webhook_url, webhook_secret').eq('id', merchantId).maybeSingle();
+  if (mErr) return { ok: false, status: 503, error: 'Checkout unavailable' };
+  if (!merchant) return { ok: false, status: 404, error: 'Merchant not found' };
+
+  const total = orders.reduce((s, o) => s + Number(o.price_usdc), 0);
+
+  // Verify the single on-chain SOL transfer — confirmed, buyer signed, treasury received, covers the TOTAL.
+  const connection = new Connection(getRpcUrl(), 'confirmed');
+  const tx = await connection.getTransaction(tx_signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+  if (!tx) return { ok: false, status: 400, error: 'Transaction not found on-chain' };
+  if (tx.meta?.err) return { ok: false, status: 400, error: 'Transaction failed on-chain' };
+  const accountKeys = tx.transaction.message.getAccountKeys
+    ? tx.transaction.message.getAccountKeys().staticAccountKeys
+    : (tx.transaction.message as any).accountKeys as PublicKey[];
+  if (accountKeys[0]?.toBase58() !== buyer_wallet) return { ok: false, status: 400, error: 'Transaction signer does not match buyer' };
+  const treasuryIdx = accountKeys.findIndex((k: PublicKey) => k.toBase58() === TREASURY);
+  if (treasuryIdx === -1) return { ok: false, status: 400, error: 'Treasury not found in transaction' };
+  const solReceived = ((tx.meta!.postBalances[treasuryIdx] ?? 0) - (tx.meta!.preBalances[treasuryIdx] ?? 0)) / 1e9;
+  if (solReceived <= 0) return { ok: false, status: 400, error: 'No SOL received at treasury' };
+  const oraclePrice = await getSolPrice();
+  if (!oraclePrice) return { ok: false, status: 503, error: 'Price feed unavailable, retry' };
+  const quoteOk = typeof quoted_sol_price === 'number' && quoted_sol_price > 0 &&
+    Math.abs(quoted_sol_price - oraclePrice) / oraclePrice <= SLIPPAGE_TOLERANCE;
+  const solPrice = quoteOk ? quoted_sol_price : oraclePrice;
+  const paidUsd = solReceived * solPrice;
+  if (Math.abs(paidUsd - total) / total > SLIPPAGE_TOLERANCE) {
+    return { ok: false, status: 400, error: `Payment mismatch: received ~$${paidUsd.toFixed(2)}, expected $${total.toFixed(2)}` };
+  }
+
+  const now = new Date().toISOString();
+  // Atomic claim on the FIRST order carries the raw tx → double-spend/replay guard via the unique index.
+  const first = orders[0];
+  const { data: claimedFirst, error: claimErr } = await supabase
+    .from('sdk_orders')
+    .update({ status: 'paid', buyer_wallet, paid_at: now, pay_method: 'crypto', sol_signature: tx_signature })
+    .eq('id', first.id).eq('status', 'pending').select().maybeSingle();
+  if (claimErr) {
+    if (claimErr.code === '23505') return { ok: false, status: 409, error: 'Transaction already used' };
+    return { ok: false, status: 503, error: 'Checkout unavailable' };
+  }
+  if (!claimedFirst) return { ok: false, status: 409, error: 'Cart already settled' };
+
+  const results: Array<{ order_id: string; minted: boolean; nft_address: string | null }> = [];
+  const r0 = await mintAndDeliver(supabase, claimedFirst, merchant, now);
+  results.push({ order_id: first.id, minted: r0.ok ? r0.minted : false, nft_address: r0.ok ? r0.nft_address : null });
+
+  for (let i = 1; i < orders.length; i++) {
+    const o = orders[i];
+    const { data: claimed } = await supabase
+      .from('sdk_orders')
+      .update({ status: 'paid', buyer_wallet, paid_at: now, pay_method: 'crypto', sol_signature: `${tx_signature}:${o.id}` })
+      .eq('id', o.id).eq('status', 'pending').select().maybeSingle();
+    if (!claimed) { results.push({ order_id: o.id, minted: false, nft_address: null }); continue; }
+    const r = await mintAndDeliver(supabase, claimed, merchant, now);
+    results.push({ order_id: o.id, minted: r.ok ? r.minted : false, nft_address: r.ok ? r.nft_address : null });
+  }
+
+  return { ok: true, results, success_url: first.success_url ?? null };
+}
+
 // ── Moov card settlement: charge the buyer's Moov card into the platform wallet, then mint. ──
 // Cards must run on Moov (never Stripe). Mirrors settleSdkOrderCrypto: verify the payment its own way,
 // CAS pending→paid, then the shared mint tail. Server-priced from the stored order — never a client amount.
