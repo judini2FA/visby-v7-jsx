@@ -27,13 +27,20 @@ function missingSchema(error: { code?: string; message?: string } | null | undef
 // with the two cutout .pngs is visible on the minted Tally.
 const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images';
 const DEMO_CATALOG = [
-  // Sneaker = RAW photo (.jpg, white bg) → shows the Tally does NOT auto-cut a photo today.
-  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/items/1782340185687-uxedsifug2h.jpg` },
-  // Headphones + bag = Judah's uploaded photos, RAW (backgrounds intact). The MINT removes the background
-  // and attaches the cutout to the NFT — the store shows the original photo, the Tally shows the cutout.
-  { product_id: 'demo-headphones', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-raw.jpg` },
-  { product_id: 'demo-bag', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-raw.jpg` },
+  // `code` prefixes the merchant-generated serial so it's human-recognizable as coming from THIS store.
+  { product_id: 'demo-sneaker', code: 'SNK', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/items/1782340185687-uxedsifug2h.jpg` },
+  { product_id: 'demo-headphones', code: 'HDP', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-raw.jpg` },
+  { product_id: 'demo-bag', code: 'BAG', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-raw.jpg` },
 ] as const;
+
+// A serial the STORE mints for its own inventory (recognizable prefix + timestamp + random). It's passed
+// verbatim to /api/sdk/checkout and never altered by Visby — the dashboard shows the same string on the
+// order and the minted Tally, proving provenance flows from the third party, not a Visby randomizer.
+function makeSerial(code: string): string {
+  return `VBY-${code}-${Date.now().toString(36).toUpperCase()}-${randomAlphaNum(4)}`;
+}
+// Accept a client-supplied serial only if it looks like a real SKU (no injection); else the store mints one.
+const SERIAL_RE = /^[A-Za-z0-9][A-Za-z0-9-]{2,60}$/;
 
 // Real Solana address for the demo merchant (NFT owner0 at mint). The mint authority address per env,
 // with a devnet fallback so a missing env never reintroduces an invalid 'demo-shop' wallet.
@@ -112,15 +119,25 @@ export async function POST(req: Request) {
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
     const body = await req.json().catch(() => ({}));
-    // Single "Buy now" → product_id. Cart "Checkout with VisbyPay" → product_ids[] (one order per item).
-    const rawIds: string[] = Array.isArray(body?.product_ids)
-      ? body.product_ids.filter((x: unknown) => typeof x === 'string')
-      : (typeof body?.product_id === 'string' ? [body.product_id] : []);
-    if (!rawIds.length || rawIds.length > 20) {
-      return NextResponse.json({ error: 'Provide product_id or product_ids[]' }, { status: 400 });
+    // Line items: preferred shape is `items:[{product_id, serial_number?}]` (the store originates the
+    // serial). Back-compat: `product_ids[]` or a single `product_id` (the store mints the serial here).
+    type Line = { product_id: string; serial_number?: string };
+    const rawLines: Line[] = Array.isArray(body?.items)
+      ? body.items.filter((x: any) => x && typeof x.product_id === 'string')
+      : Array.isArray(body?.product_ids)
+        ? body.product_ids.filter((x: unknown) => typeof x === 'string').map((id: string) => ({ product_id: id }))
+        : (typeof body?.product_id === 'string' ? [{ product_id: body.product_id, serial_number: body.serial_number }] : []);
+    if (!rawLines.length || rawLines.length > 20) {
+      return NextResponse.json({ error: 'Provide items[], product_ids[] or product_id' }, { status: 400 });
     }
-    const products = rawIds.map(id => DEMO_CATALOG.find(p => p.product_id === id));
-    if (products.some(p => !p)) {
+    const lines = rawLines.map(l => {
+      const product = DEMO_CATALOG.find(p => p.product_id === l.product_id);
+      if (!product) return null;
+      const serial = typeof l.serial_number === 'string' && SERIAL_RE.test(l.serial_number)
+        ? l.serial_number : makeSerial(product.code);
+      return { product, serial };
+    });
+    if (lines.some(l => !l)) {
       return NextResponse.json({ error: 'Unknown product_id' }, { status: 400 });
     }
 
@@ -135,16 +152,16 @@ export async function POST(req: Request) {
 
     // Absolute origin of THIS app — hits the real merchant API, auth and all, like an external merchant.
     const origin = new URL(req.url).origin;
+    // Return to the dashboard tab after checkout so the buyer immediately sees their order + mint land.
+    const success_url = `${origin}/sdk/demo?view=dashboard`;
     const orderIds: string[] = [];
-    for (const product of products as typeof DEMO_CATALOG[number][]) {
-      const serial_number = 'SDKDEMO-' + randomAlphaNum(6);
+    const items: Array<{ session_id: string; product_id: string; product_name: string; serial_number: string; price: number }> = [];
+    for (const { product, serial } of lines as Array<{ product: typeof DEMO_CATALOG[number]; serial: string }>) {
       const res = await fetch(`${origin}/api/sdk/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${merchantResult.secret}` },
         body: JSON.stringify({
-          product_name: product.name, serial_number, price: product.price, currency: 'USD', image_url: product.image,
-          // Link back to the demo storefront from the checkout success screen.
-          success_url: `${origin}/sdk/demo`,
+          product_name: product.name, serial_number: serial, price: product.price, currency: 'USD', image_url: product.image, success_url,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -153,6 +170,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: json?.error || 'Could not create demo checkout session' }, { status: 502 });
       }
       orderIds.push(json.session_id);
+      items.push({ session_id: json.session_id, product_id: product.product_id, product_name: product.name, serial_number: serial, price: product.price });
     }
 
     // Single order → its own checkout URL. Multiple → a cart URL bundling the order ids.
@@ -160,7 +178,9 @@ export async function POST(req: Request) {
       ? `${origin}/sdk/checkout/${orderIds[0]}`
       : `${origin}/sdk/checkout/cart_${orderIds.join('.')}`;
 
-    return NextResponse.json({ checkout_url, order_ids: orderIds, cart: orderIds.length > 1 });
+    // `items` echoes the serials the STORE just sent — the shop shows these, then the dashboard proves the
+    // same strings landed on the orders + mints (serial provenance, not a Visby randomizer).
+    return NextResponse.json({ checkout_url, order_ids: orderIds, items, cart: orderIds.length > 1 });
   } catch (err) {
     console.error('[sdk/demo-session] POST error:', err);
     return NextResponse.json({ error: 'Could not create demo checkout session' }, { status: 500 });

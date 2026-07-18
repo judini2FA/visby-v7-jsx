@@ -1,46 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // Burner test storefront for the "Pay with Visby" SDK. Deliberately does NOT use the Visby app shell or
 // design tokens — it looks like a random third-party merchant site so the SDK integration is exercised
-// exactly as an external merchant would: POST for a checkout session server-side, open the returned
-// checkout_url in a popup WINDOW, listen for the 'visby:complete' postMessage. Single "Buy now" and a
-// multi-item cart ("Checkout with VisbyPay") both route through /api/sdk/demo-session.
-//
-// Why a popup window and NOT an in-page iframe: Privy's embedded MPC wallet needs a top-level browsing
-// context. Inside a third-party iframe its wallet-proxy iframe can't initialize and sign-in dies with
-// "walletProxy does not exist". A window.open popup is top-level, so Privy sign-in/wallet work — and the
-// merchant's own page is never navigated away. This is the Stripe/PayPal popup model.
+// exactly as an external merchant would: POST to create a checkout session, then a same-tab redirect to
+// the returned checkout_url. Popups and iframes were tried previously and broke Privy's embedded wallet /
+// browser popup blockers — a plain top-level redirect is the reliable path, matching how real merchants
+// hand off to a hosted checkout. The buyer returns here via success_url (?view=dashboard) after paying.
 
-// Centered popup-window features. `popup=yes` forces a real window (not a new tab) in most browsers.
-function popupFeatures(w = 440, h = 780) {
-  const dualLeft = window.screenLeft ?? window.screenX ?? 0;
-  const dualTop = window.screenTop ?? window.screenY ?? 0;
-  const width = window.innerWidth || document.documentElement.clientWidth || screen.width;
-  const height = window.innerHeight || document.documentElement.clientHeight || screen.height;
-  const left = dualLeft + Math.max(0, (width - w) / 2);
-  const top = dualTop + Math.max(0, (height - h) / 2);
-  return `popup=yes,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`;
-}
-
-type DemoProduct = { product_id: string; name: string; price: number; image?: string };
+type DemoProduct = { product_id: string; code: string; name: string; price: number; image?: string };
 
 const IMG = 'https://rwdwzigqtfezbyqkfqfx.supabase.co/storage/v1/object/public/item-images';
 const PRODUCTS: DemoProduct[] = [
-  { product_id: 'demo-sneaker', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/items/1782340185687-uxedsifug2h.jpg` },
-  { product_id: 'demo-headphones', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-raw.jpg` },
-  { product_id: 'demo-bag', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-raw.jpg` },
+  { product_id: 'demo-sneaker', code: 'SNK', name: 'Demo Runner Sneaker', price: 0.99, image: `${IMG}/items/1782340185687-uxedsifug2h.jpg` },
+  { product_id: 'demo-headphones', code: 'HDP', name: 'Demo Wireless Headphones', price: 2.49, image: `${IMG}/demo/headphones-raw.jpg` },
+  { product_id: 'demo-bag', code: 'BAG', name: 'Demo Leather Bag', price: 4.99, image: `${IMG}/demo/bag-raw.jpg` },
 ];
-
-type LogEntry = {
-  id: string;
-  label: string;
-  orderIds: string[];
-  time: string;
-  status: 'awaiting payment' | 'completed';
-  result?: string;
-};
 
 const isCut = (u?: string) => !!u && /\.png(\?|$)/i.test(u);
 
@@ -53,66 +29,148 @@ function ProductArt({ image, name }: { image?: string; name: string }) {
   );
 }
 
+const randAlnum = (n: number) => Array.from({ length: n }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]).join('');
+const makeSerial = (code: string) => `VBY-${code}-${Date.now().toString(36).toUpperCase()}-${randAlnum(4)}`;
+
+const money = (n: number) => '$' + Number(n || 0).toFixed(2);
+const shortId = (s: string | null | undefined) => (s ? s.slice(0, 6) + '…' + s.slice(-6) : '—');
+
+type SentItem = { session_id: string; product_id: string; product_name: string; serial_number: string; price: number };
+type SentRecord = { id: string; time: string; items: SentItem[] };
+
+type Order = {
+  id: string;
+  product_name: string;
+  serial_number: string;
+  price_usdc: number;
+  currency: string;
+  platform_fee_usd: number;
+  merchant_net_usd: number;
+  status: 'pending' | 'paid' | 'minted' | 'failed' | 'cancelled';
+  pay_method: string | null;
+  buyer_wallet: string | null;
+  nft_mint_address: string | null;
+  sol_signature: string | null;
+  stripe_payment_intent: string | null;
+  moov_transfer_id: string | null;
+  merchant_payout_status: string | null;
+  merchant_payout_tx: string | null;
+  merchant_payout_at: string | null;
+  created_at: string;
+  paid_at: string | null;
+  minted_at: string | null;
+};
+
+type Analytics = {
+  merchant: { name: string; merchant_wallet: string; fee_bps: number } | null;
+  funnel: { created: number; paid: number; minted: number; failed: number };
+  revenue: { gross_usd: number; platform_fee_usd: number; merchant_net_usd: number; count: number };
+  payouts: { paid_count: number; paid_usd: number; owed_count: number; owed_usd: number; by_status: Record<string, number> };
+  pay_methods: Record<string, number>;
+  orders: Order[];
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  pending: '#a15c00',
+  paid: '#0a58ca',
+  minted: '#1a7f37',
+  failed: '#b3261e',
+  cancelled: '#666',
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const color = STATUS_COLOR[status] || '#666';
+  return (
+    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700, color: '#fff', background: color }}>
+      {status}
+    </span>
+  );
+}
+
 export default function SdkDemoPage() {
+  const [view, setView] = useState<'shop' | 'dashboard'>('shop');
   const [cart, setCart] = useState<DemoProduct[]>([]);
-  const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // product_id or 'cart' while creating a session
-  const popupRef = useRef<Window | null>(null); // the open checkout popup window, if any
-  const logRef = useRef<LogEntry[]>([]);
-  logRef.current = log;
 
-  // The checkout (popup window) posts visby:complete / visby:close to us (window.opener). React to both.
   useEffect(() => {
-    function onMsg(e: MessageEvent) {
-      const d: any = e.data;
-      if (!d || d.source !== 'visby') return;
-      if (d.type === 'visby:close') { popupRef.current?.close(); popupRef.current = null; return; }
-      if (d.type !== 'visby:complete') return;
-      popupRef.current?.close(); popupRef.current = null;
-      const entry = logRef.current.find(l =>
-        l.status !== 'completed' && (l.orderIds.includes(d.order_id) || (d.cart && l.orderIds.length > 1))
-      ) || logRef.current.find(l => l.status !== 'completed');
-      if (!entry) return;
-      const result = d.cart
-        ? `${(d.results ?? []).filter((r: any) => r.nft_address).length} Tallys`
-        : (d.nft_address ? `NFT ${d.nft_address}` : 'paid');
-      setLog(prev => prev.map(l => (l.id === entry.id ? { ...l, status: 'completed', result } : l)));
-    }
-    window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
+    const v = new URLSearchParams(window.location.search).get('view');
+    if (v === 'dashboard') setView('dashboard');
   }, []);
-
-  const openCheckout = useCallback((body: { product_id?: string; product_ids?: string[] }, label: string, busyKey: string) => {
-    setError(null);
-    setBusy(busyKey);
-    // Open the popup SYNCHRONOUSLY on the click, before the async fetch — browsers block window.open that
-    // fires after an await. We point the already-open window at the checkout URL once the session exists.
-    const popup = window.open('about:blank', 'visby_checkout', popupFeatures());
-    popupRef.current = popup;
-    if (!popup) { setError('Popup blocked — allow popups for this site and try again.'); setBusy(null); return; }
-    popup.document.write('<p style="font:15px -apple-system,sans-serif;color:#555;padding:24px">Starting secure checkout…</p>');
-
-    fetch('/api/sdk/demo-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(r => r.json().then(j => ({ ok: r.ok, j })))
-      .then(({ ok, j }) => {
-        if (!ok || typeof j?.checkout_url !== 'string') throw new Error(j?.error || 'Could not start checkout');
-        popup.location.href = j.checkout_url;
-        setLog(prev => [{ id: crypto.randomUUID(), label, orderIds: j.order_ids ?? [], time: new Date().toLocaleTimeString(), status: 'awaiting payment' }, ...prev]);
-      })
-      .catch(err => { popup.close(); popupRef.current = null; setError(err?.message || 'Something went wrong'); })
-      .finally(() => setBusy(null));
-  }, []);
-
-  const buyNow = (p: DemoProduct) => openCheckout({ product_id: p.product_id }, p.name, p.product_id);
-  const checkoutCart = () => openCheckout({ product_ids: cart.map(p => p.product_id) }, `Cart · ${cart.length} items`, 'cart');
-  const addToCart = (p: DemoProduct) => setCart(prev => [...prev, p]);
-  const removeFromCart = (i: number) => setCart(prev => prev.filter((_, idx) => idx !== i));
 
   const cartTotal = cart.reduce((s, p) => s + p.price, 0);
 
+  async function startCheckout(products: DemoProduct[], busyKey: string) {
+    setError(null);
+    setBusy(busyKey);
+    try {
+      const items = products.map(p => ({ product_id: p.product_id, serial_number: makeSerial(p.code) }));
+      const r = await fetch('/api/sdk/demo-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      const j = await r.json();
+      if (!r.ok || typeof j?.checkout_url !== 'string') throw new Error(j?.error || 'Could not start checkout');
+
+      const record: SentRecord = { id: crypto.randomUUID(), time: new Date().toISOString(), items: j.items ?? [] };
+      try {
+        const raw = localStorage.getItem('visby_demo_sent');
+        const prev: SentRecord[] = raw ? JSON.parse(raw) : [];
+        localStorage.setItem('visby_demo_sent', JSON.stringify([record, ...prev].slice(0, 20)));
+      } catch {}
+
+      window.location.href = j.checkout_url;
+    } catch (err: any) {
+      setError(err?.message || 'Something went wrong');
+      setBusy(null);
+    }
+  }
+
+  const buyNow = (p: DemoProduct) => startCheckout([p], p.product_id);
+  const checkoutCart = () => startCheckout(cart, 'cart');
+  const addToCart = (p: DemoProduct) => setCart(prev => [...prev, p]);
+  const removeFromCart = (i: number) => setCart(prev => prev.filter((_, idx) => idx !== i));
+
   return (
     <div style={styles.page}>
+      <div style={styles.tabBar}>
+        <button style={{ ...styles.tabBtn, ...(view === 'shop' ? styles.tabBtnActive : {}) }} onClick={() => setView('shop')}>Shop</button>
+        <button style={{ ...styles.tabBtn, ...(view === 'dashboard' ? styles.tabBtnActive : {}) }} onClick={() => setView('dashboard')}>Dashboard</button>
+      </div>
+
+      {view === 'shop' ? (
+        <ShopView
+          cart={cart}
+          error={error}
+          busy={busy}
+          cartTotal={cartTotal}
+          buyNow={buyNow}
+          checkoutCart={checkoutCart}
+          addToCart={addToCart}
+          removeFromCart={removeFromCart}
+        />
+      ) : (
+        <DashboardView active={view === 'dashboard'} />
+      )}
+    </div>
+  );
+}
+
+function ShopView({
+  cart, error, busy, cartTotal, buyNow, checkoutCart, addToCart, removeFromCart,
+}: {
+  cart: DemoProduct[];
+  error: string | null;
+  busy: string | null;
+  cartTotal: number;
+  buyNow: (p: DemoProduct) => void;
+  checkoutCart: () => void;
+  addToCart: (p: DemoProduct) => void;
+  removeFromCart: (i: number) => void;
+}) {
+  return (
+    <>
       <div style={styles.banner}>Burner test shop — fake products, sandbox payments. For SDK testing only.</div>
       <div style={styles.header}>
         <h1 style={styles.h1}>Visby Demo Shop</h1>
@@ -125,13 +183,14 @@ export default function SdkDemoPage() {
             <ProductArt image={p.image} name={p.name} />
             <div style={styles.cardName}>{p.name}</div>
             <div style={styles.cardPrice}>${p.price.toFixed(2)}</div>
-            <button style={styles.buyBtn} onClick={() => buyNow(p)} disabled={busy === p.product_id}>
-              {busy === p.product_id ? 'Opening…' : 'Buy now'}
+            <button style={styles.buyBtn} onClick={() => buyNow(p)} disabled={!!busy}>
+              {busy === p.product_id ? 'Redirecting…' : 'Buy now'}
             </button>
-            <button style={styles.cartBtn} onClick={() => addToCart(p)}>Add to cart</button>
+            <button style={styles.cartBtn} onClick={() => addToCart(p)} disabled={!!busy}>Add to cart</button>
           </div>
         ))}
       </div>
+      <div style={styles.noteText}>Checkout opens on Visby&apos;s secure page and returns you here.</div>
 
       {error && <div style={styles.errorBar}>{error}</div>}
 
@@ -149,32 +208,223 @@ export default function SdkDemoPage() {
               </div>
             </div>
             <button style={styles.checkoutBtn} onClick={checkoutCart} disabled={busy === 'cart'}>
-              {busy === 'cart' ? 'Opening…' : 'Checkout with VisbyPay'}
+              {busy === 'cart' ? 'Redirecting…' : 'Checkout with VisbyPay'}
             </button>
           </div>
         </div>
       )}
+    </>
+  );
+}
 
-      <div style={styles.logPanel}>
-        <div style={styles.logTitle}>Checkout log</div>
-        {log.length === 0
-          ? <div style={styles.logEmpty}>No checkouts yet — try Buy now or add items to the cart.</div>
-          : (
+function DashboardView({ active }: { active: boolean }) {
+  const [data, setData] = useState<Analytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [sent, setSent] = useState<SentRecord[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('visby_demo_sent');
+      setSent(raw ? JSON.parse(raw) : []);
+    } catch {}
+  }, []);
+
+  async function load() {
+    try {
+      const r = await fetch('/api/sdk/demo-analytics');
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || 'Failed to load analytics');
+      setData(j);
+      setErr(null);
+    } catch (e: any) {
+      setErr(e?.message || 'Failed to load analytics');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!active) return;
+    load();
+    const interval = setInterval(load, 8000);
+    return () => clearInterval(interval);
+  }, [active]);
+
+  if (loading) return <div style={styles.dashWrap}><div style={styles.logEmpty}>Loading dashboard…</div></div>;
+  if (err) return <div style={styles.dashWrap}><div style={styles.errorBar}>{err}</div></div>;
+  if (!data) return null;
+
+  const { merchant, funnel, revenue, payouts, pay_methods, orders } = data;
+  const paidPct = funnel.created ? Math.round((funnel.paid / funnel.created) * 100) : 0;
+  const mintedPct = funnel.paid ? Math.round((funnel.minted / funnel.paid) * 100) : 0;
+
+  const allSentItems = sent.flatMap(r => r.items.map(it => ({ ...it, sentAt: r.time })));
+
+  return (
+    <div style={styles.dashWrap}>
+      <div style={styles.dashHeaderRow}>
+        <button style={styles.refreshBtn} onClick={load}>Refresh</button>
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.panelTitle}>Store</div>
+        {merchant ? (
+          <div style={{ fontSize: 13, color: '#333' }}>
+            <div><strong>{merchant.name}</strong></div>
+            <div>Wallet: {shortId(merchant.merchant_wallet)}</div>
+            <div>Fee: {(merchant.fee_bps / 100).toFixed(2)}%</div>
+          </div>
+        ) : (
+          <div style={styles.logEmpty}>No merchant configured.</div>
+        )}
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.panelTitle}>Conversion funnel</div>
+        <div style={styles.kpiRow}>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{funnel.created}</div>
+            <div style={styles.kpiLabel}>Created</div>
+          </div>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{funnel.paid}</div>
+            <div style={styles.kpiLabel}>Paid ({paidPct}%)</div>
+          </div>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{funnel.minted}</div>
+            <div style={styles.kpiLabel}>Minted ({mintedPct}%)</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: '#a15c00', marginTop: 8 }}>Failed: {funnel.failed} (paid but mint failed)</div>
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.panelTitle}>Revenue</div>
+        <div style={styles.kpiRow}>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{money(revenue.gross_usd)}</div>
+            <div style={styles.kpiLabel}>Gross</div>
+          </div>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{money(revenue.platform_fee_usd)}</div>
+            <div style={styles.kpiLabel}>Platform fees</div>
+          </div>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{money(revenue.merchant_net_usd)}</div>
+            <div style={styles.kpiLabel}>Store net</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: '#777', marginTop: 8 }}>Over {revenue.count} settled orders</div>
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.panelTitle}>Payouts</div>
+        <div style={styles.kpiRow}>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{money(payouts.paid_usd)}</div>
+            <div style={styles.kpiLabel}>Paid out ({payouts.paid_count})</div>
+          </div>
+          <div style={styles.kpi}>
+            <div style={styles.kpiNum}>{money(payouts.owed_usd)}</div>
+            <div style={styles.kpiLabel}>Owed ({payouts.owed_count})</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          {Object.entries(payouts.by_status).map(([k, v]) => (
+            <span key={k} style={styles.statusChip}>{k}: {v}</span>
+          ))}
+        </div>
+        {payouts.owed_usd > 0 && payouts.paid_usd === 0 && (
+          <div style={styles.amberNote}>Payouts are queued/failing — nothing has been paid out to the store wallet yet.</div>
+        )}
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.panelTitle}>Payment methods</div>
+        <div style={{ fontSize: 13, color: '#333' }}>
+          {Object.keys(pay_methods).length === 0
+            ? <span style={styles.logEmpty}>No settled payments yet.</span>
+            : Object.entries(pay_methods).map(([k, v]) => <span key={k} style={{ marginRight: 16 }}>{k === 'card' ? 'Card' : k === 'crypto' ? 'Crypto' : k} {v}</span>)}
+        </div>
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.panelTitle}>Serial provenance</div>
+        <div style={{ fontSize: 12, color: '#777', marginBottom: 10 }}>These serials were generated by THIS store and passed to Visby unchanged.</div>
+        {allSentItems.length === 0 ? (
+          <div style={styles.logEmpty}>No serials sent yet — buy something in the Shop tab.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
             <table style={styles.table}>
-              <thead><tr><th style={styles.th}>What</th><th style={styles.th}>Orders</th><th style={styles.th}>Time</th><th style={styles.th}>Status</th><th style={styles.th}>Result</th></tr></thead>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Serial</th>
+                  <th style={styles.th}>Sent at</th>
+                  <th style={styles.th}>Status</th>
+                </tr>
+              </thead>
               <tbody>
-                {log.map(e => (
-                  <tr key={e.id}>
-                    <td style={styles.td}>{e.label}</td>
-                    <td style={styles.td}>{e.orderIds.length}</td>
-                    <td style={styles.td}>{e.time}</td>
-                    <td style={{ ...styles.td, color: e.status === 'completed' ? '#1a7f37' : '#a15c00' }}>{e.status}</td>
-                    <td style={styles.td}>{e.result ?? '—'}</td>
+                {allSentItems.map((it, i) => {
+                  const match = orders.find(o => o.serial_number === it.serial_number);
+                  return (
+                    <tr key={i}>
+                      <td style={styles.td}>{it.serial_number}</td>
+                      <td style={styles.td}>{new Date(it.sentAt).toLocaleString()}</td>
+                      <td style={{ ...styles.td, color: match ? '#1a7f37' : '#a15c00' }}>
+                        {match ? `✓ matched on order (${match.status})` : 'not settled yet'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div style={styles.panel}>
+        <div style={styles.panelTitle}>Orders</div>
+        {orders.length === 0 ? (
+          <div style={styles.logEmpty}>No checkouts yet.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Product</th>
+                  <th style={styles.th}>Serial</th>
+                  <th style={styles.th}>Price</th>
+                  <th style={styles.th}>Fee</th>
+                  <th style={styles.th}>Net</th>
+                  <th style={styles.th}>Status</th>
+                  <th style={styles.th}>Pay method</th>
+                  <th style={styles.th}>Buyer</th>
+                  <th style={styles.th}>Mint</th>
+                  <th style={styles.th}>Payout</th>
+                  <th style={styles.th}>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map(o => (
+                  <tr key={o.id}>
+                    <td style={styles.td}>{o.product_name}</td>
+                    <td style={styles.td}>{o.serial_number}</td>
+                    <td style={styles.td}>{money(o.price_usdc)}</td>
+                    <td style={styles.td}>{money(o.platform_fee_usd)}</td>
+                    <td style={styles.td}>{money(o.merchant_net_usd)}</td>
+                    <td style={styles.td}><StatusBadge status={o.status} /></td>
+                    <td style={styles.td}>{o.pay_method ?? '—'}</td>
+                    <td style={styles.td}>{shortId(o.buyer_wallet)}</td>
+                    <td style={styles.td}>{shortId(o.nft_mint_address)}</td>
+                    <td style={styles.td}>{o.merchant_payout_status ?? '—'}</td>
+                    <td style={styles.td}>{new Date(o.created_at).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -182,7 +432,10 @@ export default function SdkDemoPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f4f4f4', color: '#1a1a1a', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif', padding: '0 0 120px' },
-  banner: { background: '#fff3cd', color: '#664d03', textAlign: 'center', padding: '10px 16px', fontSize: 13, fontWeight: 600, borderBottom: '1px solid #ffe69c' },
+  tabBar: { display: 'flex', gap: 0, maxWidth: 900, margin: '0 auto', padding: '16px 20px 0' },
+  tabBtn: { padding: '10px 20px', border: '1px solid #ddd', background: '#fff', color: '#555', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  tabBtnActive: { background: '#1a1a1a', color: '#fff', borderColor: '#1a1a1a' },
+  banner: { background: '#fff3cd', color: '#664d03', textAlign: 'center', padding: '10px 16px', fontSize: 13, fontWeight: 600, borderBottom: '1px solid #ffe69c', marginTop: 16 },
   header: { maxWidth: 900, margin: '0 auto', padding: '32px 20px 8px', textAlign: 'center' },
   h1: { fontSize: 28, margin: '0 0 6px', fontWeight: 700 },
   sub: { fontSize: 14, color: '#555', margin: 0 },
@@ -192,16 +445,26 @@ const styles: Record<string, React.CSSProperties> = {
   cardPrice: { fontSize: 14, color: '#555', marginBottom: 10 },
   buyBtn: { padding: '9px 14px', borderRadius: 6, border: 'none', background: '#1a1a1a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   cartBtn: { padding: '8px 14px', borderRadius: 6, border: '1px solid #ccc', background: '#fff', color: '#1a1a1a', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 8 },
-  errorBar: { maxWidth: 900, margin: '0 auto', padding: '0 20px', color: '#b3261e', fontSize: 13 },
+  noteText: { maxWidth: 900, margin: '0 auto', padding: '0 20px', fontSize: 12, color: '#888', textAlign: 'center' },
+  errorBar: { maxWidth: 900, margin: '12px auto 0', padding: '0 20px', color: '#b3261e', fontSize: 13 },
   cartBar: { position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: '1px solid #e0e0e0', boxShadow: '0 -2px 12px rgba(0,0,0,.06)', zIndex: 50 },
   cartInner: { maxWidth: 900, margin: '0 auto', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 16 },
   cartChip: { display: 'inline-block', background: '#f0f0f0', borderRadius: 12, padding: '2px 8px', marginRight: 6, marginBottom: 4 },
   chipX: { cursor: 'pointer', color: '#b3261e', fontWeight: 700, marginLeft: 2 },
   checkoutBtn: { padding: '11px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(90deg,#7bd6c9,#b7a6e0)', color: '#1a1a1a', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-  logPanel: { maxWidth: 900, margin: '20px auto 0', padding: '0 20px' },
-  logTitle: { fontSize: 16, fontWeight: 700, marginBottom: 10 },
+  dashWrap: { maxWidth: 900, margin: '0 auto', padding: '20px 20px 40px' },
+  dashHeaderRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 12 },
+  refreshBtn: { padding: '8px 16px', borderRadius: 6, border: '1px solid #ccc', background: '#fff', color: '#1a1a1a', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  panel: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: 10, padding: 16, marginBottom: 16 },
+  panelTitle: { fontSize: 15, fontWeight: 700, marginBottom: 12 },
+  kpiRow: { display: 'flex', flexWrap: 'wrap', gap: 24 },
+  kpi: { minWidth: 100 },
+  kpiNum: { fontSize: 24, fontWeight: 700 },
+  kpiLabel: { fontSize: 12, color: '#777', marginTop: 2 },
+  statusChip: { display: 'inline-block', background: '#f0f0f0', borderRadius: 12, padding: '2px 10px', marginRight: 6, marginBottom: 4, fontSize: 12 },
+  amberNote: { marginTop: 10, fontSize: 12, color: '#a15c00', background: '#fff3cd', border: '1px solid #ffe69c', borderRadius: 6, padding: '8px 10px' },
   logEmpty: { fontSize: 13, color: '#777' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 12, background: '#fff' },
-  th: { textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e0e0e0', color: '#555' },
-  td: { padding: '8px 10px', borderBottom: '1px solid #eee' },
+  th: { textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e0e0e0', color: '#555', whiteSpace: 'nowrap' },
+  td: { padding: '8px 10px', borderBottom: '1px solid #eee', whiteSpace: 'nowrap' },
 };

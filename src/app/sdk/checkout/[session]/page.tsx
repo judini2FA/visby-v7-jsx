@@ -328,7 +328,7 @@ function MethodPicker({ cards, chosenId, hasCrypto, onPickCard, onPickCrypto, on
 
 export default function SdkCheckoutPage() {
   const { session: sessionId } = useParams() as { session: string };
-  const { ready: privyReady, authenticated, login, getAccessToken } = usePrivy();
+  const { ready: privyReady, authenticated, login, logout, user, getAccessToken } = usePrivy();
   const { address: buyerWallet, ready: walletReady } = useVisbWallet();
   const { createWallet } = useSolanaWallets();
   const { wallets: solSigners } = useSolanaSigner();
@@ -879,6 +879,19 @@ export default function SdkCheckoutPage() {
         ) : (
           /* ── PAY ──────────────────────────────────────── */
           <div style={{ ...card(), padding: S[5], display: 'flex', flexDirection: 'column', gap: S[4] }}>
+            {authenticated && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], ...surface({ pad: `${S[2]}px ${S[3]}px` }) }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>Signed in as</div>
+                  <div style={{ ...t('meta'), color: 'var(--text-strong)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {user?.email?.address ?? (buyerWallet ? shortAddr(buyerWallet) : 'your Visby account')}
+                  </div>
+                </div>
+                <button type="button" onClick={() => { logout(); }} style={{ ...btn('text'), padding: `${S[1]}px ${S[2]}px`, whiteSpace: 'nowrap' }}>
+                  Switch account
+                </button>
+              </div>
+            )}
             {previewPay ? (
               <DefaultPayPanel
                 method={previewPay}
