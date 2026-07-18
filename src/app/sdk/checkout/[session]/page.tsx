@@ -13,6 +13,7 @@ import { useCurrency } from '@/lib/currency';
 import { type PayMethod } from '@/lib/payment-pref';
 import { MoovCardForm, MOOV_ENABLED } from '@/components/moov-card-form';
 import { t, S, card, surface, btn, badge, sectionLabel, price } from '@/lib/ui';
+import { cutoutPngFromUrl } from '@/lib/client-cutout';
 
 const GREEN = 'var(--ok)';
 const RED   = 'var(--danger)';
@@ -30,6 +31,7 @@ interface Session {
   currency: string;
   merchant_net_usd?: number;
   cart?: boolean;
+  image_url?: string | null;
   items?: Array<{ id: string; product_name: string; serial_number: string | null; price_usdc: number; image_url: string | null }>;
   success_url: string | null;
   cancel_url: string | null;
@@ -435,6 +437,44 @@ export default function SdkCheckoutPage() {
   }, [sessionId]);
 
   useEffect(() => { if (sessionId) loadSession(); }, [sessionId, loadSession]);
+
+  // Option A cutout: once the buyer is signed in, remove the product photo's background IN THIS BROWSER
+  // (same @imgly engine as the main app), upload the transparent PNG, and point each pending order at it
+  // BEFORE payment — so the mint records the cutout on the Tally for clean resale photos later. Fully
+  // best-effort and silent: any failure (CORS-tainted image, unsupported device) leaves the raw photo, and
+  // the server-side fal.ai fallback in sdk-mint can still cut it. Runs once per checkout.
+  const cutoutStarted = useRef(false);
+  useEffect(() => {
+    if (!session || !authenticated || cutoutStarted.current) return;
+    cutoutStarted.current = true;
+    const targets = session.cart
+      ? (session.items ?? []).map(it => ({ id: it.id, image: it.image_url }))
+      : [{ id: sessionId, image: session.image_url ?? null }];
+    (async () => {
+      let token: string | null = null;
+      try { token = await getAccessToken(); } catch { /* not ready */ }
+      if (!token) { cutoutStarted.current = false; return; } // retry when auth lands
+      for (const tgt of targets) {
+        if (!tgt.image || /\.png(\?|$)/i.test(tgt.image)) continue; // no image, or already a cutout
+        const png = await cutoutPngFromUrl(tgt.image);
+        if (!png) continue;
+        const fd = new FormData();
+        fd.append('file', new File([png], 'cutout.png', { type: 'image/png' }));
+        fd.append('cutout', '1');
+        let uploaded: string | null = null;
+        try {
+          const up = await fetch('/api/upload-image', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd }).then(r => r.json());
+          uploaded = typeof up?.url === 'string' ? up.url : null;
+        } catch { /* keep raw */ }
+        if (!uploaded) continue;
+        try {
+          await fetch(`/api/sdk/session/${tgt.id}/set-cutout`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: uploaded }),
+          });
+        } catch { /* best-effort */ }
+      }
+    })();
+  }, [session, authenticated, sessionId, getAccessToken]);
 
   // Load the buyer's saved cards, ordered by their persisted favorites (default first), and select the
   // default. Under Moov, cards come from /api/moov/cards (account_id/card_id pairs) instead of Stripe.

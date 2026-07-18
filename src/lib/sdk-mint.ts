@@ -162,11 +162,13 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
       }
     } catch { /* registry unavailable — leave default 'unregistered' */ }
 
-    // Attach a background-removed cutout to the Tally for clean resale photos later. Runs server-side
-    // (the merchant sent a raw photo over the API — no browser to cut it in). Best-effort: if cutout is
-    // unconfigured (no FAL_KEY) or fails, the item keeps its raw image_url. The Tally shows the cutout;
-    // the merchant's own storefront keeps showing whatever photo it hosts.
-    const cutoutUrl = await generateCutout(image_url);
+    // Attach a background-removed cutout to the Tally for clean resale photos later. The SDK checkout cuts
+    // the photo in the BUYER's browser (option A) and points the order at a .png cutout before payment, so
+    // usually image_url is already cut here — skip in that case. Only when it's still a raw photo do we fall
+    // back to the server-side fal.ai cutout (no browser was in the loop, or the client cutout failed).
+    // Best-effort throughout: if cutout is unavailable the item keeps its raw image_url.
+    const alreadyCut = !!image_url && /\.png(\?|$)/i.test(image_url);
+    const cutoutUrl = alreadyCut ? null : await generateCutout(image_url);
     if (cutoutUrl) {
       const { error: cutErr } = await supabase.from('items').update({ image_url: cutoutUrl }).eq('id', item.id);
       if (cutErr) console.error('[sdk-mint] cutout attach failed', { item_id: item.id, error: cutErr.message });
