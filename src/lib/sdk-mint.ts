@@ -12,6 +12,7 @@ import {
 import { createServiceClient } from '@/lib/supabase/service';
 import { getRpcUrl, getMintAuthority } from '@/lib/nft';
 import { checkSerial } from '@/lib/serial-registry';
+import { generateCutout } from '@/lib/cutout';
 
 type MintArgs = {
   merchant_wallet: string;
@@ -160,6 +161,16 @@ export async function mintProvenanceForSdk(args: MintArgs): Promise<MintResult> 
         }
       }
     } catch { /* registry unavailable — leave default 'unregistered' */ }
+
+    // Attach a background-removed cutout to the Tally for clean resale photos later. Runs server-side
+    // (the merchant sent a raw photo over the API — no browser to cut it in). Best-effort: if cutout is
+    // unconfigured (no FAL_KEY) or fails, the item keeps its raw image_url. The Tally shows the cutout;
+    // the merchant's own storefront keeps showing whatever photo it hosts.
+    const cutoutUrl = await generateCutout(image_url);
+    if (cutoutUrl) {
+      const { error: cutErr } = await supabase.from('items').update({ image_url: cutoutUrl }).eq('id', item.id);
+      if (cutErr) console.error('[sdk-mint] cutout attach failed', { item_id: item.id, error: cutErr.message });
+    }
 
     // The Tally is minted directly to the buyer, so the buyer is owner0 — one mint event, no transfer.
     await supabase.from('ownership_history').insert({

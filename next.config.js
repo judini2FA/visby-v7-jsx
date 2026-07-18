@@ -69,7 +69,9 @@ const nextConfig = {
                   "img-src 'self' data: blob: https://arweave.net https://nftstorage.link https://ipfs.io https://gateway.irys.xyz https://*.supabase.co",
                   // *.sentry.io lets the browser SDK POST client-side errors to the ingest endpoint.
                   "connect-src 'self' blob: data: https://*.supabase.co https://api.privy.io https://auth.privy.io https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com https://js.stripe.com https://api.stripe.com https://api.coingecko.com https://staticimgly.com https://*.sentry.io https://api.moov.io https://*.moov.io",
-                  "frame-src https://js.stripe.com https://auth.privy.io https://*.moov.io",
+                  // 'self' lets the SDK demo shop embed the same-origin /sdk/checkout page in its in-page
+                  // modal iframe (frame-src governs what WE may frame; frame-ancestors governs who frames us).
+                  "frame-src 'self' https://js.stripe.com https://auth.privy.io https://*.moov.io",
                   // @imgly / onnxruntime-web run inference in a Web Worker created from a blob: URL; without
                   // an explicit worker-src this falls back to default-src 'self' and the worker is blocked.
                   "worker-src 'self' blob:",

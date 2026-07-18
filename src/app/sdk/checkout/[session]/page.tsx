@@ -84,7 +84,7 @@ function LockGlyph({ size = 16 }: { size?: number }) {
 const LEARN_SLIDES = [
   { icon: <ShieldIcon size={28} />, title: 'Own the proof, not just the product', body: 'Every Visby purchase mints you an Authenticity NFT — a chain-verified certificate that your exact item is genuine. Yours forever, impossible to fake.' },
   { icon: <WalletGlyph size={26} />, title: 'No cards. No seed phrases.', body: 'Sign in with just your email. Visby spins up a secure wallet for you and remembers your default payment, so checkout is a single tap next time.' },
-  { icon: <LockGlyph size={26} />, title: 'Protected end to end', body: 'Your payment is held safely until the seller ships, and the full ownership history stays verifiable on-chain. Buy with confidence.' },
+  { icon: <LockGlyph size={26} />, title: 'Protected end to end', body: 'Your purchase settles instantly with the store and mints your certificate on the spot — the full ownership history stays verifiable on-chain. Buy with confidence.' },
 ];
 
 function SignedOutFlow({ login }: { login: () => void }) {
@@ -99,7 +99,7 @@ function SignedOutFlow({ login }: { login: () => void }) {
           <div style={{ ...t('meta'), color: 'var(--text-muted)' }}>Sign in to pay in one tap — or create an account in seconds.</div>
         </div>
         <button onClick={login} style={{ ...btn('primary', { full: true }) }}>Sign in</button>
-        <button onClick={() => setStep(1)} style={{ ...btn('secondary', { full: true }) }}>Create a Visby account</button>
+        <button onClick={() => setStep(1)} style={{ ...btn('secondary', { full: true }), boxShadow: 'var(--box-shadow-soft)' }}>Create a Visby account</button>
       </div>
     );
   }
@@ -364,9 +364,15 @@ export default function SdkCheckoutPage() {
     try {
       await createWallet();
     } catch (e: unknown) {
-      setWalletErr(
-        'We couldn’t finish setting up your Visby wallet. Tap retry — if it keeps failing, the seller needs to enable Solana wallets.'
-      );
+      // "already has an embedded wallet" is benign — the global EnsureSolanaWallet won the race and a
+      // Solana wallet now exists; buyerWallet will populate on the next render. Only a REAL failure
+      // (e.g. Solana embedded wallets disabled on the Privy app) should surface an error.
+      const msg = String((e as any)?.message ?? e ?? '');
+      if (!/already (has|exists)|more than one/i.test(msg)) {
+        setWalletErr(
+          'We couldn’t finish setting up your Visby wallet. Tap retry — if it keeps failing, the seller needs to enable Solana wallets.'
+        );
+      }
     } finally {
       setCreatingWallet(false);
     }

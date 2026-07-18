@@ -5,8 +5,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // Burner test storefront for the "Pay with Visby" SDK. Deliberately does NOT use the Visby app shell or
 // design tokens — it looks like a random third-party merchant site so the SDK integration is exercised
 // exactly as an external merchant would: POST for a checkout session server-side, open the returned
-// checkout_url in a popup, listen for the 'visby:complete' postMessage. Single "Buy now" and a
+// checkout_url in a popup WINDOW, listen for the 'visby:complete' postMessage. Single "Buy now" and a
 // multi-item cart ("Checkout with VisbyPay") both route through /api/sdk/demo-session.
+//
+// Why a popup window and NOT an in-page iframe: Privy's embedded MPC wallet needs a top-level browsing
+// context. Inside a third-party iframe its wallet-proxy iframe can't initialize and sign-in dies with
+// "walletProxy does not exist". A window.open popup is top-level, so Privy sign-in/wallet work — and the
+// merchant's own page is never navigated away. This is the Stripe/PayPal popup model.
+
+// Centered popup-window features. `popup=yes` forces a real window (not a new tab) in most browsers.
+function popupFeatures(w = 440, h = 780) {
+  const dualLeft = window.screenLeft ?? window.screenX ?? 0;
+  const dualTop = window.screenTop ?? window.screenY ?? 0;
+  const width = window.innerWidth || document.documentElement.clientWidth || screen.width;
+  const height = window.innerHeight || document.documentElement.clientHeight || screen.height;
+  const left = dualLeft + Math.max(0, (width - w) / 2);
+  const top = dualTop + Math.max(0, (height - h) / 2);
+  return `popup=yes,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+}
 
 type DemoProduct = { product_id: string; name: string; price: number; image?: string };
 
@@ -42,17 +58,18 @@ export default function SdkDemoPage() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // product_id or 'cart' while creating a session
-  const [modalUrl, setModalUrl] = useState<string | null>(null); // checkout shown in an in-page iframe modal
+  const popupRef = useRef<Window | null>(null); // the open checkout popup window, if any
   const logRef = useRef<LogEntry[]>([]);
   logRef.current = log;
 
-  // The checkout (iframe) posts visby:complete / visby:close to us (window.parent). React to both.
+  // The checkout (popup window) posts visby:complete / visby:close to us (window.opener). React to both.
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       const d: any = e.data;
       if (!d || d.source !== 'visby') return;
-      if (d.type === 'visby:close') { setModalUrl(null); return; }
+      if (d.type === 'visby:close') { popupRef.current?.close(); popupRef.current = null; return; }
       if (d.type !== 'visby:complete') return;
+      popupRef.current?.close(); popupRef.current = null;
       const entry = logRef.current.find(l =>
         l.status !== 'completed' && (l.orderIds.includes(d.order_id) || (d.cart && l.orderIds.length > 1))
       ) || logRef.current.find(l => l.status !== 'completed');
@@ -69,14 +86,21 @@ export default function SdkDemoPage() {
   const openCheckout = useCallback((body: { product_id?: string; product_ids?: string[] }, label: string, busyKey: string) => {
     setError(null);
     setBusy(busyKey);
+    // Open the popup SYNCHRONOUSLY on the click, before the async fetch — browsers block window.open that
+    // fires after an await. We point the already-open window at the checkout URL once the session exists.
+    const popup = window.open('about:blank', 'visby_checkout', popupFeatures());
+    popupRef.current = popup;
+    if (!popup) { setError('Popup blocked — allow popups for this site and try again.'); setBusy(null); return; }
+    popup.document.write('<p style="font:15px -apple-system,sans-serif;color:#555;padding:24px">Starting secure checkout…</p>');
+
     fetch('/api/sdk/demo-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(r => r.json().then(j => ({ ok: r.ok, j })))
       .then(({ ok, j }) => {
         if (!ok || typeof j?.checkout_url !== 'string') throw new Error(j?.error || 'Could not start checkout');
-        setModalUrl(j.checkout_url); // show checkout in an in-page modal (iframe), not a separate window
+        popup.location.href = j.checkout_url;
         setLog(prev => [{ id: crypto.randomUUID(), label, orderIds: j.order_ids ?? [], time: new Date().toLocaleTimeString(), status: 'awaiting payment' }, ...prev]);
       })
-      .catch(err => setError(err?.message || 'Something went wrong'))
+      .catch(err => { popup.close(); popupRef.current = null; setError(err?.message || 'Something went wrong'); })
       .finally(() => setBusy(null));
   }, []);
 
@@ -110,15 +134,6 @@ export default function SdkDemoPage() {
       </div>
 
       {error && <div style={styles.errorBar}>{error}</div>}
-
-      {modalUrl && (
-        <div style={styles.modalOverlay} onClick={() => setModalUrl(null)}>
-          <div style={styles.modalBox} onClick={e => e.stopPropagation()}>
-            <button style={styles.modalClose} onClick={() => setModalUrl(null)} aria-label="Close">×</button>
-            <iframe src={modalUrl} title="Pay with Visby" style={styles.modalIframe} />
-          </div>
-        </div>
-      )}
 
       {cart.length > 0 && (
         <div style={styles.cartBar}>
@@ -183,10 +198,6 @@ const styles: Record<string, React.CSSProperties> = {
   cartChip: { display: 'inline-block', background: '#f0f0f0', borderRadius: 12, padding: '2px 8px', marginRight: 6, marginBottom: 4 },
   chipX: { cursor: 'pointer', color: '#b3261e', fontWeight: 700, marginLeft: 2 },
   checkoutBtn: { padding: '11px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(90deg,#7bd6c9,#b7a6e0)', color: '#1a1a1a', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(10,10,14,0.6)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 },
-  modalBox: { position: 'relative', width: '100%', maxWidth: 440, height: 'min(760px, 92vh)', background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,.4)' },
-  modalClose: { position: 'absolute', top: 8, right: 10, zIndex: 2, width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.06)', color: '#333', fontSize: 20, lineHeight: '30px', cursor: 'pointer' },
-  modalIframe: { width: '100%', height: '100%', border: 'none' },
   logPanel: { maxWidth: 900, margin: '20px auto 0', padding: '0 20px' },
   logTitle: { fontSize: 16, fontWeight: 700, marginBottom: 10 },
   logEmpty: { fontSize: 13, color: '#777' },

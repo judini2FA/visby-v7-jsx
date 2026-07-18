@@ -126,6 +126,12 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
           walletChainType: 'solana-only',
         },
         embeddedWallets: {
+          // Auto-create an embedded wallet on login. In the Privy dashboard (Authentication → Login methods
+          // → "Automatically create embedded wallets on login") EVM is DISABLED and SVM (Solana) ENABLED for
+          // this app, so this only ever creates a Solana wallet — never the Ethereum one that used to fail
+          // login with "A user cannot have more than one ethereum embedded and one imported wallet".
+          // EnsureSolanaWallet below is a belt-and-suspenders fallback for any whitelabel login path where
+          // the modal auto-create doesn't run.
           createOnLogin: 'users-without-wallets',
         },
         // When a user has enrolled MFA, Privy raises its own step-up challenge before any embedded-wallet
