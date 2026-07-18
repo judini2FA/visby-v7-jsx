@@ -62,7 +62,7 @@ interface Item {
   weight_oz?: number; ship_service_pref?: string;
   auth_status?: string;
   ownership_history?: OwnershipRecord[];
-  profiles?: Record<string, { avatar_url: string | null; display_name: string | null; preferred_currency?: string | null }>;
+  profiles?: Record<string, { avatar_url: string | null; display_name: string | null; preferred_currency?: string | null; account_type?: string | null }>;
 }
 
 const MAX_EXTRA_PHOTOS = 8;
@@ -628,6 +628,9 @@ export default function ItemPage() {
   const sellerDisplay = sellerProfile?.display_name || shortAddr(item.current_owner_wallet);
   const sellerAvatar  = sellerProfile?.avatar_url ?? null;
   const sellerInitial = (item.current_owner_wallet[0] ?? '?').toUpperCase();
+  // Judah's rule: offers + 1:1 messaging are personal-user-only — a business seller can only be
+  // Bought Now, never offered on or messaged. Server-side guards mirror this in offers.ts + messages/send.
+  const sellerIsBusiness = sellerProfile?.account_type === 'business';
   const history = item.ownership_history ?? [];
   // POL1: every transfer event counts as an owner, even if a wallet reappears
   // (e.g. person1 -> person2 -> back to person1 reads as 3 owners), so this
@@ -860,6 +863,7 @@ export default function ItemPage() {
             viewerWallet={walletAddress ?? null}
             isOwner={isOwner}
             listed={!!(item.is_listed && item.price_usdc)}
+            sellerIsBusiness={sellerIsBusiness}
           />
         </div>
 
@@ -887,7 +891,7 @@ export default function ItemPage() {
                 </div>
               </div>
             </Link>
-            {!isOwner && !privateMode && (
+            {!isOwner && !privateMode && !sellerIsBusiness && (
               <Link href={`/dashboard?msg=${item.current_owner_wallet}`}
                 style={{ ...btn('secondary', { full: true }), marginTop: S[4] }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>

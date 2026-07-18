@@ -1005,6 +1005,7 @@ function RequestCard({ r, wallet, busy, onRespond, onAccept }: {
 // ─────────────────────────────────────────────────────────────
 function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: string }) {
   const { getAccessToken } = usePrivy();
+  const router = useRouter();
   const [activeConv, setActiveConv] = useState<string | null>(initialConv ?? null);
   const [sending, setSending] = useState(false);
   const [offerMax, setOfferMax] = useState<number | null>(null);
@@ -1051,9 +1052,12 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
     }
   }
 
-  // Open a conversation: mark messages from that partner as read via authed API route.
+  // Open a conversation: mark messages from that partner as read via authed API route, and mirror
+  // the open thread into the URL (?msg=<wallet>) so the outer dashboard header and the global
+  // BottomNav — neither of which can see this component's local state — can hide themselves too.
   async function openConv(partnerWallet: string) {
     setActiveConv(partnerWallet);
+    router.replace(`/dashboard?msg=${partnerWallet}`, { scroll: false });
     try {
       const token = await getAccessToken();
       await fetch('/api/messages/read', {
@@ -1067,9 +1071,18 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
     }
   }
 
-  // If initialConv is set and conversations have loaded, mark it read immediately.
+  // Close the open thread and drop ?msg= from the URL (keeping ?tab=messages) so the outer header
+  // and BottomNav reappear.
+  function closeConv() {
+    setActiveConv(null);
+    router.replace('/dashboard?tab=messages', { scroll: false });
+  }
+
+  // If initialConv is set and conversations have loaded, mark it read immediately. Guarded against
+  // activeConv already matching so the URL echo from openConv() above doesn't re-trigger this and
+  // double-fire the mark-read request.
   useEffect(() => {
-    if (initialConv && wallet) {
+    if (initialConv && wallet && initialConv !== activeConv) {
       openConv(initialConv);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1117,27 +1130,34 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
     const partnerConv = conversations.find((c: any) => c.partner_wallet === activeConv);
     const displayName = partnerConv?.partner_name ?? `${activeConv.slice(0,6)}…${activeConv.slice(-4)}`;
     return (
-      <div style={{ paddingTop: S[4], display: 'flex', flexDirection: 'column', height: 'calc(100vh - 220px)' }}>
-        <button onClick={() => setActiveConv(null)} style={{ ...btn('text'), gap: S[2], marginBottom: S[4], padding: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-          Back to conversations
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2], marginBottom: S[3] }}>
-          <Link
-            href={activeConv === wallet ? '/profile' : `/p/${activeConv}`}
-            style={{ ...t('heading'), color: 'var(--text-strong)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
-          >
-            {displayName}
-          </Link>
-          <button
-            onClick={() => setShowPaySheet(true)}
-            style={{ ...btn('secondary'), gap: S[2], padding: '8px 14px', flexShrink: 0 }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-            Pay / Request
-          </button>
+      // Full-screen thread view: while it's open the outer dashboard header (DashboardInner, gated on
+      // the same ?msg= param via searchParams) and the global BottomNav (bottom-nav.tsx) both step
+      // aside, so this is the ONLY header/footer chrome on screen — no double header, no dead bottom
+      // nav under the composer. zIndex 150 comfortably clears both (they sit at 100) in case the URL
+      // echo from openConv()/closeConv() lags a render behind this component's own local state.
+      <div style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', flexDirection: 'column', background: 'transparent' }}>
+        <div style={{ flexShrink: 0, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
+          <div className="visby-inner" style={{ paddingTop: S[3], paddingBottom: S[3], display: 'flex', alignItems: 'center', gap: S[3] }}>
+            <button onClick={closeConv} aria-label="Back to conversations" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)', padding: 4, display: 'flex', flexShrink: 0 }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <Link
+              href={activeConv === wallet ? '/profile' : `/p/${activeConv}`}
+              style={{ ...t('heading'), flex: 1, color: 'var(--text-strong)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
+            >
+              {displayName}
+            </Link>
+            <button
+              onClick={() => setShowPaySheet(true)}
+              style={{ ...btn('secondary'), gap: S[2], padding: '8px 14px', flexShrink: 0 }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              Pay / Request
+            </button>
+          </div>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: S[2], marginBottom: S[3] }}>
+
+        <div className="visby-inner" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: S[2], paddingTop: S[3], paddingBottom: S[4] }}>
           {[
             ...thread.map((msg: any) => ({ kind: 'message' as const, at: msg.created_at, msg })),
             ...threadRequests.map((r) => ({ kind: 'request' as const, at: r.created_at, r })),
@@ -1169,7 +1189,21 @@ function MessagesTab({ wallet, initialConv }: { wallet: string; initialConv?: st
             })}
           {thread.length === 0 && threadRequests.length === 0 && !threadLoading && <div style={{ textAlign: 'center', ...t('meta'), color: 'var(--text-muted)', paddingTop: S[5] }}>Start the conversation</div>}
         </div>
-        <PresetComposer onSend={sendMessage} sending={sending} maxOffer={offerMax} />
+
+        {/* Footer bar — preset/quick-reply chips, pinned where the global BottomNav normally sits */}
+        <div style={{
+          flexShrink: 0,
+          background: 'var(--surface-bg)',
+          backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)',
+          borderTop: '1px solid var(--glass-border)',
+          boxShadow: '0 -2px 16px rgba(0,0,0,.06)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}>
+          <div className="visby-inner" style={{ paddingTop: S[3], paddingBottom: S[3] }}>
+            <PresetComposer onSend={sendMessage} sending={sending} maxOffer={offerMax} />
+          </div>
+        </div>
 
         {showPaySheet && typeof document !== 'undefined' && createPortal(
           <>
@@ -1277,12 +1311,17 @@ function DashboardInner() {
   const pageTitle = tab === 'sales' ? 'Sales History' : tab === 'purchases' ? 'Purchases' : 'Notifications';
   const showSlider = tab === 'notifications' || tab === 'messages';
 
+  // An open message thread (?msg=<wallet>, kept in sync by MessagesTab's openConv/closeConv) renders
+  // its own full-screen header — suppress this outer one so there's never a double header.
+  const threadOpen = tab === 'messages' && !!searchParams.get('msg');
+
   const slider = tabSlider();
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: "'Manrope',sans-serif" }}>
 
-      {/* Header */}
+      {/* Header — hidden while a message thread is open (see threadOpen above) */}
+      {!threadOpen && (
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--glass-bg-strong)', backdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(1.4)', borderBottom: '1px solid var(--divider)', boxShadow: '0 2px 16px rgba(0,0,0,.06)' }}>
         <div className="visby-inner" style={{ paddingTop: S[3], paddingBottom: S[3] }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2] }}>
@@ -1303,6 +1342,7 @@ function DashboardInner() {
           )}
         </div>
       </div>
+      )}
 
       <div className="visby-inner" style={{ paddingBottom: 100 }}>
         {tab === 'notifications' && <NotificationsTab wallet={wallet} />}

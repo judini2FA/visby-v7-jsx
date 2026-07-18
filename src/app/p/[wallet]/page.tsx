@@ -259,10 +259,12 @@ export default function PublicProfilePage() {
               >
                 {isFollowing ? 'Following' : 'Follow'}
               </button>
-              <Link href={`/dashboard?msg=${profileWallet}`} style={{ ...btn('secondary') }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                Message
-              </Link>
+              {!isBusiness && (
+                <Link href={`/dashboard?msg=${profileWallet}`} style={{ ...btn('secondary') }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  Message
+                </Link>
+              )}
               <BlockButton
                 viewerWallet={myVisbWallet ?? ''}
                 targetWallet={profileWallet}

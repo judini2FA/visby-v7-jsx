@@ -37,6 +37,29 @@ type Step = 'from' | 'parcel' | 'rates' | 'buying' | 'done' | 'test_mode' | 'man
 const RED = 'var(--danger)';
 const GREEN = 'var(--ok)';
 
+// Judah's rule (2026-07-18): only ever offer ~2-day-or-faster service — the seller picks the CARRIER
+// (which company ships it), never the speed. Per carrier: keep the cheapest rate confirmed at
+// <=2 delivery_days; if none is confirmed, fall back to the cheapest rate with NO firm day commit
+// (e.g. a distance-priced Ground tier — typically the carrier's fastest/cheapest remaining option,
+// never a rate explicitly quoted slower than 2 days). A carrier whose only quotes are confirmed
+// slower than 2 days is dropped entirely rather than shown as a choice.
+function twoDayRatesByCarrier(rates: ShipRate[]): ShipRate[] {
+  const byCarrier = new Map<string, ShipRate[]>();
+  for (const r of rates) {
+    const list = byCarrier.get(r.carrier) ?? [];
+    list.push(r);
+    byCarrier.set(r.carrier, list);
+  }
+  const picked: ShipRate[] = [];
+  for (const list of byCarrier.values()) {
+    const confirmed = list.filter(r => r.delivery_days != null && r.delivery_days <= 2);
+    const pool = confirmed.length ? confirmed : list.filter(r => r.delivery_days == null);
+    if (!pool.length) continue;
+    picked.push(pool.reduce((best, r) => (r.rate < best.rate ? r : best)));
+  }
+  return picked.sort((a, b) => a.rate - b.rate);
+}
+
 export function ShipLabelFlow({ order, onClose, onShipped }: {
   order: OrderForShipping;
   onClose: () => void;
@@ -140,9 +163,18 @@ export function ShipLabelFlow({ order, onClose, onShipped }: {
       });
       const json = await res.json();
       if (Array.isArray(json.rates) && json.rates.length) {
-        const list = json.rates as ShipRate[];
-        setRates(list);
-        setSelectedId(json.recommended_id || list.find((r: ShipRate) => r.recommended)?.id || list[0]?.id || '');
+        const list = twoDayRatesByCarrier(json.rates as ShipRate[]);
+        if (list.length) {
+          setRates(list);
+          const recommendedInList = json.recommended_id && list.some(r => r.id === json.recommended_id)
+            ? json.recommended_id
+            : list.find(r => r.recommended)?.id || list[0]?.id || '';
+          setSelectedId(recommendedInList);
+        } else {
+          setRates(null);
+          setRatesErr('No 2-day-or-faster carrier rate is available for this shipment yet — try again shortly or enter tracking manually.');
+          setRatesErrCode('');
+        }
       } else {
         setRates(null);
         setRatesErr(json.error ?? 'No carrier rates were returned for this shipment.');

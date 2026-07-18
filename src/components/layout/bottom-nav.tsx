@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { Suspense } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { trpc } from '@/lib/trpc/client';
 import { useVisbWallet } from '@/lib/wallet';
 
@@ -38,7 +39,18 @@ const TABS = [
 ] as const;
 
 export function BottomNav() {
+  // useSearchParams() requires a Suspense boundary in the App Router; BottomNav is mounted
+  // directly in the root layout with no ancestor Suspense, so it provides its own.
+  return (
+    <Suspense fallback={null}>
+      <BottomNavInner />
+    </Suspense>
+  );
+}
+
+function BottomNavInner() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { address } = useVisbWallet();
   const { data: conversations } = trpc.messages.getConversations.useQuery(
     { wallet: address },
@@ -51,9 +63,13 @@ export function BottomNav() {
   const msgUnread = conversations?.reduce((sum, c) => sum + (c.unread ?? 0), 0) ?? 0;
   const unreadTotal = msgUnread + (notifUnread ?? 0);
 
+  // An open message thread (?msg=<wallet> on /dashboard) renders its own full-screen header +
+  // footer — see MessagesTab in src/app/dashboard/page.tsx — so the global bottom nav steps aside.
+  const threadOpen = pathname === '/dashboard' && !!searchParams.get('msg');
+
   // /sdk = the merchant-embedded hosted checkout (and demo). It runs on a merchant's behalf in a popup —
   // Visby's internal marketplace nav must never bleed into it.
-  if (['/mint', '/login', '/sdk'].some(p => pathname.startsWith(p)) || pathname.startsWith('/item/')) {
+  if (['/mint', '/login', '/sdk'].some(p => pathname.startsWith(p)) || pathname.startsWith('/item/') || threadOpen) {
     return null;
   }
 

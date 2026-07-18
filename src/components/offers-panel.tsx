@@ -19,6 +19,7 @@ const ERR: Record<string, string> = {
   invalid_amount: 'Enter a valid amount.',
   own_item: 'You can’t make an offer on your own item.',
   not_listed: 'This item isn’t listed for sale.',
+  seller_is_business: 'This seller doesn’t accept offers — buy now instead.',
   account_banned: 'Your account can’t do that right now.',
   not_your_offer: 'That offer isn’t yours.',
   not_pending: 'That offer was already answered.',
@@ -28,9 +29,10 @@ const label = (e?: string) => (e && ERR[e]) || 'Something went wrong — try aga
 const short = (w: string) => (w ? `${w.slice(0, 4)}…${w.slice(-4)}` : '');
 
 export function OffersPanel({
-  itemId, listPrice, viewerWallet, isOwner, listed,
+  itemId, listPrice, viewerWallet, isOwner, listed, sellerIsBusiness,
 }: {
   itemId: string; listPrice: number; viewerWallet: string | null; isOwner: boolean; listed: boolean;
+  sellerIsBusiness?: boolean;
 }) {
   const { getAccessToken } = usePrivy();
   const [incoming, setIncoming] = useState<OfferRow[]>([]);
@@ -83,6 +85,9 @@ export function OffersPanel({
   }
 
   if (!viewerWallet) return null;
+  // Offers are personal-user-only (Judah's rule) — a business seller never shows Make-offer UI, and
+  // never shows incoming offers either, since one can't have been created against them going forward.
+  if (sellerIsBusiness) return null;
 
   // ── SELLER (owner): incoming pending offers ──
   if (isOwner) {

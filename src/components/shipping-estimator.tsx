@@ -13,11 +13,9 @@ export const SHIP_DEFAULTS: ShipValues = {
   from_zip: '', service: '2day', carrier: 'cheapest',
 };
 
-const SERVICES = [
-  { id: '2day',      label: 'Two-day' },
-  { id: 'economy',   label: 'Economy' },
-  { id: 'overnight', label: 'Overnight' },
-];
+// Judah's rule (2026-07-18): only ever ship ~2-day service — sellers pick the CARRIER (company),
+// never the speed. `ShipValues.service` stays fixed at '2day' (SHIP_DEFAULTS) with no UI to change it;
+// there is no speed selector here anymore.
 const CARRIERS = [
   { id: 'cheapest', label: 'Cheapest' },
   { id: 'USPS',     label: 'USPS' },
@@ -99,15 +97,10 @@ export default function ShippingEstimator({
         <input value={v.height_in} onChange={e => set('height_in', e.target.value)} inputMode="decimal" placeholder="H (in)" style={input()} />
       </div>
 
-      {/* customization: speed + carrier */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[2] }}>
-        <select value={v.service} onChange={e => set('service', e.target.value)} style={selectStyle}>
-          {SERVICES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
-        <select value={v.carrier} onChange={e => set('carrier', e.target.value)} style={selectStyle}>
-          {CARRIERS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
-      </div>
+      {/* carrier — the only choice offered; delivery speed is fixed behind the scenes */}
+      <select value={v.carrier} onChange={e => set('carrier', e.target.value)} style={selectStyle}>
+        {CARRIERS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+      </select>
 
       {/* payout readout — Visby fee + net appear as soon as a price is set; shipping folds in with weight */}
       <div style={{ ...surface({ pad: '12px 14px', radius: 'var(--r-sm)' }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
@@ -127,7 +120,9 @@ export default function ShippingEstimator({
             </div>
             {amount != null && est?.carrier && (
               <div style={{ ...t('micro'), color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>
-                {est.carrier}{est.delivery_days ? ` · ~${est.delivery_days}-day` : ''}{est.source === 'estimate' ? '  ·  approximate — live carrier rate at fulfillment' : '  ·  live rate'}
+                {/* Only show a transit estimate when it's a real carrier-quoted number — the no-carrier
+                    fallback's day count is a synthetic default, not a delivery promise, so it's omitted. */}
+                {est.carrier}{est.source === 'live' && est.delivery_days ? ` · ~${est.delivery_days}-day` : ''}{est.source === 'estimate' ? '  ·  approximate — live carrier rate at fulfillment' : '  ·  live rate'}
               </div>
             )}
             {/* Visby fee */}

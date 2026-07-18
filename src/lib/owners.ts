@@ -1,7 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/service';
 
 export type OwnerRef = { wallet: string; avatar_url: string | null };
-export type ProfileRef = { avatar_url: string | null; display_name: string | null };
+export type ProfileRef = { avatar_url: string | null; display_name: string | null; account_type: string | null };
 
 type SB = ReturnType<typeof createServiceClient>;
 
@@ -12,7 +12,7 @@ export async function fetchProfileMap(supabase: SB, wallets: (string | null | un
   if (!uniq.length) return {};
   const { data } = await supabase.from('profiles').select('*').in('wallet', uniq);
   const map: Record<string, ProfileRef> = {};
-  for (const p of (data ?? []) as any[]) map[p.wallet] = { avatar_url: p.avatar_url ?? null, display_name: p.display_name ?? null };
+  for (const p of (data ?? []) as any[]) map[p.wallet] = { avatar_url: p.avatar_url ?? null, display_name: p.display_name ?? null, account_type: p.account_type ?? null };
   return map;
 }
 

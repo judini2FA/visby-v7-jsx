@@ -44,6 +44,15 @@ export async function makeOffer(itemId: string, buyerWallet: string, amountUsd: 
   if (item.current_owner_wallet === buyerWallet) return { ok: false, error: 'own_item' };
   if (amountUsd > Number(item.price_usdc)) return { ok: false, error: 'above_list_price' };
 
+  // Offers are personal-user-only (Judah's rule): a business seller can only be Bought Now, never
+  // offered on. Re-checked here (not just hidden in the UI) so it can't be bypassed via a direct API call.
+  const { data: sellerProfile } = await supabase
+    .from('profiles')
+    .select('account_type')
+    .eq('wallet', item.current_owner_wallet)
+    .maybeSingle();
+  if (sellerProfile?.account_type === 'business') return { ok: false, error: 'seller_is_business' };
+
   // Withdraw any existing live offer from this buyer on this item, then insert the fresh pending one.
   await supabase
     .from('offers')

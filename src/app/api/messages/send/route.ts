@@ -23,6 +23,17 @@ export async function POST(req: Request) {
 
     const supabase = createServiceClient();
 
+    // 1:1 messaging is personal-user-only (Judah's rule) — a business account can be Bought Now but
+    // never DMed. Re-checked here (not just hidden in the UI) so it can't be bypassed via a direct call.
+    const { data: recipientProfile } = await supabase
+      .from('profiles')
+      .select('account_type')
+      .eq('wallet', to_wallet)
+      .maybeSingle();
+    if (recipientProfile?.account_type === 'business') {
+      return NextResponse.json({ error: "This seller doesn't accept messages." }, { status: 403 });
+    }
+
     // Block check — either party blocking the other forbids the message.
     // Two parameterized equality queries (not a raw .or() string) so wallet values
     // can't break out of the filter. Tolerate a missing `blocks` table (treat as no block).
