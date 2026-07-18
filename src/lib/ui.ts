@@ -53,7 +53,10 @@ export function card(o: GlassOpts = {}): CSSProperties {
 // Primary CTA — brand gradient fill, pill.
 export function cta(o: { radius?: number | string; pad?: string } = {}): CSSProperties {
   return {
-    background: 'var(--grad-brand)',
+    backgroundImage: 'var(--grad-brand)',
+    backgroundOrigin: 'border-box',
+    backgroundClip: 'border-box',
+    backgroundRepeat: 'no-repeat',
     color: 'var(--text-on-cta)',
     border: 'none',
     borderRadius: o.radius ?? 'var(--pill)',
@@ -186,7 +189,11 @@ export function btn(variant: BtnVariant = 'primary', o: { full?: boolean; pill?:
   // unchanged shorthand, so border-color falls back to currentColor — the recurring "black line on
   // selected buttons" bug that never showed in static review.
   const variants: Record<BtnVariant, CSSProperties> = {
-    primary:   { background: 'var(--grad-brand)', color: 'var(--text-on-cta)', borderColor: 'transparent', boxShadow: 'var(--cta-shadow)' },
+    // Use backgroundIMAGE (longhand), NOT the `background` shorthand: the shorthand resets
+    // background-origin to padding-box + background-repeat to repeat, so on a bordered button the
+    // gradient tile wraps and bleeds its start colour (teal on --grad-brand) as a sliver at the far edge.
+    // backgroundImage + border-box origin/clip + no-repeat make the gradient fill the border box exactly.
+    primary:   { backgroundImage: 'var(--grad-brand)', backgroundOrigin: 'border-box', backgroundClip: 'border-box', backgroundRepeat: 'no-repeat', color: 'var(--text-on-cta)', borderColor: 'transparent', boxShadow: 'var(--cta-shadow)' },
     secondary: { background: 'var(--glass-bg-strong)', color: 'var(--text-strong)', borderColor: 'var(--glass-border)', backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))' },
     text:      { background: 'transparent', color: 'var(--text-muted)', borderColor: 'transparent', padding: '8px 12px' },
     danger:    { background: 'var(--danger-soft)', color: 'var(--danger)', borderColor: 'var(--danger-soft)' },

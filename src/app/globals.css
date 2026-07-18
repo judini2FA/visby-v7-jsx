@@ -138,3 +138,15 @@ select option { background: var(--glass-bg-strong); color: var(--text); }
 .bottom-nav-wrap {
   display: block;
 }
+
+/* ── Gradient fills never tile ──
+   A gradient background defaults to background-origin:padding-box + background-repeat:repeat. On any
+   element that also clips to border-box (a border, even a transparent one), the padding-box-sized tile
+   wraps and its START colour bleeds a sliver at the far edge — a teal seam on --grad-brand, obvious in
+   dark mode. Any inline element painted with the brand gradient is forced to size to the border box and
+   not repeat. (Harmless for the clip:text price gradient.) */
+[style*="grad-brand"],
+[style*="linear-gradient"] {
+  background-repeat: no-repeat;
+  background-origin: border-box;
+}
