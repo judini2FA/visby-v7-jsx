@@ -677,7 +677,7 @@ export default function ItemPage() {
                   width: 64, height: 64, borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0,
                   padding: 0, cursor: 'pointer', background: 'var(--surface-bg)',
                   border: '1px solid var(--glass-border)',
-                  boxShadow: activeImage === url ? '0 4px 14px rgba(42,138,237,.32)' : 'none',
+                  boxShadow: activeImage === url ? 'var(--cta-shadow)' : 'none',
                 }}>
                 <img src={url as string} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </button>

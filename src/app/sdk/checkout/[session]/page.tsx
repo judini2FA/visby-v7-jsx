@@ -109,7 +109,7 @@ function SignedOutFlow({ login }: { login: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: S[4] }}>
       <div key={step} style={{ ...surface({ pad: `${S[6]}px ${S[5]}px` }), textAlign: 'center', animation: 'slidein .35s cubic-bezier(.2,.8,.2,1)' }}>
-        <div style={{ width: 68, height: 68, margin: `0 auto ${S[4]}px`, borderRadius: '50%', background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 10px 28px rgba(120,110,160,.38)' }}>
+        <div style={{ width: 68, height: 68, margin: `0 auto ${S[4]}px`, borderRadius: '50%', background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: 'var(--cta-shadow)' }}>
           {slide.icon}
         </div>
         <div style={{ ...t('title'), color: 'var(--text-strong)', marginBottom: S[2] }}>{slide.title}</div>
@@ -302,7 +302,7 @@ function MethodPicker({ cards, chosenId, hasCrypto, onPickCard, onPickCrypto, on
     <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--grad-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>{icon}</span>
   );
   const Row = ({ icon, label, sub, selected, onClick }: { icon: React.ReactNode; label: string; sub?: string; selected?: boolean; onClick: () => void }) => (
-    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: S[3], width: '100%', textAlign: 'left', padding: `${S[3]}px ${S[4]}px`, borderRadius: 'var(--r-lg)', border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', boxShadow: selected ? '0 4px 16px rgba(42,138,237,.28)' : 'none', cursor: 'pointer' }}>
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: S[3], width: '100%', textAlign: 'left', padding: `${S[3]}px ${S[4]}px`, borderRadius: 'var(--r-lg)', border: '1px solid var(--glass-border)', background: 'var(--surface-bg)', boxShadow: selected ? 'var(--cta-shadow)' : 'none', cursor: 'pointer' }}>
       {chip(icon)}
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', ...t('body'), color: 'var(--text-strong)', fontWeight: 600 }}>{label}</span>

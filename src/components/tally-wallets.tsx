@@ -156,7 +156,7 @@ export function TallyWallets({ visbyWallet }: { visbyWallet: string }) {
               </div>
             );
             return isDest ? (
-              <div key={w.id} style={{ position: 'relative', borderRadius: 'var(--r-lg)', background: 'var(--grad-brand)', padding: '20px 3px 3px', boxShadow: '0 6px 20px rgba(120,110,160,.20)' }}>
+              <div key={w.id} style={{ position: 'relative', borderRadius: 'var(--r-lg)', background: 'var(--grad-brand)', padding: '20px 3px 3px', boxShadow: 'var(--cta-shadow)' }}>
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', ...t('micro'), color: 'var(--text-on-cta)', letterSpacing: '0.16em', pointerEvents: 'none' }}>DESTINATION</div>
                 <div style={{ background: 'var(--surface-bg)', borderRadius: 'var(--r)', padding: '10px 12px' }}>{tileBody}</div>
               </div>

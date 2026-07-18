@@ -177,7 +177,7 @@ function MethodCard({ m, isDefault, isFirst, isLast, menuOpen, onToggleMenu, onA
       style={{
         position: 'relative',
         borderRadius: 'var(--r-lg)',
-        boxShadow: isDefault ? '0 8px 28px rgba(120,110,160,.22)' : (dragging ? '0 10px 26px rgba(0,0,0,.28)' : 'var(--box-shadow-soft)'),
+        boxShadow: isDefault ? 'var(--cta-shadow)' : (dragging ? '0 10px 26px rgba(0,0,0,.28)' : 'var(--box-shadow-soft)'),
         // Default: keep the gradient slot at full opacity while dragging (it stays put); the white lifts out.
         opacity: isDefault ? 1 : (dragging ? 0.5 : 1),
         transition: 'opacity .15s, box-shadow .15s',

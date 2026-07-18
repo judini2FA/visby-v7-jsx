@@ -93,7 +93,7 @@ export function BottomNav() {
                 width: 46, height: 46, borderRadius: '50%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: active ? 'var(--grad-brand)' : 'transparent',
-                boxShadow: active ? '0 4px 12px rgba(90,160,210,.35)' : 'none',
+                boxShadow: active ? 'var(--cta-shadow)' : 'none',
                 transition: 'background .18s ease',
               }}>
                 <Icon id={t.id} active={active} />

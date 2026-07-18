@@ -102,6 +102,9 @@
   /* nested fill — white in light mode; boxes separate by shadow, not a grey fill */
   --surface-bg: #FFFFFF;
   --box-shadow-soft: 0 3px 12px rgba(17, 17, 34, .10), 0 1px 3px rgba(17, 17, 34, .07);
+  /* Raised-control (CTA/primary/active-tab) shadow — NEUTRAL ambient, never a coloured glow
+     (design.md: nothing glows). Slightly deeper than box-shadow-soft so a filled button lifts. */
+  --cta-shadow: 0 6px 18px rgba(24, 24, 30, .18), 0 1px 3px rgba(24, 24, 30, .12);
 
   --field-input-bg: #FFFFFF;
   --divider: #E6E6EA;
@@ -158,6 +161,7 @@
   /* nested fill — lighter grey so a panel inside a card reads without a border */
   --surface-bg: #2A2A2F;
   --box-shadow-soft: none;   /* dark keeps its grey fills — no added shadow */
+  --cta-shadow: 0 8px 22px rgba(0, 0, 0, .45);   /* neutral lift on dark, no glow */
 
   --field-input-bg: #1C1C20;
   --divider: #242428;

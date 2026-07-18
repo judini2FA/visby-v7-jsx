@@ -745,7 +745,7 @@ function verifyVisby(rawBody, header, secret) {
                 fontStyle: 'italic', fontWeight: 600, fontSize: 18, letterSpacing: '-0.01em', lineHeight: 1,
                 color: '#33303D',
                 background: 'linear-gradient(95deg,#3FD0BA 0%,#86A9F0 50%,#CF6FE0 100%)',
-                boxShadow: '0 2px 12px rgba(120,110,160,.30),0 1px 2px rgba(16,18,21,.12)',
+                boxShadow: 'var(--cta-shadow)',
               }}>
                 <img src="/visby-logo-mark.png" alt="" aria-hidden="true"
                   style={{ height: 23, width: 'auto', display: 'block', marginLeft: -6, filter: 'brightness(0)', opacity: 0.92 }} />

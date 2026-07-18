@@ -166,7 +166,7 @@ function MyItemsTab({ wallet }: { wallet: string }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
                 {destsFor(transferItem).map(d => (
                   <button key={d.address} onClick={() => setDestAddr(d.address)}
-                    style={{ ...surface({ pad: '12px 14px' }), display: 'flex', alignItems: 'center', gap: S[3], textAlign: 'left', cursor: 'pointer', boxShadow: destAddr === d.address ? '0 4px 16px rgba(90,160,210,.30)' : 'var(--box-shadow-soft)' }}>
+                    style={{ ...surface({ pad: '12px 14px' }), display: 'flex', alignItems: 'center', gap: S[3], textAlign: 'left', cursor: 'pointer', boxShadow: destAddr === d.address ? 'var(--cta-shadow)' : 'var(--box-shadow-soft)' }}>
                     <span style={{ ...surface({ radius: 8 }), width: 30, height: 30, color: 'var(--text-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>SOL</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ ...t('body'), fontWeight: 700, color: 'var(--text-strong)' }}>{d.label}</div>

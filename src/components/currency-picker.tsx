@@ -35,7 +35,7 @@ function Row({ meta, selected, onSelect }: { meta: CurrencyMeta; selected: boole
         background: selected
           ? 'linear-gradient(135deg, rgba(37,205,184,.16), rgba(42,138,237,.16) 50%, rgba(188,45,230,.16))'
           : 'transparent',
-        boxShadow: selected ? '0 4px 14px rgba(89,138,237,.16)' : 'none',
+        boxShadow: selected ? 'var(--cta-shadow)' : 'none',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: S[3], minWidth: 0 }}>

@@ -83,7 +83,7 @@ export default function AdminOrders() {
       backgroundOrigin: 'border-box',
       backgroundSize: '100% 100%',
       color: active ? 'var(--text-on-cta)' : 'var(--text-muted)',
-      boxShadow: active ? '0 4px 14px rgba(89,180,245,.22)' : 'var(--box-shadow-soft)',
+      boxShadow: active ? 'var(--cta-shadow)' : 'var(--box-shadow-soft)',
     }),
     [],
   );

@@ -175,7 +175,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
             const sel = payoutType === pt;
             return (
               <button key={pt} type="button" onClick={() => setPayoutType(pt)}
-                style={{ ...surface({ pad: '14px 12px' }), cursor: 'pointer', textAlign: 'left', position: 'relative', boxShadow: sel ? '0 4px 16px rgba(90,160,210,.22)' : 'var(--box-shadow-soft)' }}>
+                style={{ ...surface({ pad: '14px 12px' }), cursor: 'pointer', textAlign: 'left', position: 'relative', boxShadow: sel ? 'var(--cta-shadow)' : 'var(--box-shadow-soft)' }}>
                 <div style={{ ...t('body'), fontWeight: 700, marginBottom: S[1], ...(sel ? { background: 'var(--grad-brand)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: 'var(--text-strong)' }) }}>
                   {pt === 'crypto' ? 'Crypto wallet' : 'Bank account'}
                 </div>
@@ -213,7 +213,7 @@ export default function PayoutSettings({ wallet }: { wallet: string }) {
                   const sel = payoutAsset === val;
                   return (
                     <button key={val} type="button" onClick={() => setPayoutAsset(val)}
-                      style={{ ...surface({ pad: '12px' }), cursor: 'pointer', textAlign: 'left', boxShadow: sel ? '0 4px 16px rgba(90,160,210,.22)' : 'var(--box-shadow-soft)' }}>
+                      style={{ ...surface({ pad: '12px' }), cursor: 'pointer', textAlign: 'left', boxShadow: sel ? 'var(--cta-shadow)' : 'var(--box-shadow-soft)' }}>
                       <div style={{ ...t('body'), fontWeight: 700, marginBottom: 2, ...(sel ? { background: 'var(--grad-brand)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' } : { color: 'var(--text-strong)' }) }}>{label}</div>
                       <div style={{ ...t('micro'), color: 'var(--text-muted)' }}>{sub}</div>
                     </button>

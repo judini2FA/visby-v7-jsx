@@ -61,7 +61,7 @@ export function cta(o: { radius?: number | string; pad?: string } = {}): CSSProp
     fontWeight: 600,
     cursor: 'pointer',
     userSelect: 'none',
-    boxShadow: '0 8px 24px rgba(89,180,245,.25)',
+    boxShadow: 'var(--cta-shadow)',
     transition: 'transform .25s var(--ease), box-shadow .25s var(--ease)',
   };
 }
@@ -186,7 +186,7 @@ export function btn(variant: BtnVariant = 'primary', o: { full?: boolean; pill?:
   // unchanged shorthand, so border-color falls back to currentColor — the recurring "black line on
   // selected buttons" bug that never showed in static review.
   const variants: Record<BtnVariant, CSSProperties> = {
-    primary:   { background: 'var(--grad-brand)', color: 'var(--text-on-cta)', borderColor: 'transparent', boxShadow: '0 8px 24px rgba(89,180,245,.22)' },
+    primary:   { background: 'var(--grad-brand)', color: 'var(--text-on-cta)', borderColor: 'transparent', boxShadow: 'var(--cta-shadow)' },
     secondary: { background: 'var(--glass-bg-strong)', color: 'var(--text-strong)', borderColor: 'var(--glass-border)', backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))' },
     text:      { background: 'transparent', color: 'var(--text-muted)', borderColor: 'transparent', padding: '8px 12px' },
     danger:    { background: 'var(--danger-soft)', color: 'var(--danger)', borderColor: 'var(--danger-soft)' },
@@ -270,7 +270,7 @@ export function tabSlider(): { wrap: CSSProperties; item: CSSProperties; itemAct
     itemActive: {
       background: 'var(--grad-brand)',
       color: 'var(--text-on-cta)',
-      boxShadow: '0 4px 14px rgba(89,180,245,.22)',
+      boxShadow: 'var(--cta-shadow)',
     },
   };
 }
