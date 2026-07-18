@@ -115,15 +115,15 @@ function PrivyWithTheme({ children }: { children: React.ReactNode }) {
           theme: mode === 'dark' ? 'dark' : 'light',
           accentColor: '#2A8AED',
           logo: '/visby-logo-mark.png',
-          // Solana-only wallet buttons. 'detected_solana_wallets' auto-surfaces every installed
-          // Solana extension (Phantom/Solflare/Backpack/Glow/…) in one click, no pairing-QR/raw-URI
-          // shown (A3) — those wallets have no explicit WalletListEntry id in Privy 1.99.1, so
-          // detection is the only way to list them. The named entries below are the Solana-relevant
-          // subset that DO type-check as WalletListEntry in this version; the rest of the union is
-          // EVM-only and irrelevant on a solana-only app. 'wallet_connect' reaches mobile Solana
-          // wallets that aren't a browser extension.
-          walletList: ['detected_solana_wallets', 'phantom', 'coinbase_wallet', 'okx_wallet', 'wallet_connect'],
-          walletChainType: 'solana-only',
+          // W1: surface most major wallets across BOTH chains. 'detected_*_wallets' auto-surface every
+          // installed Solana + Ethereum extension in one click (no pairing-QR), and the named EVM +
+          // Solana entries cover the big providers (MetaMask/Rainbow/Rabby/Zerion/OKX/Coinbase +
+          // Phantom). walletChainType 'ethereum-and-solana' lets a user connect an ETH wallet too;
+          // the Tally still mints on Solana and every account still auto-gets a Solana EMBEDDED wallet
+          // (dashboard SVM-only auto-create, see embeddedWallets note) so an ETH-only connector can
+          // still receive/checkout. External EVM wallets attach as linked destinations.
+          walletList: ['detected_wallets', 'detected_solana_wallets', 'detected_ethereum_wallets', 'phantom', 'metamask', 'coinbase_wallet', 'rainbow', 'rabby_wallet', 'zerion', 'okx_wallet', 'wallet_connect'],
+          walletChainType: 'ethereum-and-solana',
         },
         embeddedWallets: {
           // Auto-create an embedded wallet on login. In the Privy dashboard (Authentication → Login methods
