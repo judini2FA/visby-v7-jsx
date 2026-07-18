@@ -87,7 +87,10 @@ function EnsureSolanaWallet({ children }: { children: React.ReactNode }) {
 // stranding them away from the purchase). The checkout page owns its own auth (Privy sign-in + wallet).
 function AppGates({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname?.startsWith('/sdk/checkout')) return <>{children}</>;
+  // Every SDK surface (/sdk/checkout, /sdk/demo, /sdk docs) is a merchant/buyer flow, not the main Visby
+  // app — none of them should run the onboarding wizard or Face-ID app-lock. (The demo shop was getting
+  // taken over by the signup wizard.)
+  if (pathname?.startsWith('/sdk')) return <>{children}</>;
   return (
     <AppLock>
       <AccountGate>
