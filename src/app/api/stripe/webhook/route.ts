@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { fulfillPurchase } from '@/lib/fulfill';
-import { captureError } from '@/lib/monitoring';
+import { captureError, captureMessage } from '@/lib/monitoring';
 import { createServiceClient } from '@/lib/supabase/service';
 import { notify } from '@/lib/notifications';
 import { emailWallet } from '@/lib/email';
@@ -177,6 +177,14 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error('Webhook processing error:', err);
     captureError(err, { stage: 'stripe webhook fulfill', event_type: event.type });
+    // Distinct, stable alert signal so a Sentry/alert rule can fire on repeated webhook processing
+    // failures — the early warning that turns a silent multi-day failure (which auto-disables the
+    // endpoint) into something caught within the hour. Returning 5xx tells Stripe to re-deliver.
+    captureMessage('error', 'ALERT stripe_webhook_processing_failed', {
+      alert: 'stripe_webhook_processing_failed',
+      event_type: event.type,
+      event_id: event.id,
+    });
     return NextResponse.json({ error: 'Webhook processing error' }, { status: 500 });
   }
 

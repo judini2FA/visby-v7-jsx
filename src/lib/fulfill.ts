@@ -37,7 +37,12 @@ export async function fulfillPurchase(
 
   const previousOwner = item.current_owner_wallet;
 
-  const txRef = await transferFromAuthority(item.nft_mint_address, buyer_wallet);
+  // Tight retry budget: this asset was minted at listing time and is already indexed, so the long
+  // read-after-write fetch loop is never needed here. Bounding it keeps this call (invoked inline from
+  // the Stripe webhook) from hanging into Stripe's delivery timeout under RPC stress — a timeout is the
+  // "no response" failure that, accumulated over days, auto-disables the webhook endpoint. On failure we
+  // throw, so the webhook returns 5xx and Stripe re-delivers (a clean retry, not a silent timeout).
+  const txRef = await transferFromAuthority(item.nft_mint_address, buyer_wallet, { fetchAttempts: 3, fetchDelayMs: 800 });
 
   await supabase
     .from('items')

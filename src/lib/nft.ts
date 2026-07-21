@@ -32,9 +32,21 @@ export function getAuthorityUmi() {
 // the authority acting as its PermanentTransferDelegate: passing only the pubkey to transferV1 panics on
 // the delegate path (it works only when signer == owner, e.g. the normal marketplace mint). Fetch+transfer
 // works for both, so this is the single correct call site.
-export async function transferFromAuthority(assetAddress: string, toWallet: string): Promise<string> {
+export async function transferFromAuthority(
+  assetAddress: string,
+  toWallet: string,
+  // Bound the in-request work for latency-sensitive callers. The Stripe webhook path passes a tight
+  // budget: its asset was minted at listing time (already indexed), so it never needs the long
+  // read-after-write loop, and hanging here risks tripping Stripe's delivery timeout (a "no response"
+  // error that, accumulated, auto-disables the endpoint). Defaults preserve the original behavior for
+  // every other caller.
+  opts?: { fetchAttempts?: number; sendAttempts?: number; fetchDelayMs?: number },
+): Promise<string> {
   const { umi } = getAuthorityUmi();
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const fetchAttempts = opts?.fetchAttempts ?? 8;
+  const sendAttempts  = opts?.sendAttempts ?? 3;
+  const fetchDelayMs  = opts?.fetchDelayMs ?? 1500;
 
   // READ-AFTER-WRITE: immediately after createV1, the RPC node serving this call often hasn't indexed the
   // new asset account yet, so fetchAsset throws "account not found". In the SDK settle path the transfer
@@ -43,15 +55,15 @@ export async function transferFromAuthority(assetAddress: string, toWallet: stri
   // reports 'minted'. Retry the fetch until the asset is visible.
   let asset: Awaited<ReturnType<typeof fetchAsset>> | null = null;
   let fetchErr: unknown;
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < fetchAttempts; i++) {
     try { asset = await fetchAsset(umi, umiKey(assetAddress)); break; }
-    catch (e) { fetchErr = e; await sleep(1500); }
+    catch (e) { fetchErr = e; if (i < fetchAttempts - 1) await sleep(fetchDelayMs); }
   }
   if (!asset) throw fetchErr ?? new Error('asset not found for transfer');
 
   // Retry the transfer itself on transient RPC/confirm errors.
   let sendErr: unknown;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < sendAttempts; i++) {
     try {
       const { signature } = await transfer(umi, { asset, newOwner: umiKey(toWallet) }).sendAndConfirm(umi);
       return Buffer.from(signature).toString('base64');
