@@ -90,7 +90,7 @@ function AppGates({ children }: { children: React.ReactNode }) {
   // Every SDK surface (/sdk/checkout, /sdk/demo, /sdk docs) is a merchant/buyer flow, not the main Visby
   // app — none of them should run the onboarding wizard or Face-ID app-lock. (The demo shop was getting
   // taken over by the signup wizard.)
-  if (pathname?.startsWith('/sdk')) return <>{children}</>;
+  if (pathname?.startsWith('/sdk') || pathname?.startsWith('/prelaunch')) return <>{children}</>;
   return (
     <AppLock>
       <AccountGate>

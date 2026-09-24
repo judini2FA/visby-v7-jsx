@@ -29,6 +29,7 @@ const SECTIONS: Section[] = [
   { href: '/admin/brand-registry', label: 'Brands', icon: I('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z') },
   { href: '/admin/team', label: 'Team', superOnly: true, icon: I('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2|M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8|M19 8v6|M22 11h-6') },
   { href: '/admin/audit', label: 'Audit', superOnly: true, icon: I('M9 11l3 3L22 4|M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11') },
+  { href: '/admin/waitlist', label: 'Waitlist', superOnly: true, icon: I('M4 4h16v16H4z|M22 6l-10 7L2 6') },
   { href: '/admin/legal', label: 'Legal', icon: I('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z|M14 2v6h6|M8 13h8|M8 17h8') },
 ];
 

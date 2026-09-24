@@ -4,9 +4,26 @@
     {
       "name": "next-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "next-dev-prelaunch",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PRELAUNCH_MODE=on",
+        "PRELAUNCH_KEY=local-test-key",
+        "npx",
+        "next",
+        "dev",
+        "-p",
+        "3100"
+      ],
+      "port": 3100
     }
   ]
 }

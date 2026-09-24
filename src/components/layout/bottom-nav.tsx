@@ -69,7 +69,7 @@ function BottomNavInner() {
 
   // /sdk = the merchant-embedded hosted checkout (and demo). It runs on a merchant's behalf in a popup —
   // Visby's internal marketplace nav must never bleed into it.
-  if (['/mint', '/login', '/sdk'].some(p => pathname.startsWith(p)) || pathname.startsWith('/item/') || threadOpen) {
+  if (['/mint', '/login', '/sdk', '/prelaunch'].some(p => pathname.startsWith(p)) || pathname.startsWith('/item/') || threadOpen) {
     return null;
   }
 

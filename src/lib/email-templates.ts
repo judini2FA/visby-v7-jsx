@@ -188,3 +188,38 @@ export function sdkOrderCompletedBuyer(i: { productName: string | null; amountUs
     text: text([`Purchase confirmed: ${i.productName ?? 'your purchase'} for ${money(i.amountUsd)}.`, prov], DEVNET_NOTE),
   };
 }
+
+export function prelaunchWelcome(i: { position: number; refCode: string }): EmailMsg {
+  const share = url(`/prelaunch?ref=${i.refCode}`);
+  return {
+    subject: "You're on the Visby prelaunch list",
+    html: layout({
+      heading: `You're #${i.position} on the list`,
+      lines: [
+        "Thanks for joining the Visby prelaunch. We'll email you the moment early access opens.",
+        `Want in sooner? Every friend who joins with your link moves you up the list:<br><a href="${esc(share)}" style="color:#2A8AED">${esc(share)}</a>`,
+      ],
+      cta: { label: 'Check your spot', href: share },
+    }),
+    text: text([
+      `You're #${i.position} on the Visby prelaunch list. We'll email you when early access opens.`,
+      `Every friend who joins with your link moves you up: ${share}`,
+    ]),
+  };
+}
+
+export function investorInquiryEmail(i: { name: string; email: string; firm?: string | null; message: string }): EmailMsg {
+  const who = i.firm ? `${i.name} (${i.firm})` : i.name;
+  return {
+    subject: `Investor inquiry: ${who}`,
+    html: layout({
+      heading: 'New investor inquiry',
+      lines: [
+        `<strong>${esc(who)}</strong> &lt;${esc(i.email)}&gt;`,
+        esc(i.message).replace(/\n/g, '<br>'),
+        'Reply to this email to respond directly.',
+      ],
+    }),
+    text: text([`${who} <${i.email}>`, i.message, 'Reply to this email to respond directly.']),
+  };
+}

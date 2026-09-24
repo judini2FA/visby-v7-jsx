@@ -13,10 +13,10 @@ export function emailConfigured(): boolean {
   return !!RESEND_API_KEY;
 }
 
-export type SendEmailInput = { to: string | null | undefined; subject: string; html: string; text: string };
+export type SendEmailInput = { to: string | null | undefined; subject: string; html: string; text: string; replyTo?: string };
 export type SendEmailResult = { sent: boolean; skipped?: boolean; id?: string; error?: string };
 
-export async function sendEmail({ to, subject, html, text }: SendEmailInput): Promise<SendEmailResult> {
+export async function sendEmail({ to, subject, html, text, replyTo }: SendEmailInput): Promise<SendEmailResult> {
   if (!RESEND_API_KEY || !to) {
     if (process.env.NODE_ENV !== 'production') console.debug('[email] skipped', { to: to ?? null, subject, reason: !RESEND_API_KEY ? 'no RESEND_API_KEY' : 'no recipient' });
     return { sent: false, skipped: true };
@@ -25,7 +25,7 @@ export async function sendEmail({ to, subject, html, text }: SendEmailInput): Pr
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html, text }),
+      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html, text, ...(replyTo ? { reply_to: replyTo } : {}) }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
