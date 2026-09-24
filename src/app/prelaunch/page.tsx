@@ -22,6 +22,7 @@ function PrelaunchInner() {
   const [waiting, setWaiting] = useState<number | null>(null);
   const [interests, setInterests] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [voteState, setVoteState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
     let code: string | null = null;
@@ -61,13 +62,17 @@ function PrelaunchInner() {
 
   function toggleInterest(id: string) {
     if (!standing) return;
+    const prev = interests;
     const next = interests.includes(id) ? interests.filter(i => i !== id) : [...interests, id];
     setInterests(next);
+    setVoteState('saving');
     fetch('/api/prelaunch/interests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: standing.refCode, interests: next }),
-    }).catch(() => {});
+    })
+      .then(r => { if (!r.ok) throw new Error(); setVoteState('saved'); })
+      .catch(() => { setInterests(prev); setVoteState('error'); });
   }
 
   const shareUrl = standing ? `${typeof window !== 'undefined' ? window.location.origin : ''}/prelaunch?ref=${standing.refCode}` : '';
@@ -91,9 +96,9 @@ function PrelaunchInner() {
 
         {!standing ? (
           <>
-            <h1 style={{ ...t('title'), color: T.textStrong, margin: `${S[5]}px 0 0` }}>Luxury you can verify</h1>
+            <h1 style={{ ...t('title'), color: T.textStrong, margin: `${S[5]}px 0 0` }}>Prelaunch</h1>
             <p style={{ ...t('body'), color: T.textMuted, margin: `${S[2]}px 0 ${S[5]}px`, maxWidth: 340 }}>
-              Visby is a marketplace for sneakers, watches, bags and more, where every item carries a verified ownership history. Join the prelaunch for early access.
+              Visby is an online marketplace that verifies every item&apos;s ownership history to prove its authenticity. Join the prelaunch for access to exclusive product drops at launch.
             </p>
 
             <form onSubmit={join} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: S[3] }}>
@@ -135,8 +140,8 @@ function PrelaunchInner() {
             </div>
 
             <div style={{ width: '100%', marginTop: S[6] }}>
-              <p style={{ ...t('heading'), color: T.textStrong, margin: 0 }}>What are you into?</p>
-              <p style={{ ...t('meta'), color: T.textMuted, margin: `${S[1]}px 0 ${S[3]}px` }}>Tap any that apply. It helps us pick what launches first.</p>
+              <p style={{ ...t('heading'), color: T.textStrong, margin: 0 }}>Vote on the exclusive product drop category</p>
+              <p style={{ ...t('meta'), color: T.textMuted, margin: `${S[1]}px 0 ${S[3]}px` }}>Choose any that apply. The top category gets the first exclusive drop.</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: S[2], justifyContent: 'center' }}>
                 {PRELAUNCH_INTERESTS.map(i => {
                   const on = interests.includes(i.id);
@@ -147,6 +152,11 @@ function PrelaunchInner() {
                   );
                 })}
               </div>
+              {voteState !== 'idle' && (
+                <p role="status" style={{ ...t('meta'), color: voteState === 'error' ? 'var(--danger)' : T.textMuted, margin: `${S[3]}px 0 0` }}>
+                  {voteState === 'saving' ? 'Saving your vote…' : voteState === 'saved' ? (interests.length ? 'Vote saved' : 'Vote cleared') : 'Could not save your vote. Try again.'}
+                </p>
+              )}
             </div>
           </>
         )}
