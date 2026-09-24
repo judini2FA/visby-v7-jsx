@@ -143,7 +143,7 @@ export default function AdminWaitlistPage() {
 
       <div style={slider.wrap}>
         {(['signups', 'investors'] as const).map(k => (
-          <button key={k} type="button" onClick={() => setTab(k)} style={tab === k ? slider.itemActive : slider.item}>
+          <button key={k} type="button" onClick={() => setTab(k)} style={{ ...slider.item, ...(tab === k ? slider.itemActive : null) }}>
             {k === 'signups' ? `Signups (${signups.length})` : `Investors (${inquiries.length})`}
           </button>
         ))}
