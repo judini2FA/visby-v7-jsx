@@ -10,6 +10,21 @@ import { linkVisitor, recordMatch, syncHubSpot, upsertContact } from '@/lib/link
 
 // Document email gate. The document URL is only ever handed out here, after an email is recorded, so it
 // never appears in the /links page source.
+
+const SIGNED_TTL_SEC = 60 * 60;
+
+// storage://bucket/path → short-lived signed URL. PDFs open in the browser; other formats download under
+// their file name (phones can't render .docx/.xlsx inline from a raw URL reliably).
+async function resolveHref(db: ReturnType<typeof createServiceClient>, href: string | null): Promise<string | null> {
+  const m = href?.match(/^storage:\/\/([^/]+)\/(.+)$/);
+  if (!m) return href;
+  const [, bucket, path] = m;
+  const download = /\.pdf$/i.test(path) ? undefined : path.split('/').pop();
+  const { data, error } = await db.storage.from(bucket).createSignedUrl(path, SIGNED_TTL_SEC, download ? { download } : undefined);
+  if (error) throw new Error(`signed url: ${error.message}`);
+  return data.signedUrl;
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
 
@@ -30,6 +45,7 @@ export async function POST(req: Request) {
   const sid = jar.get(SID_COOKIE)?.value;
   const visitorId = isUuid(vid) ? vid : null;
 
+  let href: string | null;
   try {
     const db = createServiceClient();
     const contact = await upsertContact(db, { email, isStudent }, 'email_gate');
@@ -43,10 +59,11 @@ export async function POST(req: Request) {
     await recordMatch(db, { contactId: contact.id, visitorId: linked, sessionId: linked && isUuid(sid) ? sid : null, source: 'email_gate', evidence: 'self_reported', email });
     if (linked) await linkVisitor(db, linked, contact.id, 'self_reported');
     await syncHubSpot(email);
+    href = await resolveHref(db, doc.href);
   } catch (e) {
     console.error('[links] doc request failed', (e as Error).message);
     return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, href: doc.href });
+  return NextResponse.json({ ok: true, href });
 }

@@ -5,6 +5,9 @@
 // public/docs/ are served at /docs/<name> and are PUBLIC to anyone with the link. id is what analytics are
 // keyed on: keep it stable. gated: the visitor must give an email (and say if they're a student) first;
 // with href: null the request is still recorded and they're told a copy is on its way.
+// storage://<bucket>/<path> points at a PRIVATE Supabase Storage file; each request gets a 1-hour signed
+// link, so the file can't be fetched without going through the email gate. To swap a document, upload the
+// new file to the same path (or change the path here).
 
 export type HubLink = {
   id: string;
@@ -30,9 +33,9 @@ export const HUB_SECTIONS: HubSection[] = [
     id: 'investor-docs',
     title: 'Investor Documents',
     links: [
-      { id: 'business-plan', label: 'Get free copy of Business Plan', href: null, visible: true, gated: true },
-      { id: 'financial-projections', label: 'Get free copy of Financial Projections', href: null, visible: true, gated: true },
-      { id: 'pitch-deck', label: 'Get free copy of Pitch Deck', href: null, visible: true, gated: true },
+      { id: 'business-plan', label: 'Get free copy of Business Plan', href: 'storage://investor-docs/Visby-Business-Plan.docx', visible: true, gated: true },
+      { id: 'financial-projections', label: 'Get free copy of Financial Projections', href: 'storage://investor-docs/Visby-Financial-Projections.xlsx', visible: true, gated: true },
+      { id: 'pitch-deck', label: 'Get free copy of Pitch Deck', href: 'storage://investor-docs/Visby-Pitch-Deck.pdf', visible: true, gated: true },
     ],
   },
 ];
