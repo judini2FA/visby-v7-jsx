@@ -120,7 +120,11 @@ export function HubTracker() {
     const idle = (fn: () => void) => ('requestIdleCallback' in window ? (window as Window & { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(fn) : setTimeout(fn, 1200));
     idle(() => {
       if (allowVendors) {
-        if (RB2B_SRC) addScript(RB2B_SRC);
+        if (RB2B_SRC) {
+          // Mirrors RB2B's official loader, which flags itself on window before injecting the script.
+          const w = window as Window & { reb2b?: { loaded: boolean } };
+          if (!w.reb2b) { w.reb2b = { loaded: true }; addScript(RB2B_SRC); }
+        }
         if (WARMLY_ID) addScript(`https://opps-widget.getwarmly.com/warmly.js?clientId=${encodeURIComponent(WARMLY_ID)}`, { id: 'warmly-script-loader', defer: '' });
       }
       if (GOOGLE_ID && c !== 'declined' && !read(GOOGLE_KEY)) loadOneTap(n => setGreeting(n ? `Thanks, ${n}.` : 'Thanks.'));
