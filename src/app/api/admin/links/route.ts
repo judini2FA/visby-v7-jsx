@@ -12,21 +12,22 @@ async function allowed(req: Request, wallet: unknown): Promise<boolean> {
   return typeof wallet === 'string' && (await isAdminRole(wallet, 'super_admin')) && (await callerOwnsWallet(req, wallet));
 }
 
-const IDENTIFYING = new Set(['authenticated', 'first_party_record', 'provider_match']);
+const IDENTIFYING = new Set(['self_reported', 'first_party_record']);
 
 export async function GET(req: Request) {
   if (!(await allowed(req, new URL(req.url).searchParams.get('wallet')))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const db = createServiceClient();
-  const [visitors, contacts, matches, clicks, visits, invites, sessions] = await Promise.all([
-    db.from('hub_visitors').select('id, contact_id, status, visits, first_seen, last_seen, vendor_optout').order('last_seen', { ascending: false }).limit(5000),
+  const [visitors, contacts, matches, clicks, visits, invites, sessions, requests] = await Promise.all([
+    db.from('hub_visitors').select('id, contact_id, status, visits, first_seen, last_seen').order('last_seen', { ascending: false }).limit(5000),
     db.from('hub_contacts').select('*').order('last_seen', { ascending: false }).limit(5000),
     db.from('hub_identity_matches').select('contact_id, visitor_id, source, evidence, created_at').limit(20000),
     db.from('hub_events').select('visitor_id, link_id').eq('type', 'click').limit(50000),
     db.from('hub_events').select('id', { count: 'exact', head: true }).eq('type', 'visit'),
     db.from('hub_invites').select('id, token, label, contact_id, uses, last_used_at, revoked_at, created_at').order('created_at', { ascending: false }).limit(500),
     db.from('hub_sessions').select('visitor_id, campaign').not('campaign', 'is', null).limit(20000),
+    db.from('hub_doc_requests').select('contact_id, doc_id').limit(50000),
   ]);
   if (visitors.error) return NextResponse.json({ migrated: false });
 
@@ -47,6 +48,13 @@ export async function GET(req: Request) {
   for (const m of mrows) if (m.contact_id && IDENTIFYING.has(m.evidence)) identifiedContactIds.add(m.contact_id);
   for (const v of vrows) if (v.contact_id) identifiedContactIds.add(v.contact_id);
 
+  const docsByContact = new Map<string, Set<string>>();
+  const docRequests: Record<string, number> = {};
+  for (const r of requests.data ?? []) {
+    docRequests[r.doc_id] = (docRequests[r.doc_id] ?? 0) + 1;
+    docsByContact.set(r.contact_id, (docsByContact.get(r.contact_id) ?? new Set()).add(r.doc_id));
+  }
+
   const campaigns: Record<string, number> = {};
   for (const s of sessions.data ?? []) if (s.campaign) campaigns[s.campaign] = (campaigns[s.campaign] ?? 0) + 1;
 
@@ -54,11 +62,11 @@ export async function GET(req: Request) {
     const vs = visitorsByContact.get(c.id) ?? [];
     const links = Array.from(new Set(vs.flatMap(v => clicksByVisitor.get(v.id) ?? [])));
     const status = vs.some(v => v.status === 'conflict') ? 'conflict'
-      : vs.some(v => v.status === 'authenticated') ? 'authenticated'
       : vs.some(v => v.status === 'known_contact') ? 'known_contact'
-      : identifiedContactIds.has(c.id) ? 'provider_match' : 'invited';
+      : identifiedContactIds.has(c.id) ? 'self_reported' : 'invited';
     return {
-      id: c.id, email: c.email, name: c.name, company: c.company, title: c.title, linkedin_url: c.linkedin_url,
+      id: c.id, email: c.email, name: c.name, is_student: c.is_student as boolean | null,
+      docs: Array.from(docsByContact.get(c.id) ?? []),
       sources: c.sources, prior_records: c.prior_records, status,
       first_seen: c.first_seen, last_seen: c.last_seen,
       visits: vs.reduce((n, v) => n + v.visits, 0), links,
@@ -77,7 +85,9 @@ export async function GET(req: Request) {
       identificationRate: unique ? Math.min(1, identified.length / unique) : 0,
       emailsCollected: identified.filter(c => c.email).length,
       returningVisitors: vrows.filter(v => v.visits > 1).length,
-      vendorOptOuts: vrows.filter(v => v.vendor_optout).length,
+      investors: contactRows.filter(c => c.is_student === false).length,
+      students: contactRows.filter(c => c.is_student === true).length,
+      docRequests,
       clicks: clickCounts,
       campaigns,
     },

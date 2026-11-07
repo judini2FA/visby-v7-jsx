@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { createServiceClient } from '@/lib/supabase/service';
-import { nextVisitorState, type Evidence, type MatchSource, type ProviderIdentity, type VisitorStatus } from '@/lib/links-hub';
+import { nextVisitorState, type Evidence, type MatchSource, type VisitorStatus } from '@/lib/links-hub';
 
 type Db = ReturnType<typeof createServiceClient>;
 
@@ -18,54 +18,41 @@ export async function priorRecords(db: Db, email: string): Promise<string[]> {
   return out;
 }
 
-type ContactRow = { id: string; email: string | null; linkedin_url: string | null; name: string | null; company: string | null; title: string | null; sources: string[]; prior_records: string[] };
+type ContactRow = { id: string; email: string; name: string | null; is_student: boolean | null; sources: string[]; prior_records: string[] };
 
-// Dedup key order: email, then LinkedIn URL. A provider hit without either is not stored as a person.
-export async function upsertContact(db: Db, id: Partial<ProviderIdentity> & { email: string | null }, source: MatchSource): Promise<ContactRow | null> {
-  const linkedin = id.linkedin ?? null;
-  if (!id.email && !linkedin) return null;
-
-  let existing: ContactRow | null = null;
-  if (id.email) existing = (await db.from('hub_contacts').select('*').eq('email', id.email).maybeSingle()).data as ContactRow | null;
-  if (!existing && linkedin) existing = (await db.from('hub_contacts').select('*').eq('linkedin_url', linkedin).maybeSingle()).data as ContactRow | null;
-
-  const prior = id.email ? await priorRecords(db, id.email) : [];
-  const now = new Date().toISOString();
+export async function upsertContact(db: Db, c: { email: string; name?: string | null; isStudent?: boolean }, source: MatchSource): Promise<ContactRow | null> {
+  const { data: existing } = await db.from('hub_contacts').select('*').eq('email', c.email).maybeSingle();
+  const prior = await priorRecords(db, c.email);
+  const studentPatch = c.isStudent === undefined ? {} : { is_student: c.isStudent };
 
   if (existing) {
-    const patch = {
-      email: existing.email ?? id.email,
-      linkedin_url: existing.linkedin_url ?? linkedin,
-      name: existing.name ?? id.name ?? null,
-      company: existing.company ?? id.company ?? null,
-      title: existing.title ?? id.title ?? null,
+    const { data } = await db.from('hub_contacts').update({
+      name: existing.name ?? c.name ?? null,
       sources: Array.from(new Set([...(existing.sources ?? []), source])),
       prior_records: Array.from(new Set([...(existing.prior_records ?? []), ...prior])),
-      last_seen: now,
-    };
-    const { data } = await db.from('hub_contacts').update(patch).eq('id', existing.id).select('*').single();
-    return (data as ContactRow) ?? existing;
+      last_seen: new Date().toISOString(),
+      ...studentPatch,
+    }).eq('id', existing.id).select('*').single();
+    return (data as ContactRow) ?? (existing as ContactRow);
   }
 
   const { data, error } = await db.from('hub_contacts').insert({
-    email: id.email, linkedin_url: linkedin, name: id.name ?? null, company: id.company ?? null, title: id.title ?? null,
-    sources: [source], prior_records: prior,
+    email: c.email, name: c.name ?? null, sources: [source], prior_records: prior, ...studentPatch,
   }).select('*').single();
-  if (error?.code === '23505') return upsertContact(db, id, source);
+  if (error?.code === '23505') return upsertContact(db, c, source);
   return (data as ContactRow) ?? null;
 }
 
 export async function recordMatch(db: Db, m: {
-  contactId: string | null; visitorId?: string | null; sessionId?: string | null; source: MatchSource; evidence: Evidence;
-  email?: string | null; capturedUrl?: string | null; payload?: unknown;
+  contactId: string | null; visitorId?: string | null; sessionId?: string | null; source: MatchSource; evidence: Evidence; email?: string | null;
 }) {
   await db.from('hub_identity_matches').insert({
     contact_id: m.contactId, visitor_id: m.visitorId ?? null, session_id: m.sessionId ?? null,
-    source: m.source, evidence: m.evidence, email: m.email ?? null, captured_url: m.capturedUrl ?? null, payload: m.payload ?? null,
+    source: m.source, evidence: m.evidence, email: m.email ?? null,
   });
 }
 
-export async function linkVisitor(db: Db, visitorId: string, contactId: string, status: 'provider_match' | 'known_contact' | 'authenticated'): Promise<VisitorStatus> {
+export async function linkVisitor(db: Db, visitorId: string, contactId: string, status: 'self_reported' | 'known_contact'): Promise<VisitorStatus> {
   const { data: cur } = await db.from('hub_visitors').select('contact_id, status').eq('id', visitorId).maybeSingle();
   if (!cur) return 'anonymous';
   const next = nextVisitorState({ contactId: cur.contact_id, status: cur.status as VisitorStatus }, { contactId, status });
@@ -74,20 +61,14 @@ export async function linkVisitor(db: Db, visitorId: string, contactId: string, 
 }
 
 // Optional CRM mirror. Only runs when HUBSPOT_PRIVATE_APP_TOKEN is set; failures never affect the hub.
-export async function syncHubSpot(c: { email: string | null; name: string | null; company: string | null; title: string | null; source: string }) {
+export async function syncHubSpot(email: string) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
-  if (!token || !c.email) return;
-  const [firstname, ...rest] = (c.name ?? '').split(' ');
-  const properties: Record<string, string> = { email: c.email };
-  if (firstname) properties.firstname = firstname;
-  if (rest.length) properties.lastname = rest.join(' ');
-  if (c.company) properties.company = c.company;
-  if (c.title) properties.jobtitle = c.title;
+  if (!token) return;
   try {
     await fetch('https://api.hubapi.com/crm/v3/objects/contacts/batch/upsert', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs: [{ idProperty: 'email', id: c.email, properties }] }),
+      body: JSON.stringify({ inputs: [{ idProperty: 'email', id: email, properties: { email } }] }),
       signal: AbortSignal.timeout(5000),
     });
   } catch (e) {

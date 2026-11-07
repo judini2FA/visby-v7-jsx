@@ -4,24 +4,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { useVisbWallet } from '@/lib/wallet';
-import { t, S, T, surface, btn, input, sectionLabel, tabSlider } from '@/lib/ui';
+import { t, S, T, surface, btn, badge, input, sectionLabel, tabSlider } from '@/lib/ui';
 import { HUB_URL } from '@/lib/links-config';
 
 type Contact = {
-  id: string; email: string | null; name: string | null; company: string | null; title: string | null; linkedin_url: string | null;
+  id: string; email: string; name: string | null; is_student: boolean | null; docs: string[];
   sources: string[]; prior_records: string[]; status: string; first_seen: string; last_seen: string; visits: number; links: string[]; identified: boolean;
 };
-type Anon = { id: string; status: string; visits: number; first_seen: string; last_seen: string; vendor_optout: boolean; links: string[] };
+type Anon = { id: string; status: string; visits: number; first_seen: string; last_seen: string; links: string[] };
 type Invite = { id: string; token: string; label: string; contact_id: string | null; uses: number; last_used_at: string | null; revoked_at: string | null; created_at: string };
 type Metrics = {
   totalVisits: number; uniqueVisitors: number; identifiedVisitors: number; identificationRate: number; emailsCollected: number;
-  returningVisitors: number; vendorOptOuts: number; clicks: Record<string, number>; campaigns: Record<string, number>;
+  returningVisitors: number; investors: number; students: number; docRequests: Record<string, number>;
+  clicks: Record<string, number>; campaigns: Record<string, number>;
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  anonymous: 'Anonymous', returning: 'Returning anonymous', known_contact: 'Existing contact', provider_match: 'Provider match',
-  authenticated: 'Authenticated', conflict: 'Conflicting evidence', invited: 'Invited (not yet identified)',
+  anonymous: 'Anonymous', returning: 'Returning anonymous', known_contact: 'Prelaunch signup', self_reported: 'Gave email',
+  conflict: 'Two emails on one device', invited: 'Invited (not yet seen)',
 };
+
+const kind = (c: Contact) => (c.is_student === true ? 'Student' : c.is_student === false ? 'Investor' : '');
 
 const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
 
@@ -38,8 +41,8 @@ function download(name: string, href: string) {
 }
 
 function downloadCsv(rows: Contact[]) {
-  const head = ['name', 'email', 'company', 'title', 'linkedin', 'sources', 'status', 'existing_records', 'first_seen', 'last_seen', 'visits', 'links_clicked'];
-  const lines = rows.map(r => [r.name, r.email, r.company, r.title, r.linkedin_url, r.sources, STATUS_LABEL[r.status] ?? r.status, r.prior_records, r.first_seen, r.last_seen, r.visits, r.links].map(csvCell).join(','));
+  const head = ['email', 'type', 'documents_requested', 'name', 'sources', 'status', 'existing_records', 'first_seen', 'last_seen', 'visits', 'links_clicked'];
+  const lines = rows.map(r => [r.email, kind(r), r.docs, r.name, r.sources, STATUS_LABEL[r.status] ?? r.status, r.prior_records, r.first_seen, r.last_seen, r.visits, r.links].map(csvCell).join(','));
   const url = URL.createObjectURL(new Blob([[head.join(','), ...lines].join('\n')], { type: 'text/csv' }));
   download(`visby-links-contacts-${new Date().toISOString().slice(0, 10)}.csv`, url);
   URL.revokeObjectURL(url);
@@ -89,6 +92,7 @@ export default function AdminLinksPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [tab, setTab] = useState<'contacts' | 'anonymous' | 'qr'>('contacts');
   const [q, setQ] = useState('');
+  const [who, setWho] = useState<'all' | 'Investor' | 'Student'>('all');
   const [campaign, setCampaign] = useState('');
   const [inviteLabel, setInviteLabel] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -124,8 +128,8 @@ export default function AdminLinksPage() {
   const linkLabel = useMemo(() => Object.fromEntries(links.map(l => [l.id, l.label])), [links]);
   const shown = useMemo(() => {
     const n = q.trim().toLowerCase();
-    return contacts.filter(c => !n || [c.email, c.name, c.company].some(v => v?.toLowerCase().includes(n)));
-  }, [contacts, q]);
+    return contacts.filter(c => (who === 'all' || kind(c) === who) && (!n || [c.email, c.name].some(v => v?.toLowerCase().includes(n))));
+  }, [contacts, q, who]);
 
   if (state === 'loading') return <p style={{ ...t('meta'), color: T.textMuted, padding: S[5], textAlign: 'center' }}>Loading…</p>;
   if (state === 'forbidden') return <p style={{ ...t('heading'), color: T.textMuted, padding: S[5], textAlign: 'center' }}>Super admin only</p>;
@@ -145,11 +149,13 @@ export default function AdminLinksPage() {
   const tiles: [string, string][] = [
     ['Total visits', m.totalVisits.toLocaleString()],
     ['Unique visitors', m.uniqueVisitors.toLocaleString()],
-    ['Identified', m.identifiedVisitors.toLocaleString()],
-    ['ID rate', `${Math.round(m.identificationRate * 100)}%`],
     ['Emails collected', m.emailsCollected.toLocaleString()],
+    ['Investors', m.investors.toLocaleString()],
+    ['Students', m.students.toLocaleString()],
     ['Returning', m.returningVisitors.toLocaleString()],
-    ...links.map(l => [`${l.label} clicks`, (m.clicks[l.id] ?? 0).toLocaleString()] as [string, string]),
+    ...links.map(l => (m.docRequests[l.id] != null || /^Get free copy/.test(l.label)
+      ? [`${l.label.replace(/^Get free copy of /, '')} requests`, (m.docRequests[l.id] ?? 0).toLocaleString()]
+      : [`${l.label} clicks`, (m.clicks[l.id] ?? 0).toLocaleString()]) as [string, string]),
   ];
 
   return (
@@ -163,7 +169,7 @@ export default function AdminLinksPage() {
         ))}
       </div>
       <p style={{ ...t('meta'), color: T.textMuted, margin: 0 }}>
-        Identified = distinct people with real identity evidence (Google sign-in, an existing prelaunch record in the same browser, or an RB2B/Warmly match), counted once across sources. ID rate is that over unique visitors. {m.vendorOptOuts} visitor{m.vendorOptOuts === 1 ? '' : 's'} opted out of third-party identification.
+        Emails come from the free-copy form in front of each document. Anyone who didn&apos;t tick &quot;I&apos;m a student&quot; is counted as an investor.
         {Object.keys(m.campaigns).length > 0 && ` Campaign sessions: ${Object.entries(m.campaigns).map(([k, v]) => `${k} ${v}`).join(' · ')}.`}
       </p>
 
@@ -180,26 +186,33 @@ export default function AdminLinksPage() {
       {tab === 'contacts' && (
         <>
           <div style={{ display: 'flex', gap: S[2] }}>
-            <input placeholder="Search name, email, company" value={q} onChange={e => setQ(e.target.value)} style={{ ...input(), flex: 1, minWidth: 0 }} />
+            {(['all', 'Investor', 'Student'] as const).map(k => (
+              <button key={k} type="button" aria-pressed={who === k} onClick={() => setWho(k)} style={btn(who === k ? 'primary' : 'secondary')}>
+                {k === 'all' ? 'All' : `${k}s`}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: S[2] }}>
+            <input placeholder="Search email" value={q} onChange={e => setQ(e.target.value)} style={{ ...input(), flex: 1, minWidth: 0 }} />
             <button type="button" onClick={() => downloadCsv(shown)} disabled={!shown.length} style={btn('secondary')}>Export CSV</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: S[2] }}>
             {shown.map(c => (
               <div key={c.id} style={{ ...surface({ pad: `${S[3]}px ${S[4]}px` }), display: 'flex', flexDirection: 'column', gap: S[1] }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: S[2] }}>
-                  <span style={{ ...t('heading'), color: T.textStrong }}>{c.name ?? c.email ?? c.linkedin_url}</span>
-                  {c.email && c.name && <a href={`mailto:${c.email}`} style={{ ...t('meta'), color: T.sky }}>{c.email}</a>}
-                  {c.company && <span style={{ ...t('meta'), color: T.textMuted }}>{c.company}{c.title ? ` · ${c.title}` : ''}</span>}
+                  <a href={`mailto:${c.email}`} style={{ ...t('heading'), color: T.textStrong, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.email}</a>
+                  {kind(c) && <span style={badge(kind(c) === 'Investor' ? 'success' : 'default')}>{kind(c)}</span>}
                   <span style={{ ...t('meta'), color: c.status === 'conflict' ? 'var(--danger)' : T.text, marginLeft: 'auto' }}>{STATUS_LABEL[c.status] ?? c.status}</span>
                 </div>
                 <div style={{ ...t('meta'), color: T.textMuted, display: 'flex', flexWrap: 'wrap', gap: S[3] }}>
+                  {c.docs.length > 0 && <span>Requested: {c.docs.map(d => (linkLabel[d] ?? d).replace(/^Get free copy of /, '')).join(', ')}</span>}
                   <span>Source: {c.sources.join(', ')}</span>
                   {c.prior_records.length > 0 && <span>Existing: {c.prior_records.join(', ')}</span>}
                   <span>{c.visits} visit{c.visits === 1 ? '' : 's'}</span>
                   <span>First {fmtDate(c.first_seen)} · Last {fmtDate(c.last_seen)}</span>
                   {c.links.length > 0 && <span>Clicked: {c.links.map(l => linkLabel[l] ?? l).join(', ')}</span>}
                   <button type="button" style={{ ...btn('text'), ...t('meta'), padding: 0, marginLeft: 'auto' }} onClick={() => {
-                    if (confirm(`Permanently delete ${c.email ?? c.name ?? 'this contact'} and its identity records?`)) act({ action: 'delete_contact', id: c.id });
+                    if (confirm(`Permanently delete ${c.email} and its records?`)) act({ action: 'delete_contact', id: c.id });
                   }}>Delete</button>
                 </div>
               </div>
@@ -217,7 +230,6 @@ export default function AdminLinksPage() {
               <span>{STATUS_LABEL[v.status] ?? v.status}</span>
               <span>{v.visits} visit{v.visits === 1 ? '' : 's'}</span>
               {v.links.length > 0 && <span>Clicked: {v.links.map(l => linkLabel[l] ?? l).join(', ')}</span>}
-              {v.vendor_optout && <span>Opted out</span>}
               <span style={{ marginLeft: 'auto' }}>{fmtDate(v.last_seen)}</span>
             </div>
           ))}

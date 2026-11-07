@@ -3,6 +3,7 @@ import { t, S, T, card, surface, sectionLabel } from '@/lib/ui';
 import { visibleSections } from '@/lib/links-config';
 import { PrelaunchWordmark } from '../prelaunch/wordmark';
 import { HubTracker } from './tracker';
+import { DocGate } from './doc-gate';
 
 export const metadata: Metadata = {
   title: 'Visby — Links',
@@ -31,7 +32,10 @@ export default function LinksPage() {
           {sections.map(section => (
             <section key={section.id} style={{ display: 'flex', flexDirection: 'column', gap: S[2], textAlign: 'left' }}>
               {section.title && <h2 style={{ ...sectionLabel(), margin: `0 0 ${S[1]}px` }}>{section.title}</h2>}
-              {section.links.map(link => {
+              {section.links.some(l => l.gated) && (
+                <DocGate docs={section.links.filter(l => l.gated).map(({ id, label, description }) => ({ id, label, description }))} />
+              )}
+              {section.links.filter(l => !l.gated).map(link => {
                 const body = (
                   <>
                     <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>

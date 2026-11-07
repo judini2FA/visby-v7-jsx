@@ -49,7 +49,6 @@ export async function POST(req: Request) {
     }
     const { error: touchErr } = await db.rpc('hub_touch_visitor', { p_id: vid, p_new_session: newSession });
     if (touchErr) throw touchErr;
-    if (body.vo === true) await db.from('hub_visitors').update({ vendor_optout: true }).eq('id', vid);
 
     if (newSession) {
       let inviteId: string | null = null;
