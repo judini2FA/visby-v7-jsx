@@ -5,7 +5,7 @@ import { PREVIEW_COOKIE, previewToken, safeEqual } from '@/lib/prelaunch-shared'
 // preview cookie, issued by visiting /prelaunch/unlock?key=<PRELAUNCH_KEY>. /api is deliberately NOT
 // gated (see matcher): Stripe/shipping webhooks and crons must keep landing, and routes carry their own auth.
 
-const PUBLIC_PREFIXES = ['/prelaunch', '/legal'];
+const PUBLIC_PREFIXES = ['/prelaunch', '/legal', '/links'];
 
 export async function middleware(req: NextRequest) {
   if (process.env.PRELAUNCH_MODE !== 'on') return NextResponse.next();

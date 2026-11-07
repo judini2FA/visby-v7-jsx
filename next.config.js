@@ -100,10 +100,24 @@ const nextConfig = {
                   });
           }
 
+          // The /links QR hub loads Google One Tap plus the RB2B/Warmly visitor-ID scripts, whose asset and
+          // beacon hosts are vendor-controlled and change without notice. Widen script/connect/frame to any
+          // https origin on that one page only; every other route keeps the strict global policy.
+          const linksCsp = csp
+                  .replace("script-src 'self'", "script-src 'self' https:")
+                  .replace("connect-src 'self'", "connect-src 'self' https:")
+                  .replace("frame-src 'self'", "frame-src 'self' https:")
+                  .replace("img-src 'self'", "img-src 'self' https:")
+                  .replace("style-src 'self'", "style-src 'self' https:");
+
           return [
                   {
                           source: '/:path*',
                           headers: securityHeaders,
+                  },
+                  {
+                          source: '/links',
+                          headers: [{ key: 'Content-Security-Policy', value: linksCsp }],
                   },
           ];
     },

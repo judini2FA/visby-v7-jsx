@@ -24,6 +24,24 @@
         "3100"
       ],
       "port": 3100
+    },
+    {
+      "name": "next-dev-links-e2e",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PRELAUNCH_MODE=on",
+        "PRELAUNCH_KEY=local-test-key",
+        "RB2B_WEBHOOK_SECRET=local-rb2b",
+        "WARMLY_WEBHOOK_SECRET=local-warmly",
+        "NEXT_PUBLIC_RB2B_SCRIPT_SRC=/rb2b-test.js",
+        "NEXT_PUBLIC_WARMLY_CLIENT_ID=test",
+        "npx",
+        "next",
+        "dev",
+        "-p",
+        "3101"
+      ],
+      "port": 3101
     }
   ]
 }
