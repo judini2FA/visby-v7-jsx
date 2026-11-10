@@ -23,7 +23,7 @@ const MOCKS: Record<string, Mock[]> = {
   tally: [
     { label: 'A Tally card for a new item with one owner', node: <HistoryScreen count={1} /> },
     { label: 'A Tally card listing three owners', node: <HistoryScreen count={3} /> },
-    { label: 'The chain of owners from Kith to the current owner', node: <ChainScreen /> },
+    { label: 'The chain of owners from Nike to the current owner', node: <ChainScreen /> },
   ],
   money: [
     { label: 'Checkout paying by card with free shipping', node: <CheckoutScreen /> },
@@ -36,10 +36,10 @@ const MOCKS: Record<string, Mock[]> = {
     { label: 'A finished sale showing what the seller received', node: <SaleScreen /> },
   ],
   pay: [
-    { label: "A real product page on kith.com with a Pay with Visby button under Add to cart", node: <ShotScreen src="/demo/kith-product.jpg" width={720} height={1274} />, flush: true },
-    { label: "kith.com's real checkout with Pay with Visby at the top of the quick-pay options", node: <ShotScreen src="/demo/kith-checkout.jpg" width={720} height={556} />, flush: true },
+    { label: 'A real product page on nike.com with the VisbyPay button under Add to Bag', node: <ShotScreen src="/demo/nike-product.jpg" width={447} height={804} />, flush: true },
+    { label: "nike.com's real bag page with the VisbyPay button under Checkout", node: <ShotScreen src="/demo/nike-checkout.jpg" width={397} height={706} />, flush: true },
     { label: 'The Visby Pay checkout', node: <PayCheckoutScreen /> },
-    { label: 'A confirmation saying the Tally is ready, with Kith as the original minter', node: <PayDoneScreen /> },
+    { label: 'A confirmation saying the Tally is ready, with Nike as the original minter', node: <PayDoneScreen /> },
   ],
 };
 

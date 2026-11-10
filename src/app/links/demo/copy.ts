@@ -32,11 +32,25 @@ export const SECTIONS: Section[] = [
     title: "A Tally is your item's history",
     intro: 'Think of it as a receipt that never gets lost and travels with the item wherever it goes.',
     steps: [
-      { title: 'The brand creates it', body: 'When a brand like Kith sells an item through Visby, it creates the Tally. The brand is the original minter and the first name on the list.' },
+      { title: 'The brand creates it', body: 'When a brand like Nike sells an item through Visby, it creates the Tally. The brand is the original minter and the first name on the list.' },
       { title: 'It remembers every owner', body: 'Each time the item is sold, the new owner is added to the list. Old owners stay on it, so the history only grows.' },
       { title: 'The list is the proof', body: 'Owners and authenticity are one thing here. If the brand is first and every owner after is on the list in order, the item has a clear path from the brand to you.' },
     ],
     curious: "Underneath, a Tally is an NFT: a digital certificate stored on a blockchain, which is a record book copied across many computers so it is very hard to rewrite. The certificate holds the item's name, serial number and first owner. When the item sells, Visby moves the certificate to the new owner and the move is added to its history. Anyone can look up an item's history, but only the current owner can see its serial number.",
+  },
+  {
+    id: 'pay',
+    nav: 'Visby Pay',
+    eyebrow: 'Visby Pay',
+    title: 'How Visby Pay works',
+    intro: 'A checkout button any online store can add to its own website. Shoppers get the item and its Tally.',
+    steps: [
+      { title: 'A store adds the button', body: 'The store puts VisbyPay right under its Add to Bag button, so shoppers can pick it without leaving the page.' },
+      { title: 'It shows up at checkout too', body: 'On the bag page it sits under the Checkout button, next to other ways to pay like PayPal.' },
+      { title: 'You pay on a Visby page', body: 'A secure Visby checkout opens. Sign in with an email code, pay with your card, and you are done. No password to remember.' },
+      { title: 'You get the item and its Tally', body: 'The store ships your item, and your Tally is created at the same moment with the store as the original minter. The store is told the sale went through and pays Visby 3.5% per sale.' },
+    ],
+    curious: "The store's website asks Visby to open a checkout for one order and gets back a secure link. The shopper pays on that Visby page. When the payment clears, Visby creates the Tally in the shopper's name and sends the store a signed message confirming the sale, so the store knows it is real. The store never has to handle crypto or build its own Tally system.",
   },
   {
     id: 'money',
@@ -64,25 +78,11 @@ export const SECTIONS: Section[] = [
     ],
     curious: "Reselling uses the same Tally, so nothing is created twice. When the sale finishes, the certificate moves to the buyer's Visby account and a new line is added to the history. The buyer's account is created for them automatically when they sign up, so there is nothing to set up.",
   },
-  {
-    id: 'pay',
-    nav: 'Visby Pay',
-    eyebrow: 'Visby Pay',
-    title: 'How Visby Pay works',
-    intro: 'A checkout button any online store can add to its own website. Shoppers get the item and its Tally.',
-    steps: [
-      { title: 'A store adds the button', body: 'The store puts Pay with Visby right next to its Add to cart button, so shoppers can pick it without leaving the page.' },
-      { title: 'It shows up at checkout too', body: 'At checkout it sits at the top with the other quick-pay options, like Shop Pay and PayPal.' },
-      { title: 'You pay on a Visby page', body: 'A secure Visby checkout opens. Sign in with an email code, pay with your card, and you are done. No password to remember.' },
-      { title: 'You get the item and its Tally', body: 'The store ships your item, and your Tally is created at the same moment with the store as the original minter. The store is told the sale went through and pays Visby 3.5% per sale.' },
-    ],
-    curious: "The store's website asks Visby to open a checkout for one order and gets back a secure link. The shopper pays on that Visby page. When the payment clears, Visby creates the Tally in the shopper's name and sends the store a signed message confirming the sale, so the store knows it is real. The store never has to handle crypto or build its own Tally system.",
-  },
 ];
 
 export const FOOTER = {
   note: 'Screens show example items and prices.',
-  noPartner: "The store pages above are real websites with a Pay with Visby button added by us to show how it could look. Kith, Nordgreen and the other brands shown are not Visby partners. Their names, logos and photos belong to them.",
+  noPartner: "The store pages above are real websites with a Pay with Visby button added by us to show how it could look. Nike, Rolex, Apple, Kay and the other brands shown are not Visby partners. Their names, logos and photos belong to them.",
   cta: 'Join the Prelaunch',
   back: 'Back to all links',
   curiousLabel: 'Curious how it works underneath?',

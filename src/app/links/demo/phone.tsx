@@ -4,6 +4,8 @@ import { S, surface } from '@/lib/ui';
 // A phone-shaped frame for the walkthrough. The inside is a plain surface (no blur) so nothing is glass on glass.
 export function PhoneFrame({ children, label }: { children: ReactNode; label: string }) {
   return (
+    <>
+    <style dangerouslySetInnerHTML={{ __html: '.vp-scroll > * { flex-shrink: 0; } .vp-scroll::-webkit-scrollbar { display: none; }' }} />
     <div style={{
       width: '100%', maxWidth: 300, height: 500, borderRadius: 36, padding: 8,
       background: '#15121C', boxShadow: 'var(--glass-shadow)', boxSizing: 'border-box',
@@ -15,11 +17,12 @@ export function PhoneFrame({ children, label }: { children: ReactNode; label: st
         <div aria-hidden style={{ height: 24, display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
           <div style={{ width: 72, height: 6, borderRadius: 3, background: 'var(--divider)' }} />
         </div>
-        <div style={{ flex: 1, minHeight: 0, padding: `0 ${S[3]}px ${S[3]}px`, display: 'flex', flexDirection: 'column', gap: S[3] }}>
+        <div className="vp-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarWidth: 'none', padding: `0 ${S[3]}px ${S[3]}px`, display: 'flex', flexDirection: 'column', gap: S[3] }}>
           {children}
         </div>
       </div>
     </div>
+    </>
   );
 }
 
@@ -27,7 +30,7 @@ export function PhoneFrame({ children, label }: { children: ReactNode; label: st
 export function Panel({ children, label, style, flush }: { children: ReactNode; label: string; style?: CSSProperties; flush?: boolean }) {
   return (
     <div role="img" aria-label={label} style={{
-      ...surface({ radius: 'var(--r-lg)', pad: flush ? 0 : S[3] }), width: '100%', maxWidth: 300, alignSelf: 'center',
+      ...surface({ radius: 'var(--r-lg)', pad: flush ? 0 : S[3] }), width: '100%', maxWidth: flush ? 420 : 300, alignSelf: 'center',
       display: 'flex', flexDirection: 'column', gap: S[3], boxSizing: 'border-box', overflow: flush ? 'hidden' : undefined, ...style,
     }}>
       {children}

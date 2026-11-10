@@ -22,8 +22,8 @@ describe('demo page wording', () => {
 
   it('has copy for six walkthrough steps and four sections', () => {
     expect(copy.WALKTHROUGH).toHaveLength(6);
-    expect(copy.SECTIONS.map(s => s.id)).toEqual(['tally', 'money', 'resale', 'pay']);
-    expect(copy.SECTIONS.map(s => s.steps.length)).toEqual([3, 3, 3, 4]);
+    expect(copy.SECTIONS.map(s => s.id)).toEqual(['tally', 'pay', 'money', 'resale']);
+    expect(copy.SECTIONS.map(s => s.steps.length)).toEqual([3, 4, 3, 3]);
   });
 
   it('keeps every sentence short', () => {
@@ -40,6 +40,20 @@ describe('demo page wording', () => {
     for (const f of files) {
       const src = fs.readFileSync(path.join(dir, f), 'utf8');
       for (const re of BANNED) expect(src, `${f} matches ${re}`).not.toMatch(re);
+    }
+  });
+
+  it('has every demo image on disk and not empty', () => {
+    const pub = path.join(dir, '..', '..', '..', '..', 'public');
+    const refs = new Set<string>();
+    for (const f of files) {
+      for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/['"`](\/demo\/[A-Za-z0-9_.-]+\.(?:jpg|png|webp|svg))['"`]/g)) refs.add(m[1]);
+    }
+    expect(refs.size).toBeGreaterThan(10);
+    for (const r of refs) {
+      const full = path.join(pub, r);
+      expect(fs.existsSync(full), `${r} is missing from public/`).toBe(true);
+      expect(fs.statSync(full).size, `${r} looks empty`).toBeGreaterThan(1500);
     }
   });
 });
