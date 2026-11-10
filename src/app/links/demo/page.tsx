@@ -36,8 +36,8 @@ const MOCKS: Record<string, Mock[]> = {
     { label: 'A finished sale showing what the seller received', node: <SaleScreen /> },
   ],
   pay: [
-    { label: 'A real product page on nike.com with the VisbyPay button under Add to Bag', node: <ShotScreen src="/demo/nike-product.jpg" width={935} height={1683} pill={{ left: 4.71, top: 82.53, width: 90.48, height: 7.61 }} />, flush: true },
-    { label: "nike.com's real bag page with the VisbyPay button under Checkout", node: <ShotScreen src="/demo/nike-checkout.jpg" width={940} height={1674} pill={{ left: 4.36, top: 78.2, width: 91.28, height: 8.06 }} />, flush: true },
+    { label: 'A real product page on nike.com with the VisbyPay button under Add to Bag', node: <ShotScreen src="/demo/nike-product.jpg" width={935} height={1683} pill={{ left: 4.92, top: 82.53, width: 90.16, height: 7.84 }} />, flush: true },
+    { label: "nike.com's real bag page with the VisbyPay button under Checkout", node: <ShotScreen src="/demo/nike-checkout.jpg" width={940} height={1673} pill={{ left: 4.47, top: 77.76, width: 91.06, height: 8.43 }} />, flush: true },
     { label: 'The Visby Pay checkout', node: <PayCheckoutScreen /> },
     { label: 'A confirmation saying the Tally is ready, with Nike as the original minter', node: <PayDoneScreen /> },
   ],

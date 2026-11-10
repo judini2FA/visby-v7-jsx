@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { t, S, T, btn, card, sectionLabel } from '@/lib/ui';
 import { PhoneFrame } from './phone';
 import { HomeScreen, ItemScreen, CheckoutScreen, OrderScreen, ResellScreen } from './screens';
@@ -15,7 +15,9 @@ const SCREENS: { label: string; node: ReactNode }[] = [
   { label: 'Listing the item for resale with the fee and payout shown', node: <ResellScreen /> },
 ];
 
-const OUT_MS = 170;
+// globals.css turns all motion off site-wide (!important). The walkthrough opts back in on purpose, scoped to
+// .vp-slide, and still honours prefers-reduced-motion.
+const OUT_MS = 200;
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 export function Walkthrough() {
@@ -25,6 +27,9 @@ export function Walkthrough() {
   const [dragging, setDragging] = useState(false);
   const [leaving, setLeaving] = useState<1 | -1 | 0>(0);   // slide-out in progress (1 = going to next)
   const gesture = useRef<{ x: number; y: number; locked: boolean } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const wheel = useRef({ acc: 0, timer: 0, lockedUntil: 0 });
+  const latest = useRef({ i: 0, leaving: 0 as 1 | -1 | 0, commit: (_n: number) => {} });
   const last = WALKTHROUGH.length - 1;
   const step = WALKTHROUGH[i];
 
@@ -41,9 +46,11 @@ export function Walkthrough() {
     window.setTimeout(() => { setLeaving(0); setDx(0); show(n); }, OUT_MS);
   }
 
-  // Touch and pen only: a mouse drag would fight text selection. Vertical drags still scroll the phone.
+  latest.current = { i, leaving, commit };
+
+  // Touch, pen and mouse drags. Vertical drags still scroll the phone's home screen.
   const onDown = (e: PointerEvent) => {
-    if (e.pointerType === 'mouse' || leaving) return;
+    if (leaving || (e.pointerType === 'mouse' && e.button !== 0)) return;
     gesture.current = { x: e.clientX, y: e.clientY, locked: false };
   };
   const onMove = (e: PointerEvent) => {
@@ -70,11 +77,36 @@ export function Walkthrough() {
   };
   const onCancel = () => { gesture.current = null; setDragging(false); setDx(0); };
 
+  // Trackpad two-finger sideways scrolls: follow a little, then change step once it passes a threshold.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      const w = wheel.current, { i: cur, leaving: busy, commit: go } = latest.current;
+      if (busy || Date.now() < w.lockedUntil) return;
+      w.acc += e.deltaX;
+      const target = w.acc > 0 ? cur + 1 : cur - 1;
+      const blocked = target < 0 || target > WALKTHROUGH.length - 1;
+      setDx(Math.max(-120, Math.min(120, -w.acc * (blocked ? 0.2 : 0.6))));
+      window.clearTimeout(w.timer);
+      w.timer = window.setTimeout(() => { w.acc = 0; setDx(0); }, 140);
+      if (Math.abs(w.acc) > 90 && !blocked) { w.acc = 0; w.lockedUntil = Date.now() + 600; go(target); }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowRight') { e.preventDefault(); commit(i + 1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); commit(i - 1); }
+  };
+
   const slideStyle = {
     display: 'flex', flexDirection: 'column', gap: S[3], flexShrink: 0,
     transform: leaving ? `translateX(${-leaving * 110}%)` : `translateX(${dx}px)`,
     opacity: leaving ? 0 : 1 - Math.min(Math.abs(dx) / 400, 0.35),
-    transition: dragging ? 'none' : `transform ${OUT_MS}ms ease-out, opacity ${OUT_MS}ms ease-out`,
     userSelect: 'none', willChange: 'transform',
   } as const;
 
@@ -86,10 +118,10 @@ export function Walkthrough() {
         <p style={{ ...t('meta'), color: T.textMuted, margin: 0 }}>{WALKTHROUGH_INTRO.hint}</p>
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: '@media (prefers-reduced-motion: no-preference){.vp-slide[data-dir="1"]{animation:vp-in-r .26s cubic-bezier(.2,.8,.2,1)}.vp-slide[data-dir="-1"]{animation:vp-in-l .26s cubic-bezier(.2,.8,.2,1)}}@keyframes vp-in-r{from{opacity:0;transform:translateX(70%)}to{opacity:1;transform:none}}@keyframes vp-in-l{from{opacity:0;transform:translateX(-70%)}to{opacity:1;transform:none}}' }} />
-      <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel} style={{ touchAction: 'pan-y', width: '100%', display: 'flex', justifyContent: 'center' }}>
+      <style dangerouslySetInnerHTML={{ __html: '@media (prefers-reduced-motion: no-preference){.vp-slide{transition:transform .2s ease-out,opacity .2s ease-out !important}.vp-slide[data-dragging="true"]{transition:none !important}.vp-slide[data-dir="1"]{animation:vp-in-r .3s cubic-bezier(.2,.8,.2,1) !important}.vp-slide[data-dir="-1"]{animation:vp-in-l .3s cubic-bezier(.2,.8,.2,1) !important}}@keyframes vp-in-r{from{opacity:0;transform:translateX(70%)}to{opacity:1;transform:none}}@keyframes vp-in-l{from{opacity:0;transform:translateX(-70%)}to{opacity:1;transform:none}}' }} />
+      <div ref={wrapRef} tabIndex={0} aria-label="Walkthrough. Swipe, drag or use the arrow keys to change step." onKeyDown={onKey} onDragStart={e => e.preventDefault()} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel} style={{ touchAction: 'pan-y', width: '100%', display: 'flex', justifyContent: 'center', userSelect: 'none', WebkitUserSelect: 'none', cursor: dragging ? 'grabbing' : 'grab', outline: 'none' }}>
         <PhoneFrame label={SCREENS[i].label}>
-          <div key={i} className="vp-slide" data-dir={dir} style={slideStyle}>{SCREENS[i].node}</div>
+          <div key={i} className="vp-slide" data-dir={dir} data-dragging={dragging} style={slideStyle}>{SCREENS[i].node}</div>
         </PhoneFrame>
       </div>
 
