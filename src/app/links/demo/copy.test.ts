@@ -23,7 +23,7 @@ describe('demo page wording', () => {
   it('has copy for six walkthrough steps and four sections', () => {
     expect(copy.WALKTHROUGH).toHaveLength(6);
     expect(copy.SECTIONS.map(s => s.id)).toEqual(['tally', 'money', 'resale', 'pay']);
-    for (const s of copy.SECTIONS) expect(s.steps).toHaveLength(3);
+    expect(copy.SECTIONS.map(s => s.steps.length)).toEqual([3, 3, 3, 4]);
   });
 
   it('keeps every sentence short', () => {

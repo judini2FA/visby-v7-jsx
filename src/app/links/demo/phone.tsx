@@ -24,11 +24,11 @@ export function PhoneFrame({ children, label }: { children: ReactNode; label: st
 }
 
 // The same screen content, shown flat inside a section instead of a phone.
-export function Panel({ children, label, style }: { children: ReactNode; label: string; style?: CSSProperties }) {
+export function Panel({ children, label, style, flush }: { children: ReactNode; label: string; style?: CSSProperties; flush?: boolean }) {
   return (
     <div role="img" aria-label={label} style={{
-      ...surface({ radius: 'var(--r-lg)', pad: S[3] }), width: '100%', maxWidth: 300, alignSelf: 'center',
-      display: 'flex', flexDirection: 'column', gap: S[3], boxSizing: 'border-box', ...style,
+      ...surface({ radius: 'var(--r-lg)', pad: flush ? 0 : S[3] }), width: '100%', maxWidth: 300, alignSelf: 'center',
+      display: 'flex', flexDirection: 'column', gap: S[3], boxSizing: 'border-box', overflow: flush ? 'hidden' : undefined, ...style,
     }}>
       {children}
     </div>

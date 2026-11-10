@@ -6,8 +6,8 @@ import { PrelaunchWordmark } from '../../prelaunch/wordmark';
 import { Panel } from './phone';
 import { Walkthrough } from './walkthrough';
 import {
-  BadgesScreen, CheckoutScreen, HistoryScreen, OrderScreen, PayCheckoutScreen, PayDoneScreen,
-  PayoutScreen, ResellScreen, SaleScreen, StoreScreen,
+  ChainScreen, CheckoutScreen, HistoryScreen, OrderScreen, PayCheckoutScreen, PayDoneScreen,
+  PayoutScreen, ResellScreen, SaleScreen, ShotScreen,
 } from './screens';
 import { FOOTER, HEADER, SECTIONS } from './copy';
 
@@ -18,11 +18,12 @@ export const metadata: Metadata = {
 };
 
 // One mock per step, in the same order as the copy in SECTIONS.
-const MOCKS: Record<string, { label: string; node: ReactNode }[]> = {
+type Mock = { label: string; node: ReactNode; flush?: boolean };
+const MOCKS: Record<string, Mock[]> = {
   tally: [
     { label: 'A Tally card for a new item with one owner', node: <HistoryScreen count={1} /> },
     { label: 'A Tally card listing three owners', node: <HistoryScreen count={3} /> },
-    { label: 'An Authenticated badge and a Brand verified badge', node: <BadgesScreen /> },
+    { label: 'The chain of owners from Kith to the current owner', node: <ChainScreen /> },
   ],
   money: [
     { label: 'Checkout paying by card with free shipping', node: <CheckoutScreen /> },
@@ -35,9 +36,10 @@ const MOCKS: Record<string, { label: string; node: ReactNode }[]> = {
     { label: 'A finished sale showing what the seller received', node: <SaleScreen /> },
   ],
   pay: [
-    { label: 'A store page with a Pay with Visby button', node: <StoreScreen /> },
+    { label: "A real product page on kith.com with a Pay with Visby button under Add to cart", node: <ShotScreen src="/demo/kith-product.jpg" width={720} height={1274} />, flush: true },
+    { label: "kith.com's real checkout with Pay with Visby at the top of the quick-pay options", node: <ShotScreen src="/demo/kith-checkout.jpg" width={720} height={556} />, flush: true },
     { label: 'The Visby Pay checkout', node: <PayCheckoutScreen /> },
-    { label: 'A confirmation saying the Tally is ready', node: <PayDoneScreen /> },
+    { label: 'A confirmation saying the Tally is ready, with Kith as the original minter', node: <PayDoneScreen /> },
   ],
 };
 
@@ -76,9 +78,11 @@ export default function DemoPage() {
                     <p style={{ ...t('body'), color: T.textMuted, margin: 0 }}>{step.body}</p>
                   </div>
                 </div>
-                <Panel label={MOCKS[s.id][n].label}>{MOCKS[s.id][n].node}</Panel>
+                <Panel label={MOCKS[s.id][n].label} flush={MOCKS[s.id][n].flush}>{MOCKS[s.id][n].node}</Panel>
               </div>
             ))}
+
+            {s.id === 'pay' && <p style={{ ...t('micro'), color: T.textMuted, margin: 0, textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>{FOOTER.noPartner}</p>}
 
             <details style={{ borderTop: '1px solid var(--divider)', paddingTop: S[3] }}>
               <summary style={{ ...t('meta'), color: T.textStrong, fontWeight: 700, cursor: 'pointer' }}>{FOOTER.curiousLabel}</summary>

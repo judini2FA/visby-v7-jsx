@@ -1,83 +1,44 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { t, S, T, btn, badge, price, sectionLabel, surface, tabSlider } from '@/lib/ui';
+import { t, S, T, btn, badge, price, surface, tabSlider } from '@/lib/ui';
 import { TallyCard } from '@/components/tally-card';
-import { AuthBadge } from '@/components/auth-badge';
-import { BrandBadge } from '@/components/brand-badge';
+import { AvatarCircle } from '@/components/owner-stack';
 
-// Recreations of the real app screens, built from the same labels and design helpers. Static: nothing here
-// talks to an API, and every name and amount is an example.
+// Recreations of the real app screens, built from the same labels and design helpers, using real product
+// photos and the real Kith website. Static: nothing here talks to an API. Names and amounts are examples.
 
-const OWNER_BRAND = { wallet: 'Northline' };
-const OWNER_SELLER = { wallet: 'Maya' };
-const OWNER_YOU = { wallet: 'Jordan' };
-const OWNER_NEXT = { wallet: 'Riley' };
+type Owner = { wallet: string; avatar_url?: string };
 
-const ITEM = 'Runner 01 · Size 10';
-const SERIAL = 'RN01-0042-US10';
+const KITH: Owner = { wallet: 'Kith', avatar_url: '/demo/kith-logo.png' };
+const MAYA: Owner = { wallet: 'Maya' };
+const JORDAN: Owner = { wallet: 'Jordan' };
+const RILEY: Owner = { wallet: 'Riley' };
+
+const ITEM = 'Diemme Licata';
+const ITEM_FULL = 'Diemme Licata Crackled Patent Leather';
+const SERIAL = 'DMLC-0042-43';
+const PHOTO = '/demo/kith-licata.jpg';
 
 const row: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: S[2] };
-const col: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: S[3] };
 const fakeInput: CSSProperties = { ...t('body'), color: T.text, background: 'var(--field-input-bg)', border: '1px solid var(--glass-border)', borderRadius: 'var(--r)', padding: `${S[2]}px ${S[3]}px` };
 const muted: CSSProperties = { ...t('meta'), color: T.textMuted };
 
-type Kind = 'shoe' | 'watch' | 'bag';
-
-function Art({ kind, size = 96 }: { kind: Kind; size?: number }) {
+function Photo({ src, h, children }: { src: string; h: number; children?: ReactNode }) {
   return (
-    <svg width={size} height={size * 0.66} viewBox="0 0 120 80" fill="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="demo-art" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#25CDB8" /><stop offset=".5" stopColor="#2A8AED" /><stop offset="1" stopColor="#BC2DE6" />
-        </linearGradient>
-      </defs>
-      {kind === 'shoe' && (
-        <>
-          <path d="M8 56c0-6 3-10 8-12l22-8 10-20c2-3 6-4 9-2l8 6c4 3 9 4 14 4h6c10 0 19 6 23 15l3 7c1 3-1 6-4 6H12c-2 0-4-2-4-4z" fill="url(#demo-art)" />
-          <path d="M8 60h104v4c0 2-2 4-4 4H12c-2 0-4-2-4-4z" fill="var(--text-strong)" opacity=".85" />
-          <path d="M44 34l8 4M50 28l8 4M56 22l8 4" stroke="var(--bg-0)" strokeWidth="2.5" strokeLinecap="round" />
-        </>
-      )}
-      {kind === 'watch' && (
-        <>
-          <rect x="46" y="2" width="28" height="76" rx="8" fill="url(#demo-art)" opacity=".45" />
-          <circle cx="60" cy="40" r="26" fill="var(--bg-0)" stroke="url(#demo-art)" strokeWidth="5" />
-          <path d="M60 40V24M60 40l11 6" stroke="var(--text-strong)" strokeWidth="3" strokeLinecap="round" />
-        </>
-      )}
-      {kind === 'bag' && (
-        <>
-          <path d="M42 34c0-24 36-24 36 0" stroke="var(--text-strong)" strokeWidth="5" strokeLinecap="round" opacity=".8" />
-          <rect x="22" y="32" width="76" height="44" rx="10" fill="url(#demo-art)" />
-          <rect x="22" y="44" width="76" height="4" fill="var(--bg-0)" opacity=".35" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-function Thumb({ kind, h = 96, children }: { kind: Kind; h?: number; children?: ReactNode }) {
-  return (
-    <div style={{ position: 'relative', height: h, borderRadius: 'var(--r-lg)', background: 'var(--surface-bg)', border: '1px solid var(--glass-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <Art kind={kind} size={Math.min(110, h * 1.15)} />
+    <div style={{ position: 'relative', height: h, borderRadius: 'var(--r-lg)', overflow: 'hidden', background: 'var(--surface-bg)', border: '1px solid var(--glass-hairline)', flexShrink: 0 }}>
+      <img src={src} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 55%', display: 'block' }} />
       {children}
     </div>
   );
 }
 
-function SmallThumb({ kind }: { kind: Kind }) {
-  return (
-    <div style={{ width: 48, height: 48, borderRadius: 'var(--r-sm)', background: 'var(--surface-bg)', border: '1px solid var(--glass-hairline)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <Art kind={kind} size={40} />
-    </div>
-  );
-}
-
-function ItemRow({ sub }: { sub: string }) {
+function ItemRow({ sub, src = PHOTO, name = ITEM_FULL }: { sub: string; src?: string; name?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: S[3] }}>
-      <SmallThumb kind="shoe" />
+      <div style={{ width: 48, height: 48, borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--glass-hairline)' }}>
+        <img src={src} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ ...t('heading'), color: T.textStrong }}>{ITEM}</div>
+        <div style={{ ...t('body'), color: T.textStrong, fontWeight: 700 }}>{name}</div>
         <div style={muted}>{sub}</div>
       </div>
     </div>
@@ -98,21 +59,30 @@ function Check({ done, current }: { done?: boolean; current?: boolean }) {
 function FeeRows({ received = 'You receive' }: { received?: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: S[1], ...muted }}>
-      <div style={row}><span>Price</span><span>$300.00</span></div>
-      <div style={row}><span>Visby fee (9%)</span><span>−$27.00</span></div>
-      <div style={{ ...row, color: T.textStrong, fontWeight: 700, paddingTop: S[1], borderTop: '1px solid var(--divider)' }}><span>{received}</span><span>$273.00</span></div>
+      <div style={row}><span>Price</span><span>$480.00</span></div>
+      <div style={row}><span>Visby fee (9%)</span><span>−$43.20</span></div>
+      <div style={{ ...row, color: T.textStrong, fontWeight: 700, paddingTop: S[1], borderTop: '1px solid var(--divider)' }}><span>{received}</span><span>$436.80</span></div>
     </div>
   );
 }
 
-function Listing({ kind, name, cost, owners }: { kind: Kind; name: string; cost: string; owners: number }) {
+function MinterNote() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: S[2], ...muted }}>
+      <AvatarCircle wallet="Kith" avatarUrl={KITH.avatar_url} size={24} ring="var(--divider)" />
+      <span>Original minter: <strong style={{ color: T.textStrong }}>Kith</strong></span>
+    </div>
+  );
+}
+
+function Listing({ src, name, cost, owners }: { src: string; name: string; cost: string; owners: number }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <Thumb kind={kind} h={92} />
+      <Photo src={src} h={92} />
       <div style={{ ...surface({ radius: 'var(--r)' }), position: 'relative', margin: `-${S[3]}px ${S[1]}px 0`, padding: S[2] }}>
         <div style={{ ...t('meta'), color: T.textStrong, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
         <div style={{ ...price('sm'), marginTop: S[1] }}>{cost}</div>
-        <div style={{ ...t('meta'), color: T.textMuted }}>{owners} owner{owners === 1 ? '' : 's'}</div>
+        <div style={{ ...t('meta'), color: T.textMuted }}>{owners} owners</div>
       </div>
     </div>
   );
@@ -129,10 +99,10 @@ export function HomeScreen() {
       </div>
       <div style={muted}>4 items for sale</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: S[3] }}>
-        <Listing kind="shoe" name="Runner 01" cost="$300" owners={2} />
-        <Listing kind="watch" name="Heritage Chrono" cost="$1,150" owners={3} />
-        <Listing kind="bag" name="Canvas Tote" cost="$420" owners={1} />
-        <Listing kind="shoe" name="Court Low" cost="$180" owners={2} />
+        <Listing src="/demo/kith-licata.jpg" name="Diemme Licata" cost="$480" owners={2} />
+        <Listing src="/demo/nordgreen-watch.jpg" name="Pioneer Watch" cost="$230" owners={3} />
+        <Listing src="/demo/kith-bag.jpg" name="Harper III Bag" cost="$340" owners={2} />
+        <Listing src="/demo/kith-hiker.jpg" name="Grappa Hiker" cost="$450" owners={2} />
       </div>
     </>
   );
@@ -141,20 +111,18 @@ export function HomeScreen() {
 export function ItemScreen() {
   return (
     <>
-      <Thumb kind="shoe" h={120}>
+      <Photo src={PHOTO} h={132}>
         <span style={{ ...badge('onImage'), position: 'absolute', top: S[2], left: S[2] }}>Used</span>
-      </Thumb>
-      <div style={{ display: 'flex', gap: S[1], flexWrap: 'wrap' }}>
+      </Photo>
+      <div style={{ ...t('heading'), color: T.textStrong }}>{ITEM_FULL}</div>
+      <div style={row}>
+        <span style={price('md')}>$480</span>
         <span style={badge('default')}>Sneakers</span>
-        <BrandBadge status="verified" brand="Northline" />
       </div>
-      <div style={{ ...row, alignItems: 'flex-start' }}>
-        <div style={{ ...t('heading'), color: T.textStrong }}>{ITEM}</div>
-        <AuthBadge status="authenticated" />
-      </div>
-      <div style={btn('primary', { full: true })}>Buy Now · $300</div>
+      <div style={btn('primary', { full: true })}>Buy Now · $480</div>
       <div style={muted}>Free shipping on every order. The seller is paid only after you confirm delivery.</div>
-      <TallyCard name={ITEM} serial={SERIAL} owners={[OWNER_BRAND, OWNER_SELLER]} />
+      <TallyCard name={ITEM} serial={SERIAL} owners={[KITH, MAYA]} />
+      <MinterNote />
     </>
   );
 }
@@ -164,14 +132,14 @@ export function CheckoutScreen() {
   return (
     <>
       <div style={{ ...t('heading'), color: T.textStrong }}>Checkout</div>
-      <ItemRow sub="Sold by Maya" />
+      <ItemRow sub="Sold by Maya" name={ITEM} />
       <div style={tabs.wrap}>
         {['Card', 'Crypto', 'Bank'].map((x, i) => <span key={x} style={{ ...tabs.item, ...(i === 0 ? tabs.itemActive : null), padding: '7px 8px' }}>{x}</span>)}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: S[1], ...muted }}>
-        <div style={row}><span>Item</span><span>$300.00</span></div>
+        <div style={row}><span>Item</span><span>$480.00</span></div>
         <div style={row}><span>Shipping</span><span style={{ color: 'var(--ok)', fontWeight: 700 }}>Free</span></div>
-        <div style={{ ...row, color: T.textStrong, fontWeight: 700, paddingTop: S[1], borderTop: '1px solid var(--divider)' }}><span>You pay</span><span>$300.00</span></div>
+        <div style={{ ...row, color: T.textStrong, fontWeight: 700, paddingTop: S[1], borderTop: '1px solid var(--divider)' }}><span>You pay</span><span>$480.00</span></div>
       </div>
       <div style={fakeInput}><span style={muted}>Ship to</span><div style={{ color: T.text }}>Jordan Lee · 24 Maple St</div></div>
       <div style={btn('primary', { full: true })}>Pay with Visa ····4242</div>
@@ -202,12 +170,12 @@ export function OrderScreen({ stage }: { stage: 'shipping' | 'delivered' }) {
       </div>
       {done ? (
         <>
-          <TallyCard name={ITEM} serial={SERIAL} owners={[OWNER_BRAND, OWNER_SELLER, OWNER_YOU]} />
+          <TallyCard name={ITEM} serial={SERIAL} owners={[KITH, MAYA, JORDAN]} />
           <div style={muted}>The seller has been paid. You are now the owner on record.</div>
         </>
       ) : (
         <>
-          <div style={{ ...btn('secondary', { full: true }) }}>Confirm delivery</div>
+          <div style={btn('secondary', { full: true })}>Confirm delivery</div>
           <div style={muted}>Tap this when your item arrives. The seller is paid after that.</div>
         </>
       )}
@@ -223,8 +191,8 @@ export function ResellScreen() {
         <span style={tabs.item}>Mint New</span>
         <span style={{ ...tabs.item, ...tabs.itemActive }}>Relist</span>
       </div>
-      <ItemRow sub="3 owners" />
-      <div style={fakeInput}>$300</div>
+      <ItemRow sub="3 owners" name={ITEM} />
+      <div style={fakeInput}>$480</div>
       <FeeRows />
       <div style={btn('primary', { full: true })}>List for sale</div>
     </>
@@ -235,7 +203,7 @@ export function SaleScreen() {
   return (
     <>
       <span style={{ ...badge('success'), alignSelf: 'flex-start' }}>Buyer confirmed delivery</span>
-      <ItemRow sub="Sold to Riley" />
+      <ItemRow sub="Sold to Riley" name={ITEM} />
       <FeeRows received="You received" />
       <div style={muted}>The Tally moved to the buyer.</div>
     </>
@@ -243,23 +211,36 @@ export function SaleScreen() {
 }
 
 export function HistoryScreen({ count = 3 }: { count?: 1 | 3 | 4 }) {
-  const owners = { 1: [OWNER_BRAND], 3: [OWNER_BRAND, OWNER_SELLER, OWNER_YOU], 4: [OWNER_BRAND, OWNER_SELLER, OWNER_YOU, OWNER_NEXT] }[count];
-  return <TallyCard name={ITEM} serial={SERIAL} owners={owners} />;
-}
-
-export function BadgesScreen() {
+  const owners = { 1: [KITH], 3: [KITH, MAYA, JORDAN], 4: [KITH, MAYA, JORDAN, RILEY] }[count];
   return (
     <>
-      <div style={col}>
-        <AuthBadge status="authenticated" />
-        <div style={muted}>A Visby reviewer checked this item.</div>
-      </div>
-      <div style={{ height: 1, background: 'var(--divider)' }} />
-      <div style={col}>
-        <BrandBadge status="verified" brand="Northline" />
-        <div style={muted}>The serial number matches the numbers the brand registered.</div>
-      </div>
+      <TallyCard name={ITEM} serial={SERIAL} owners={owners} />
+      <MinterNote />
     </>
+  );
+}
+
+export function ChainScreen() {
+  const links: { who: Owner; name: string; role: string }[] = [
+    { who: KITH, name: 'Kith', role: 'Original minter' },
+    { who: MAYA, name: 'Maya', role: 'Bought it from Kith' },
+    { who: JORDAN, name: 'Jordan', role: 'Current owner' },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {links.map((l, i) => (
+        <div key={l.name} style={{ display: 'flex', gap: S[3] }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <AvatarCircle wallet={l.who.wallet} avatarUrl={l.who.avatar_url} size={36} ring="var(--divider)" />
+            {i < links.length - 1 && <div style={{ width: 2, flex: 1, minHeight: S[4], background: 'var(--divider)' }} />}
+          </div>
+          <div style={{ paddingBottom: i < links.length - 1 ? S[3] : 0 }}>
+            <div style={{ ...t('body'), color: T.textStrong, fontWeight: 700 }}>{l.name}</div>
+            <div style={muted}>{l.role}</div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -285,30 +266,19 @@ export function PayoutScreen() {
   );
 }
 
-export function StoreScreen() {
-  return (
-    <>
-      <div style={sectionLabel()}>northline.com</div>
-      <Thumb kind="shoe" h={120} />
-      <div style={row}>
-        <div style={{ ...t('heading'), color: T.textStrong }}>{ITEM}</div>
-        <span style={price('sm')}>$240</span>
-      </div>
-      <div style={btn('secondary', { full: true })}>Add to cart</div>
-      <div style={btn('primary', { full: true })}>Pay with Visby</div>
-    </>
-  );
+export function ShotScreen({ src, width, height }: { src: string; width: number; height: number }) {
+  return <img src={src} alt="" width={width} height={height} style={{ width: '100%', height: 'auto', display: 'block' }} />;
 }
 
 export function PayCheckoutScreen() {
   return (
     <>
       <div style={{ ...t('heading'), color: T.textStrong }}>Visby Pay</div>
-      <div style={muted}>Sold by Northline</div>
-      <ItemRow sub="SN · RN01-0042-US10" />
-      <div style={{ ...row, color: T.textStrong, fontWeight: 700, ...t('body') }}><span>You pay</span><span>$240.00</span></div>
+      <div style={muted}>Sold by Kith</div>
+      <ItemRow sub={`SN · ${SERIAL}`} name={ITEM} />
+      <div style={{ ...row, color: T.textStrong, fontWeight: 700, ...t('body') }}><span>You pay</span><span>$560.00</span></div>
       <div style={{ ...surface({ radius: 'var(--r)', pad: S[3] }), ...row }}><span style={{ ...t('body'), color: T.textStrong, fontWeight: 700 }}>Visa ····4242</span><span style={badge('default')}>Default</span></div>
-      <div style={btn('primary', { full: true })}>Pay $240.00</div>
+      <div style={btn('primary', { full: true })}>Pay $560.00</div>
     </>
   );
 }
@@ -320,9 +290,10 @@ export function PayDoneScreen() {
         <Check done />
         <div style={{ ...t('heading'), color: T.textStrong }}>Your Tally is ready</div>
       </div>
-      <TallyCard name={ITEM} serial={SERIAL} owners={[OWNER_YOU]} />
+      <TallyCard name={ITEM} serial={SERIAL} owners={[KITH, JORDAN]} />
+      <MinterNote />
       <div style={muted}>You now own the verified history of this item.</div>
-      <div style={{ ...t('meta'), color: T.textStrong, fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>Back to Northline</div>
+      <div style={{ ...t('meta'), color: T.textStrong, fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>Back to Kith</div>
     </>
   );
 }
