@@ -13,6 +13,7 @@ import { FOOTER, HEADER, SECTIONS } from './copy';
 
 export const metadata: Metadata = {
   title: 'Visby — Demo',
+  description: HEADER.subtitle,
   robots: { index: false, follow: false },
 };
 
