@@ -32,7 +32,7 @@ export const SECTIONS: Section[] = [
     title: "A Tally is your item's history",
     intro: 'Think of it as a receipt that never gets lost and travels with the item wherever it goes.',
     steps: [
-      { title: 'The brand creates it', body: 'When a brand like Nike sells an item through Visby, it creates the Tally. The brand is the original minter and the first name on the list.' },
+      { title: 'The brand creates it', body: 'If a brand like Nike sold an item through Visby, the brand would create the Tally. That makes it the original minter: the one that first created it, and the first name on the list.' },
       { title: 'It remembers every owner', body: 'Each time the item is sold, the new owner is added to the list. Old owners stay on it, so the history only grows.' },
       { title: 'The list is the proof', body: 'Owners and authenticity are one thing here. If the brand is first and every owner after is on the list in order, the item has a clear path from the brand to you.' },
     ],
@@ -50,7 +50,7 @@ export const SECTIONS: Section[] = [
       { title: 'You pay on a Visby page', body: 'A secure Visby checkout opens. Sign in with an email code, pay with your card, and you are done. No password to remember.' },
       { title: 'You get the item and its Tally', body: 'The store ships your item, and your Tally is created at the same moment with the store as the original minter. The store is told the sale went through and pays Visby 3.5% per sale.' },
     ],
-    curious: "The store's website asks Visby to open a checkout for one order and gets back a secure link. The shopper pays on that Visby page. When the payment clears, Visby creates the Tally in the shopper's name and sends the store a signed message confirming the sale, so the store knows it is real. The store never has to handle crypto or build its own Tally system.",
+    curious: "The store's website asks Visby to open a checkout for one order and gets back a secure link. The shopper pays on that Visby page. When the payment clears, Visby creates the Tally in the shopper's name and sends the store a secure confirmation of the sale, so the store knows it is real. The store never has to handle crypto or build its own Tally system.",
   },
   {
     id: 'money',
@@ -60,10 +60,10 @@ export const SECTIONS: Section[] = [
     intro: 'You can buy and sell on Visby without ever touching crypto.',
     steps: [
       { title: 'Buyers pay with a card', body: 'You pay the listed price. Shipping is free. If you like crypto, you can pay with that instead.' },
-      { title: 'Visby holds it until delivery', body: 'Your payment is held while the item is on its way. The seller only gets paid after you confirm it arrived.' },
+      { title: 'Visby holds it until delivery', body: 'Your payment is held while the item is on its way. The seller is paid once the item is confirmed delivered, usually when you tap Confirm delivery.' },
       { title: 'Sellers choose how to get paid', body: 'Sellers pick a bank account or digital dollars. Visby takes a 9% fee from the sale. The buyer never pays extra.' },
     ],
-    curious: "A payment company handles your card the way any online store does. Visby holds the money until delivery is confirmed, either when the buyer taps Confirm delivery or when the carrier's tracking says it arrived. Then Visby sends the seller their share. Sellers can be paid into a bank account or in USDC, a digital dollar designed to stay worth one US dollar. Payouts are also checked against government sanctions lists.",
+    curious: "A payment company handles your card the way any online store does. Visby holds the money until delivery is confirmed, either when the buyer taps Confirm delivery or when the carrier's tracking says it arrived. Then Visby sends the seller their share. Sellers can be paid into a bank account or in USDC, a digital dollar designed to stay worth one US dollar. Payouts are also checked against government lists of people and groups that money cannot be sent to.",
   },
   {
     id: 'resale',
