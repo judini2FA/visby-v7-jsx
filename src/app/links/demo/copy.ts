@@ -9,7 +9,7 @@ export const HEADER = {
 export const WALKTHROUGH_INTRO = {
   eyebrow: 'Start to finish',
   title: 'Follow one item from first look to resale',
-  hint: 'Tap Next to move through the steps.',
+  hint: 'Tap Next or swipe the phone to move through the steps.',
 };
 
 export const WALKTHROUGH: { title: string; caption: string }[] = [

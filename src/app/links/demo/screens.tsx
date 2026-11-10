@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { t, S, T, btn, badge, price, surface, tabSlider } from '@/lib/ui';
 import { TallyCard } from '@/components/tally-card';
 import { AvatarCircle } from '@/components/owner-stack';
+import { VisbyPayButton, VisbyPayOverlay, type PillBox } from './visbypay';
 
 // Recreations of the real app screens, built from the same labels and design helpers, using real product
 // photos and the real Nike website. Static: nothing here talks to an API. Names and amounts are examples.
@@ -123,7 +124,7 @@ const LISTINGS: { src: string; name: string; cost: string; owners: number; brand
 
 export const DEMO_IMAGES: string[] = [
   ...LISTINGS.map(l => l.src), ...Object.values(BRANDS).map(b => b.src),
-  '/demo/nike-avatar.png', '/demo/visbypay-button.png', '/demo/nike-product.jpg', '/demo/nike-checkout.jpg',
+  '/demo/nike-avatar.png', '/demo/nike-product.jpg', '/demo/nike-checkout.jpg',
 ];
 
 export function HomeScreen() {
@@ -302,14 +303,19 @@ export function PayoutScreen() {
   );
 }
 
-export function ShotScreen({ src, width, height }: { src: string; width: number; height: number }) {
-  return <img src={src} alt="" width={width} height={height} style={{ width: '100%', height: 'auto', display: 'block' }} />;
+export function ShotScreen({ src, width, height, pill }: { src: string; width: number; height: number; pill?: PillBox }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <img src={src} alt="" width={width} height={height} style={{ width: '100%', height: 'auto', display: 'block' }} />
+      {pill && <VisbyPayOverlay box={pill} />}
+    </div>
+  );
 }
 
 export function PayCheckoutScreen() {
   return (
     <>
-      <img src="/demo/visbypay-button.png" alt="VisbyPay" width={180} height={29} style={{ display: 'block', width: 180, height: 'auto' }} />
+      <div role="img" aria-label="VisbyPay" style={{ width: 176, height: 32, containerType: 'size' }}><VisbyPayButton /></div>
       <div style={muted}>Sold by Nike</div>
       <ItemRow sub={`SN · ${SERIAL}`} name={ITEM} />
       <div style={{ ...row, color: T.textStrong, fontWeight: 700, ...t('body') }}><span>You pay</span><span>$115.00</span></div>
